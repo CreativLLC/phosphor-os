@@ -39,6 +39,11 @@ export function insertIntoChat(text: string): void {
 export function mountChat(logEl: HTMLElement, composer: HTMLElement): void {
   log = logEl;
   input = composer.querySelector('#input') as HTMLTextAreaElement;
+  // The '>' prompt mark (theme.css) follows the message box down when the attachment tray or the live dictation
+  // line appears above it.
+  const markTop = () => composer.style.setProperty('--input-top', `${input.offsetTop}px`);
+  new ResizeObserver(markTop).observe(composer);
+  markTop();
   const sendBtn = composer.querySelector('#send') as HTMLButtonElement;
   const stopBtn = composer.querySelector('#stop') as HTMLButtonElement;
   const mode = composer.querySelector('#mode') as HTMLSelectElement;

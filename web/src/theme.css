@@ -375,7 +375,7 @@ select option {
   content: '>';
   position: absolute;
   left: calc(16px + 10px);
-  top: calc(8px + 1px + 9px);
+  top: calc(var(--input-top, 8px) + 1px + 9px);
   color: var(--ph-bright);
   pointer-events: none;
   line-height: 1.2;

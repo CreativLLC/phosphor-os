@@ -652,7 +652,6 @@ pre.code .del {
 @media (max-width: 820px), (pointer: coarse) and (max-width: 1150px) {
   #composer::before {
     left: calc(8px + 10px);
-    top: calc(6px + 1px + 9px);
   }
 }
 
