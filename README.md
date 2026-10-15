@@ -1,11 +1,37 @@
-# Phosphor-OS
+<div align="center">
 
-The agent OS: a retro CRT desktop and app to live in while you work with Claude Code agents.
+<a href="https://phosphor.creativllc.net">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/media/banner-poster.png">
+    <img src="docs/media/banner.webp" alt="Phosphor-OS: the agent OS. A live Claude Code session HUD in amber phosphor on black." width="100%">
+  </picture>
+</a>
+
+**The agent OS.** A retro CRT desktop and app to live in while you work with Claude Code agents.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-f5a623?style=flat-square)](LICENSE) [![Claude Code](https://img.shields.io/badge/powered%20by-Claude%20Code-d97757?style=flat-square)](https://code.claude.com) [![Omarchy](https://img.shields.io/badge/built%20on-Omarchy%20%2F%20Arch-1793d1?style=flat-square)](https://omarchy.org) [![Linux](https://img.shields.io/badge/Linux-x86--64-222222?style=flat-square&logo=linux&logoColor=white)](#requirements) [![Local models](https://img.shields.io/badge/local%20models-optional-555555?style=flat-square)](docs/LOCAL-MODEL.md)
+
+[**Website**](https://phosphor.creativllc.net) &nbsp;·&nbsp; [**Trailer**](https://phosphor.creativllc.net/#trailer) &nbsp;·&nbsp; [**Install**](#install-omarchy) &nbsp;·&nbsp; [**Docs**](docs/LINUX.md)
+
+<table>
+  <tr>
+    <td width="33%"><a href="https://phosphor.creativllc.net/#see"><img src="docs/media/shot-hud.webp" alt="The session HUD: chat, mission steps, crew of sub-agents and stats" width="100%"></a></td>
+    <td width="33%"><a href="https://phosphor.creativllc.net/#os"><img src="docs/media/shot-os.webp" alt="The whole desktop: bar, taskbar, notifications and the app in one amber look" width="100%"></a></td>
+    <td width="33%"><a href="https://phosphor.creativllc.net/#phone"><img src="docs/media/shot-phone.webp" alt="The same session on a phone over Tailscale" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>See everything the agent does</sub></td>
+    <td align="center"><sub>The whole OS, one look</sub></td>
+    <td align="center"><sub>Same chats, from your phone</sub></td>
+  </tr>
+</table>
+
+<sub>All footage is the app's demo mode with made-up data.</sub>
+
+</div>
+
 Amber (or green, or LCARS) phosphor on black. Built on [Omarchy](https://omarchy.org), powered by
 [Claude Code](https://code.claude.com) with your own Anthropic login or API key.
-
-<!-- TRAILER -->
-Trailer and site: https://example.com/phosphor-os (placeholder, replace before publishing)
 
 ## What you get
 
