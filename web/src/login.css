@@ -1,0 +1,110 @@
+/* Login page. Owner: look team. Uses theme.css tokens and controls. */
+
+html,
+body.login {
+  height: 100%;
+}
+
+body.login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+body.login * {
+  box-sizing: border-box;
+}
+
+.login-box {
+  width: min(420px, 100%);
+  border: 2px solid var(--ph);
+  background: rgb(var(--ph-rgb) / 0.03);
+  box-shadow:
+    0 0 0 4px var(--bg),
+    0 0 0 5px rgb(var(--ph-rgb) / 0.45),
+    0 0 40px rgb(var(--ph-rgb) / 0.16);
+}
+
+.login-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  letter-spacing: 4px;
+  font-size: var(--fs-lg);
+  padding: 6px 14px 4px;
+}
+
+.login-tag {
+  font-size: var(--fs-sm);
+  letter-spacing: 2px;
+  align-self: center;
+}
+
+body.login form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 16px 18px;
+}
+
+.login-sys {
+  margin: 0;
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+  line-height: 1.25;
+}
+
+.login-sys::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.85em;
+  margin-left: 6px;
+  vertical-align: -0.05em;
+  background: var(--ph);
+  box-shadow: 0 0 6px rgb(var(--ph-rgb) / 0.6);
+  animation: blink 1.06s steps(1) infinite;
+}
+
+body.login label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  letter-spacing: 2px;
+  color: var(--ph-bright);
+}
+
+body.login input {
+  width: 100%;
+  min-height: 44px;
+  letter-spacing: 3px;
+}
+
+body.login button {
+  min-height: 44px;
+  letter-spacing: 4px;
+}
+
+.wrong {
+  margin: 0;
+  padding: 6px 10px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+  letter-spacing: 2px;
+  animation: blink 1.2s steps(1) 3;
+}
+
+/* Fingerprint login (shows only when one is set up for this address). */
+.login-fp {
+  width: 100%;
+  margin-top: 12px;
+}
+

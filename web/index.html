@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en" data-phosphor="amber" data-crt="high" data-size="m">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#0b0700" />
+    <title>Phosphor-OS</title>
+    <script>
+      // Saved display settings before first paint (no color flash). Same key and values as src/settings.ts.
+      // Also starts the boot screen (src/boot.ts) once per browser session.
+      (function () {
+        var d = document.documentElement, s = {};
+        // Renamed from Retro Claude (2026-10-12): copy its retro.* settings to phosphor.* once; the old keys stay.
+        try {
+          if (!localStorage.getItem('phosphor.copied')) {
+            var old = Object.keys(localStorage).filter(function (k) { return k.indexOf('retro.') === 0; });
+            old.forEach(function (k) {
+              if (localStorage.getItem('phosphor.' + k.slice(6)) === null) localStorage.setItem('phosphor.' + k.slice(6), localStorage.getItem(k));
+            });
+            localStorage.setItem('phosphor.copied', '1');
+          }
+        } catch (e) {}
+        try { s = JSON.parse(localStorage.getItem('phosphor.settings') || '{}') || {}; } catch (e) {}
+        // Theme id (src/themes.ts); saved as 'phosphor' (amber | green) before there were other themes.
+        var t = s.theme || s.phosphor;
+        t = typeof t === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(t) ? t : 'amber';
+        d.dataset.theme = t;
+        if (t !== 'amber' && t !== 'green') delete d.dataset.phosphor;
+        if (t === 'green') {
+          d.dataset.phosphor = 'green';
+          document.querySelector('meta[name="theme-color"]').content = '#010a03';
+        }
+        if (s.crt === 'off' || s.crt === 'low') d.dataset.crt = s.crt;
+        if (s.size === 's' || s.size === 'l') d.dataset.size = s.size;
+        if (s.accent === 'pink' || s.accent === 'off') d.dataset.accent = s.accent;
+        try {
+          if (!sessionStorage.getItem('phosphor.booted') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            d.classList.add('booting');
+            setTimeout(function () { d.classList.remove('booting'); }, 4000);
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <header id="top">
+      <button id="btn-menu" class="only-narrow" type="button" aria-expanded="false" title="Menu">MENU</button>
+      <div class="brand">PHOSPHOR-OS</div>
+      <nav id="programs" hidden></nav>
+      <nav id="tabs"></nav>
+      <div class="top-tools">
+        <button id="btn-update" type="button" hidden></button>
+        <button id="btn-launch" type="button" title="Launcher: programs, chats, files and commands (Ctrl+K)">LAUNCH</button>
+        <button id="btn-docs" type="button" title="DOCS: write and edit documents">DOCS</button>
+        <button id="btn-left" class="only-narrow" type="button" title="Agents">AGENTS</button>
+        <button id="btn-history" type="button">HISTORY</button>
+        <button id="btn-mcp" type="button" title="MCP servers: tools from other apps Claude can use (/mcp)">MCP</button>
+        <button id="btn-station" type="button" title="STATION: your servers and self-hosted apps">STATION</button>
+        <button id="btn-full" class="only-wide" type="button" title="Fullscreen (same as F11)">FULL</button>
+        <button id="btn-right" class="only-narrow" type="button">INFO</button>
+        <div id="settings"></div>
+      </div>
+    </header>
+
+    <div id="app">
+      <aside id="left">
+        <div id="agents"></div>
+      </aside>
+
+      <main id="center">
+        <div id="log"></div>
+        <div id="progress"></div>
+        <div id="composer">
+          <div id="tray" hidden></div>
+          <textarea id="input" rows="1" placeholder="Message Claude…" enterkeyhint="enter"></textarea>
+          <div class="composer-tools">
+            <button id="attach" type="button" title="Attach files. You can also paste a screenshot or drop files on the chat.">ATTACH</button>
+            <input id="file" type="file" multiple hidden />
+            <button id="btn-opts" type="button" aria-expanded="false" title="Model, thinking level and permission mode">OPTIONS</button>
+            <select id="model"></select>
+            <select id="effort"></select>
+            <select id="mode"></select>
+            <button id="dictate" type="button" title="Voice to text (Ctrl+Space)">DICTATE</button>
+            <button id="stop" type="button" hidden>STOP</button>
+            <button id="send" type="button" class="primary">SEND</button>
+          </div>
+        </div>
+      </main>
+
+      <aside id="right">
+        <div class="panel-switch">
+          <button type="button" data-view="mission" class="on">MISSION</button>
+          <button type="button" data-view="files">FILES</button>
+          <button type="button" data-view="system" title="This PC: clock, CPU, memory, graphics card, drives, network, volume">SYS</button>
+        </div>
+        <section id="mission" class="panel"></section>
+        <section id="files" class="panel" hidden></section>
+        <section id="system" class="panel" hidden></section>
+      </aside>
+    </div>
+    <section id="webapp" hidden></section>
+
+    <div id="history" class="drawer" hidden></div>
+    <div id="mcp" class="drawer" hidden></div>
+    <div id="usage" class="drawer" hidden></div>
+    <div id="station" class="drawer" hidden></div>
+    <dialog id="newtab"></dialog>
+    <dialog id="undo-dialog"></dialog>
+    <div id="toasts"></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

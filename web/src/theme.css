@@ -1,0 +1,885 @@
+/* Colors, font, base controls, CRT effects. Owner: look team.
+   TOKEN CONTRACT (other CSS files and canvas sprites use these; keep the names):
+   --ph         main phosphor color (text, lines)
+   --ph-bright  highlights, active things, alerts
+   --ph-dim     secondary text
+   --ph-faint   faint fills and borders (low alpha)
+   --bg         screen background
+   --bg-raise   panels and cards
+   --glow       text-shadow for phosphor glow
+   --font       pixel font stack
+   --fs         base font size
+   html[data-phosphor="amber" | "green"] switches the palette.
+
+   EXTRA TOKENS (safe to use too):
+   --ph-rgb       phosphor as "r g b", for rgb(var(--ph-rgb) / 0.3)
+   --line         thin divider / quiet border color
+   --bg-deep      wells: inputs, code blocks
+   --glow-strong  bigger glow for headings and big labels
+   --fs-sm        small text (tool lines, meta)
+   --fs-lg        large text (headings)
+   --tap          minimum height for touch buttons
+   html[data-crt="off" | "low" | "high"]  CRT effect strength (settings.ts)
+   html[data-size="s" | "m" | "l"]        text size, drives --fs (settings.ts) */
+
+/* ---------- Palettes ---------- */
+
+:root,
+html[data-phosphor='amber'] {
+  --ph: #ffb000;
+  --ph-bright: #ffd68a;
+  --ph-dim: #b07c08;
+  --ph-faint: rgba(255, 176, 0, 0.14);
+  --ph-rgb: 255 176 0;
+  --bg: #0b0700;
+  --bg-raise: #150e03;
+  --bg-deep: #070400;
+  --bg-hot: #1c1204;
+}
+
+html[data-phosphor='green'] {
+  --ph: #33ff66;
+  --ph-bright: #b6ffc9;
+  --ph-dim: #23a845;
+  --ph-faint: rgba(51, 255, 102, 0.13);
+  --ph-rgb: 51 255 102;
+  --bg: #010a03;
+  --bg-raise: #04140a;
+  --bg-deep: #000501;
+  --bg-hot: #05190b;
+}
+
+/* ---------- Shared tokens ---------- */
+
+/* Accent: the only non-phosphor color, used in three places (operator face, progress bar, NOW line).
+   html[data-accent="cyan" | "pink" | "off"] (settings.ts). */
+:root,
+html[data-accent='cyan'] {
+  --accent: #3fe0ff;
+  --accent-bright: #b5f3ff;
+  --accent-rgb: 63 224 255;
+}
+
+html[data-accent='pink'] {
+  --accent: #ff5fd2;
+  --accent-bright: #ffc2ef;
+  --accent-rgb: 255 95 210;
+}
+
+html[data-accent='off'] {
+  --accent: var(--ph-bright);
+  --accent-bright: var(--ph-bright);
+  --accent-rgb: var(--ph-rgb);
+}
+
+:root {
+  --font: 'VT323', ui-monospace, Consolas, monospace;
+  --fs: 21px;
+  --fs-sm: max(16px, calc(var(--fs) * 0.88));
+  --fs-lg: calc(var(--fs) * 1.25);
+  --line: rgb(var(--ph-rgb) / 0.3);
+  --tap: 36px;
+  /* CRT strength. Overridden per data-crt below. */
+  --glow-a: 0.6;
+  --glow-b: 0.28;
+  --glow: 0 0 1px rgb(var(--ph-rgb) / var(--glow-a)), 0 0 5px rgb(var(--ph-rgb) / var(--glow-b));
+  --glow-strong: 0 0 2px rgb(var(--ph-rgb) / 0.8), 0 0 10px rgb(var(--ph-rgb) / 0.45);
+  --scan: 0.26; /* scanline darkness */
+  --scan-h: 3px; /* scanline period; settings.ts snaps it to whole device pixels */
+  --vignette: 0.55;
+  --screen-r: 18px;
+  color-scheme: dark;
+}
+
+html[data-size='s'] {
+  --fs: 18px;
+}
+html[data-size='l'] {
+  --fs: 24px;
+}
+
+html[data-crt='low'] {
+  --glow-a: 0.45;
+  --glow-b: 0.2;
+  --glow-strong: 0 0 2px rgb(var(--ph-rgb) / 0.6), 0 0 8px rgb(var(--ph-rgb) / 0.3);
+  --scan: 0.16;
+  --vignette: 0.4;
+  --screen-r: 10px;
+}
+
+html[data-crt='off'] {
+  --glow: 0 0 0 transparent;
+  --glow-strong: 0 0 0 transparent;
+  --scan: 0;
+  --vignette: 0;
+  --screen-r: 0px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --tap: 44px;
+  }
+}
+
+/* ---------- Base ---------- */
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: radial-gradient(ellipse 120% 90% at 50% 42%, var(--bg-hot) 0%, var(--bg) 70%) var(--bg);
+  color: var(--ph);
+  font: var(--fs) / 1.2 var(--font);
+  text-shadow: var(--glow);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+::selection {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: normal;
+  font-size: 1em;
+  letter-spacing: 2px;
+  margin: 0 0 6px;
+}
+
+a {
+  color: var(--ph-bright);
+}
+
+:focus-visible {
+  outline: 1px dashed var(--ph-bright);
+  outline-offset: 2px;
+}
+
+/* ---------- Controls ---------- */
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  text-shadow: inherit;
+  background: transparent;
+  border: 1px solid rgb(var(--ph-rgb) / 0.55);
+  border-radius: 0;
+  padding: 4px 12px;
+  min-height: var(--tap);
+}
+
+button {
+  cursor: pointer;
+  letter-spacing: 1px;
+  background: rgb(var(--ph-rgb) / 0.04);
+  line-height: 1.1;
+  touch-action: manipulation;
+}
+
+@media (hover: hover) {
+  button:hover {
+    background: rgb(var(--ph-rgb) / 0.15);
+    border-color: var(--ph);
+    color: var(--ph-bright);
+  }
+}
+
+button.on {
+  background: rgb(var(--ph-rgb) / 0.16);
+  border-color: var(--ph);
+  color: var(--ph-bright);
+}
+
+button:active {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+button.primary {
+  background: var(--ph);
+  border-color: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  box-shadow: 0 0 10px rgb(var(--ph-rgb) / 0.3);
+}
+
+@media (hover: hover) {
+  button.primary:hover {
+    background: var(--ph-bright);
+    border-color: var(--ph-bright);
+    color: var(--bg);
+  }
+}
+
+button.primary:active {
+  background: var(--ph-bright);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+textarea,
+input {
+  background: var(--bg-deep);
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.55);
+  caret-color: var(--ph-bright);
+  line-height: 1.2;
+}
+
+textarea:focus,
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--ph);
+  box-shadow:
+    inset 0 2px 10px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgb(var(--ph-rgb) / 0.35),
+    0 0 12px rgb(var(--ph-rgb) / 0.22);
+}
+
+::placeholder {
+  color: rgb(var(--ph-rgb) / 0.42);
+  opacity: 1;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 30px;
+  background-color: var(--bg-deep);
+  background-image: linear-gradient(45deg, transparent 50%, var(--ph) 50%), linear-gradient(135deg, var(--ph) 50%, transparent 50%);
+  background-position:
+    calc(100% - 17px) 52%,
+    calc(100% - 11px) 52%;
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+  letter-spacing: 1px;
+}
+
+select option {
+  background: var(--bg);
+  color: var(--ph);
+}
+
+/* ---------- Scrollbars ---------- */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--ph-rgb) / 0.04);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--ph-rgb) / 0.45);
+  border: 2px solid var(--bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ph);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--ph-rgb) / 0.45) transparent;
+  }
+}
+
+/* ---------- Frame: header, panels, composer ---------- */
+
+#top,
+#left,
+#right,
+#composer,
+#progress {
+  border-color: var(--ph-dim);
+  border-style: solid;
+  border-width: 0;
+}
+
+#top {
+  border-bottom: 3px double var(--ph-dim);
+  background: linear-gradient(to bottom, rgb(var(--ph-rgb) / 0.08), rgb(var(--ph-rgb) / 0.02));
+}
+
+#top button {
+  min-height: 36px;
+}
+
+.brand {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  padding: 3px 10px 2px;
+  letter-spacing: 3px;
+  box-shadow: 0 0 12px rgb(var(--ph-rgb) / 0.35);
+}
+
+#left {
+  border-right-width: 1px;
+}
+
+#right {
+  border-left-width: 1px;
+}
+
+/* Folded phone: side panels slide over the chat, so they need a solid screen behind them. */
+@media (max-width: 820px), (pointer: coarse) and (max-width: 1150px) {
+  #left,
+  #right {
+    background: var(--bg);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.85);
+  }
+  #left {
+    border-right: 3px double var(--ph-dim);
+  }
+  #right {
+    border-left: 3px double var(--ph-dim);
+  }
+}
+
+#composer {
+  position: relative;
+  border-top-width: 1px;
+  background: rgb(var(--ph-rgb) / 0.03);
+}
+
+/* Prompt mark at the start of the message box. */
+#composer::before {
+  content: '>';
+  position: absolute;
+  left: calc(16px + 10px);
+  top: calc(8px + 1px + 9px);
+  color: var(--ph-bright);
+  pointer-events: none;
+  line-height: 1.2;
+}
+
+#input {
+  padding: 9px 10px 9px 26px;
+  line-height: 1.2;
+}
+
+#stop {
+  border-color: var(--ph-bright);
+  color: var(--ph-bright);
+}
+
+#stop::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 6px;
+  vertical-align: 0.05em;
+  background: currentColor;
+}
+
+/* Right panel switch: MISSION / FILES */
+.panel-switch {
+  border-bottom: 1px solid var(--ph-dim);
+}
+
+.panel-switch button {
+  border: 0;
+  border-right: 1px solid var(--line);
+  min-height: 38px;
+  letter-spacing: 2px;
+  background: transparent;
+  color: var(--ph-dim);
+}
+
+.panel-switch button:last-child {
+  border-right: 0;
+}
+
+.panel-switch button.on {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+/* ---------- Tabs ---------- */
+
+.tab {
+  border: 1px solid var(--line);
+  color: var(--ph);
+  background: rgb(var(--ph-rgb) / 0.03);
+}
+
+.tab-label,
+.tab-close,
+.tab-add {
+  border: 0;
+  background: transparent;
+  min-height: 34px;
+}
+
+#top .tab-label,
+#top .tab-close,
+#top .tab-add {
+  min-height: 34px;
+}
+
+.tab-label {
+  padding: 2px 4px 2px 10px;
+}
+
+.tab-close {
+  padding: 0 9px;
+  color: var(--ph-dim);
+}
+
+.tab-add {
+  border: 1px dashed var(--line);
+  min-width: 36px;
+  padding: 0 10px;
+}
+
+.tab.on {
+  border-color: var(--ph);
+  color: var(--ph-bright);
+  background: rgb(var(--ph-rgb) / 0.14);
+  box-shadow: inset 0 -3px 0 var(--ph);
+}
+
+.tab .tab-dot {
+  display: none;
+  flex: 0 0 auto;
+}
+
+/* Busy: blinking block cursor. */
+.tab.busy .tab-dot {
+  display: inline-block;
+  width: 0.45em;
+  height: 0.8em;
+  background: currentColor;
+  box-shadow: 0 0 6px rgb(var(--ph-rgb) / 0.6);
+  animation: blink 1.06s steps(1) infinite;
+}
+
+/* Attention: a permission or question is waiting. Flashes in inverse video. */
+.tab.attention {
+  border-color: var(--ph-bright);
+  animation: attn-flash 1s steps(1) infinite;
+}
+
+.tab.attention .tab-dot {
+  display: inline-block;
+  width: auto;
+  height: auto;
+  background: none;
+  box-shadow: none;
+  animation: none;
+}
+
+.tab.attention .tab-dot::before {
+  content: '!';
+  display: inline-block;
+  padding: 0 5px;
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+}
+
+/* Done: finished while you were in another tab; stays until you open it. */
+.tab.done {
+  border-color: var(--ph-bright);
+}
+
+.tab.done .tab-dot {
+  display: inline-block;
+}
+
+.tab.done .tab-dot::before {
+  content: '✓';
+  display: inline-block;
+  padding: 0 4px;
+  color: var(--bg);
+  background: var(--ph-bright);
+}
+
+/* ---------- History drawer ---------- */
+
+.drawer {
+  background: var(--bg);
+  color: var(--ph);
+  border: 0;
+  border-left: 3px double var(--ph);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.7);
+}
+
+.drawer-head {
+  border-bottom: 1px solid var(--ph-dim);
+  padding-bottom: 8px;
+}
+
+.drawer-head h2 {
+  color: var(--ph-bright);
+  text-shadow: var(--glow-strong);
+  letter-spacing: 3px;
+  margin: 0;
+}
+
+.drawer .search {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.history-row {
+  gap: 2px;
+  border: 0;
+  border-bottom: 1px dashed var(--line);
+  background: transparent;
+  padding: 8px 8px 8px 22px;
+  position: relative;
+  line-height: 1.15;
+}
+
+.history-row::before {
+  content: '>';
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  color: var(--ph-dim);
+}
+
+@media (hover: hover) {
+  .history-row:hover {
+    background: rgb(var(--ph-rgb) / 0.12);
+  }
+  .history-row:hover::before {
+    color: var(--ph-bright);
+  }
+}
+
+.h-title {
+  color: var(--ph-bright);
+}
+
+.h-meta {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.5px;
+}
+
+/* ---------- Dialog (new tab folder picker) ---------- */
+
+dialog {
+  background: var(--bg);
+  color: var(--ph);
+  border: 2px solid var(--ph);
+  padding: 0;
+  box-shadow:
+    0 0 0 4px var(--bg),
+    0 0 0 5px rgb(var(--ph-rgb) / 0.45),
+    0 0 40px rgb(var(--ph-rgb) / 0.2);
+  text-shadow: var(--glow);
+  font: var(--fs) / 1.2 var(--font);
+  overflow: hidden;
+}
+
+dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scanlines over the dialog too (it sits above the page overlay). */
+dialog::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, var(--scan)) calc(var(--scan-h) / 2), rgba(0, 0, 0, 0) var(--scan-h));
+}
+
+dialog h2 {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  margin: 0;
+  padding: 6px 14px 5px;
+  letter-spacing: 3px;
+}
+
+dialog .folder-list {
+  padding: 10px 14px;
+}
+
+dialog > .buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.folder {
+  border-color: var(--line);
+  padding: 6px 12px 6px 30px;
+  position: relative;
+  min-height: var(--tap);
+  line-height: 1.15;
+}
+
+.folder::before {
+  content: '>';
+  position: absolute;
+  left: 12px;
+  color: var(--ph-dim);
+}
+
+@media (hover: hover) {
+  .folder:hover::before {
+    color: var(--ph-bright);
+  }
+}
+
+/* ---------- Toasts, empty states, offline ---------- */
+
+.toast {
+  background: var(--bg);
+  border: 1px solid var(--ph);
+  padding: 6px 14px;
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 18px rgb(var(--ph-rgb) / 0.3);
+  color: var(--ph-bright);
+  max-width: calc(100vw - 32px);
+  animation: toast-in 0.24s steps(3, end);
+}
+
+.toast::before {
+  content: '>> ';
+  color: var(--ph-dim);
+}
+
+.empty {
+  color: var(--ph-dim);
+  padding: 10px 2px;
+  letter-spacing: 0.5px;
+}
+
+#log > .empty {
+  padding: 18px 4px;
+}
+
+#log > .empty::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.85em;
+  margin-left: 6px;
+  vertical-align: -0.05em;
+  background: var(--ph);
+  box-shadow: 0 0 6px rgb(var(--ph-rgb) / 0.6);
+  animation: blink 1.06s steps(1) infinite;
+}
+
+/* Offline: a blinking bar across the top of the chat; the chat dims until the link is back. */
+body.offline #center::before {
+  content: 'OFFLINE. RECONNECTING';
+  flex: 0 0 auto;
+  padding: 4px 12px 3px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+  letter-spacing: 3px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  animation: blink 1.6s steps(1) infinite;
+}
+
+body.offline #log,
+body.offline #composer {
+  opacity: 0.55;
+}
+
+/* ---------- CRT overlay ----------
+   html::before: scanlines + vignette + rounded screen corners (+ flicker on HIGH).
+   html::after:  a faint bright band rolling down the screen (HIGH only).
+   Both are static gradients on their own layer; animations touch only opacity/transform. */
+
+html::before,
+html::after {
+  content: '';
+  position: fixed;
+  pointer-events: none;
+  z-index: 9000;
+}
+
+html::before {
+  inset: 0;
+  background:
+    radial-gradient(ellipse 110% 100% at 50% 50%, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, var(--vignette)) 100%),
+    linear-gradient(168deg, rgb(255 255 255 / 0.025) 0%, rgb(255 255 255 / 0) 30%),
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, var(--scan)) calc(var(--scan-h) / 2), rgba(0, 0, 0, 0) var(--scan-h));
+  border-radius: var(--screen-r);
+  box-shadow:
+    0 0 0 60px #000,
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    inset 0 0 50px rgba(0, 0, 0, calc(var(--vignette) * 0.7));
+}
+
+html::after {
+  display: none;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 22vh;
+  background: linear-gradient(to bottom, rgb(var(--ph-rgb) / 0), rgb(var(--ph-rgb) / 0.03) 55%, rgb(var(--ph-rgb) / 0.045) 75%, rgb(var(--ph-rgb) / 0));
+  transform: translate3d(0, -25vh, 0);
+}
+
+/* PERF: these used to loop forever, which made the GPU redraw the whole screen every frame.
+   Now crt.ts adds .crt-flick / .crt-roll for one short run at random moments; the screen rests between. */
+html[data-crt='high'].crt-flick::before {
+  animation: crt-flick 0.24s steps(4) 1;
+}
+
+html[data-crt='high'].crt-roll::after {
+  display: block;
+  animation: crt-band 3.2s linear 1;
+}
+
+html[data-crt='off']::before {
+  display: none;
+}
+
+/* ---------- Boot hide (see boot.ts): nothing but the boot screen until it ends. ---------- */
+
+html.booting body > :not(#boot) {
+  visibility: hidden;
+}
+
+/* ---------- Motion ---------- */
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes attn-flash {
+  0% {
+    background: var(--ph-bright);
+    color: var(--bg);
+    text-shadow: none;
+    box-shadow: 0 0 14px rgb(var(--ph-rgb) / 0.7);
+  }
+  50% {
+    background: rgb(var(--ph-rgb) / 0.12);
+    color: var(--ph-bright);
+    box-shadow: 0 0 6px rgb(var(--ph-rgb) / 0.4);
+  }
+}
+
+@keyframes crt-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  31% {
+    opacity: 1;
+  }
+  32% {
+    opacity: 0.86;
+  }
+  33% {
+    opacity: 1;
+  }
+  64% {
+    opacity: 0.94;
+  }
+  66% {
+    opacity: 1;
+  }
+  89% {
+    opacity: 0.9;
+  }
+  90% {
+    opacity: 1;
+  }
+}
+
+@keyframes crt-flick {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.86;
+  }
+  50% {
+    opacity: 0.97;
+  }
+  75% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes crt-band {
+  from {
+    transform: translate3d(0, -25vh, 0);
+  }
+  to {
+    transform: translate3d(0, 110vh, 0);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  html::after {
+    display: none !important;
+  }
+  /* Still unmissable without motion. */
+  .tab.attention {
+    background: var(--ph-bright);
+    color: var(--bg);
+    text-shadow: none;
+    box-shadow: 0 0 12px rgb(var(--ph-rgb) / 0.6);
+  }
+}

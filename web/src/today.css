@@ -1,0 +1,190 @@
+/* TODAY section under CREW (today.ts). Theme tokens only (see theme.css); headings come from agents.css. */
+
+.today {
+  margin-top: 14px;
+}
+
+.today[hidden],
+.today [hidden] {
+  display: none;
+}
+
+/* Many events scroll inside the section; the column itself scrolls when the crew list is long, so crew keeps priority. */
+.today-body {
+  max-height: min(16em, 45vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.today-list,
+.today-rem-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.today-ev,
+.today-rem {
+  display: grid;
+  grid-template-columns: 9ch minmax(0, 1fr);
+  gap: 0 1ch;
+  padding: 3px 6px;
+  border: 1px solid var(--line, var(--ph-dim));
+  background: var(--bg-raise);
+}
+
+.today-ev {
+  cursor: pointer;
+}
+
+.today-ev:focus-visible {
+  outline: 1px solid var(--ph-bright);
+}
+
+.today-time {
+  color: var(--ph-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.today-title {
+  color: var(--ph);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.today-ev.open .today-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.today-ev.allday .today-time {
+  color: var(--ph-bright);
+}
+
+/* Running right now */
+.today-ev.now {
+  border-color: var(--ph-dim);
+}
+
+.today-ev.now .today-time,
+.today-ev.now .today-title {
+  color: var(--ph-bright);
+}
+
+.today-detail {
+  display: none;
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid var(--line, var(--ph-dim));
+  color: var(--ph-dim);
+  overflow-wrap: anywhere;
+}
+
+.today-ev.open .today-detail {
+  display: block;
+}
+
+.today-range {
+  color: var(--ph);
+}
+
+.today-place::before {
+  content: '@ ';
+  color: var(--ph-bright);
+}
+
+.today-note {
+  margin-top: 3px;
+  white-space: pre-wrap;
+  max-height: 10em;
+  overflow-y: auto;
+}
+
+.today-empty,
+.today-note-line {
+  color: var(--ph-dim);
+}
+
+.today-note-line {
+  margin-top: 6px;
+  font-size: var(--fs-sm, 0.88em);
+}
+
+.today-next {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.today-next-h,
+.today-sub {
+  color: var(--ph-bright);
+  letter-spacing: 1px;
+  font-size: var(--fs-sm, 0.88em);
+}
+
+.today-sub {
+  margin: 8px 0 3px;
+}
+
+.today-rem {
+  border-style: dashed;
+}
+
+/* Links into Google Calendar (calfmt.ts extLink): EDIT in an event, + NEW in the heading. */
+.ext-link {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid rgb(var(--ph-rgb) / 0.55);
+  color: var(--ph-bright);
+  text-decoration: none;
+  letter-spacing: 1px;
+  font-size: var(--fs-sm, 0.88em);
+  line-height: 1.5;
+}
+
+@media (hover: hover) {
+  .ext-link:hover {
+    background: rgb(var(--ph-rgb) / 0.15);
+    border-color: var(--ph);
+  }
+}
+
+.ext-link:focus-visible {
+  outline: 1px solid var(--ph-bright);
+}
+
+.ext-link[hidden] {
+  display: none;
+}
+
+.today-edit {
+  margin-top: 4px;
+}
+
+.crew-h .today-new {
+  order: 3;
+  margin-left: 0.5ch;
+  align-self: center;
+}
+
+/* The heading is narrow: the date gives way (ellipsis) before + NEW is cut. */
+.crew-h-link::after {
+  min-width: 0;
+}
+
+.crew-h-link .crew-h-extra {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crew-h .today-new {
+  flex: none;
+}

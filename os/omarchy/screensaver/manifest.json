@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "phosphor-os.screensaver",
+  "name": "Phosphor-OS screensaver",
+  "version": "2.0.0",
+  "author": "Phosphor-OS",
+  "description": "The computer's screensaver: the Phosphor-OS flight scene full screen on every monitor after 5 minutes idle, in the theme's colors.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" data-phosphor="amber" data-crt="high" data-size="m">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0700" />
+    <title>Phosphor-OS: Login</title>
+    <script>
+      // Saved display settings before first paint. Same key and values as src/settings.ts.
+      (function () {
+        var d = document.documentElement, s = {};
+        // Renamed from Retro Claude (2026-10-12): copy its retro.* settings to phosphor.* once; the old keys stay.
+        try {
+          if (!localStorage.getItem('phosphor.copied')) {
+            var old = Object.keys(localStorage).filter(function (k) { return k.indexOf('retro.') === 0; });
+            old.forEach(function (k) {
+              if (localStorage.getItem('phosphor.' + k.slice(6)) === null) localStorage.setItem('phosphor.' + k.slice(6), localStorage.getItem(k));
+            });
+            localStorage.setItem('phosphor.copied', '1');
+          }
+        } catch (e) {}
+        try { s = JSON.parse(localStorage.getItem('phosphor.settings') || '{}') || {}; } catch (e) {}
+        // Theme id (src/themes.ts); saved as 'phosphor' (amber | green) before there were other themes.
+        var t = s.theme || s.phosphor;
+        t = typeof t === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(t) ? t : 'amber';
+        d.dataset.theme = t;
+        if (t !== 'amber' && t !== 'green') delete d.dataset.phosphor;
+        if (t === 'green') {
+          d.dataset.phosphor = 'green';
+          document.querySelector('meta[name="theme-color"]').content = '#010a03';
+        }
+        if (s.crt === 'off' || s.crt === 'low') d.dataset.crt = s.crt;
+        if (s.size === 's' || s.size === 'l') d.dataset.size = s.size;
+        if (s.accent === 'pink' || s.accent === 'off') d.dataset.accent = s.accent;
+      })();
+    </script>
+    <link rel="stylesheet" href="./src/login-entry.css" />
+  </head>
+  <body class="login">
+    <main class="login-box">
+      <div class="login-head"><span>PHOSPHOR-OS</span><span class="login-tag">SECURE</span></div>
+      <form method="post" action="/login">
+        <p class="login-sys">CLAUDE 6000 SHIP INTERFACE<br />RESTRICTED TERMINAL. IDENTIFY YOURSELF.</p>
+        <label>PASSWORD <input type="password" name="password" autocomplete="current-password" autofocus required /></label>
+        <button type="submit" class="primary">LOG IN</button>
+        <p class="wrong" hidden>WRONG PASSWORD. ACCESS DENIED.</p>
+      </form>
+      <button id="fp" type="button" class="primary login-fp" hidden>LOG IN WITH FINGERPRINT</button>
+      <p id="fp-msg" class="wrong" hidden></p>
+    </main>
+    <script type="module" src="./src/login.ts"></script>
+  </body>
+</html>

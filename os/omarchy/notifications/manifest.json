@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "phosphor-os.notifications",
+  "name": "Phosphor-OS notifications",
+  "version": "1.0.0",
+  "author": "Phosphor-OS",
+  "description": "Omarchy's notification daemon (copied from Omarchy 4.0.4, MIT) with a waiting counter in the bar: pop-ups slide away but wait there until dismissed",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Notifications",
+    "description": "How many notifications wait; click to show them, right click to dismiss all",
+    "category": "System",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.notifications"
+  }
+}

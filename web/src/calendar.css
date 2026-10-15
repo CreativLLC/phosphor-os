@@ -1,0 +1,325 @@
+/* Month view (calendar.ts): a <dialog> over the app. Theme tokens only (see theme.css); theme.css gives the dialog its
+   frame, scanlines and title bar. Narrow screens (the phone) stack the grid over the day's agenda and show markers and
+   a count in each cell instead of event lines. */
+
+dialog.cal-box {
+  width: min(1100px, calc(100vw - 16px));
+  height: min(780px, calc(100dvh - 16px));
+  max-width: none;
+  max-height: none;
+}
+
+.cal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+}
+
+.cal-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  color: var(--ph-bright);
+  font-size: var(--fs-lg, 1.2em);
+  letter-spacing: 3px;
+  white-space: nowrap;
+}
+
+.cal-nav {
+  min-width: var(--tap);
+}
+
+.cal-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  padding: 0 14px 12px;
+}
+
+.cal-left {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.cal-dow,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.cal-dow {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm, 0.88em);
+  letter-spacing: 1px;
+  text-align: center;
+  padding-bottom: 3px;
+}
+
+.cal-grid {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: repeat(var(--rows, 6), minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.cal-day {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 2px 4px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-size: var(--fs-sm, 0.88em);
+  line-height: 1.15;
+}
+
+.cal-day.other {
+  opacity: 0.5;
+}
+
+/* Beyond the synced range: hatched, no data there. */
+.cal-day.out {
+  opacity: 0.35;
+  background: repeating-linear-gradient(135deg, rgb(var(--ph-rgb) / 0.08) 0 2px, transparent 2px 7px);
+}
+
+.cal-day.sel {
+  outline: 2px solid var(--ph-bright);
+  outline-offset: -2px;
+  background: rgb(var(--ph-rgb) / 0.1);
+}
+
+@media (hover: hover) {
+  .cal-day:hover {
+    background: rgb(var(--ph-rgb) / 0.12);
+  }
+}
+
+.cal-num {
+  display: inline-block;
+  min-width: 2ch;
+  padding: 0 3px;
+  text-align: center;
+  color: var(--ph);
+}
+
+.cal-day.now .cal-num {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.cal-ev,
+.cal-more {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--ph);
+}
+
+.cal-ev-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-ev.allday .cal-ev-t {
+  color: var(--ph-bright);
+}
+
+.cal-more {
+  color: var(--ph-dim);
+}
+
+/* Calendar marker: its number on a colour, like the clock popup. */
+.cal-mark {
+  flex: none;
+  display: inline-block;
+  min-width: 1.2em;
+  padding: 0 2px;
+  text-align: center;
+  line-height: 1.2;
+  font-size: 0.8em;
+  background: var(--cal-c, var(--ph));
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.cal-count {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  color: var(--ph-bright);
+}
+
+/* ---------- the day's agenda ---------- */
+
+.cal-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  background: var(--bg-raise);
+}
+
+.cal-pane-h {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cal-pane-day {
+  color: var(--ph-bright);
+  letter-spacing: 2px;
+}
+
+.cal-pane-date {
+  color: var(--ph-dim);
+}
+
+.cal-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cal-empty {
+  color: var(--ph-dim);
+}
+
+.cal-card {
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--line);
+  overflow-wrap: anywhere;
+}
+
+.cal-card:last-child {
+  border-bottom: 0;
+}
+
+.cal-card-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cal-card-title {
+  color: var(--ph-bright);
+}
+
+.cal-card-time {
+  color: var(--ph);
+}
+
+.cal-card-place {
+  color: var(--ph-dim);
+}
+
+.cal-card-place::before {
+  content: '@ ';
+  color: var(--ph-bright);
+}
+
+.cal-card-note {
+  margin-top: 4px;
+  color: var(--ph-dim);
+  white-space: pre-wrap;
+}
+
+.cal-foot {
+  padding: 0 14px 10px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm, 0.88em);
+}
+
+.cal-foot[hidden] {
+  display: none;
+}
+
+/* ---------- phone ---------- */
+
+@media (max-width: 720px) {
+  dialog.cal-box {
+    width: 100vw;
+    height: 100dvh;
+    border-width: 0;
+  }
+
+  .cal-bar {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .cal-title {
+    letter-spacing: 1px;
+    font-size: var(--fs);
+  }
+
+  .cal-bar button {
+    padding: 4px 8px;
+  }
+
+  .cal-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 0 8px 8px;
+  }
+
+  .cal-grid {
+    flex: none;
+    grid-template-rows: none;
+    grid-auto-rows: 60px;
+  }
+
+  .cal-ev,
+  .cal-more {
+    display: none;
+  }
+
+  .cal-count {
+    display: flex;
+    position: absolute;
+    left: 3px;
+    right: 3px;
+    bottom: 2px;
+  }
+
+  .cal-day {
+    padding: 1px 2px;
+  }
+
+  .cal-num {
+    line-height: 1;
+  }
+}
+
+/* EDIT in a day's event, + NEW in the toolbar (same links as the TODAY panel; today.css has the base look). */
+.cal-edit {
+  margin-top: 6px;
+}
+
+.cal-new {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  min-height: var(--tap);
+  font-size: inherit;
+  white-space: nowrap;
+}

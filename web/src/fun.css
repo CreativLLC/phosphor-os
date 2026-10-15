@@ -1,0 +1,89 @@
+/* Fun pack: SETTINGS rows (funsection.ts), the STOP VOICE chip (shipvoice.ts), GAME MODE (gamemode.ts). */
+
+.set-fun {
+  margin-top: 8px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--line, var(--ph-dim));
+}
+
+.fun-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fun-mini {
+  min-height: 0;
+  padding: 1px 8px 0;
+  font-size: var(--fs-sm);
+  letter-spacing: 2px;
+}
+
+@media (pointer: coarse) {
+  .fun-mini {
+    min-height: 34px;
+  }
+}
+
+.fun-select {
+  width: 100%;
+}
+
+.fun-note {
+  padding: 0;
+}
+
+/* Long settings lists stay reachable on short screens. */
+.settings-pop {
+  max-height: calc(100dvh - 70px);
+  overflow-y: auto;
+}
+
+/* STOP VOICE: top middle while the ship voice talks; over SETTINGS too (its TEST button starts the voice). */
+.voice-chip {
+  position: fixed;
+  left: 50%;
+  top: 60px;
+  transform: translateX(-50%);
+  z-index: 75;
+  padding: 4px 12px;
+  background: var(--bg);
+  border-color: var(--ph-bright);
+  color: var(--ph-bright);
+  letter-spacing: 2px;
+  box-shadow: 0 0 12px rgb(var(--ph-rgb) / 0.3);
+}
+
+.voice-chip::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 8px;
+  vertical-align: 0.05em;
+  background: currentColor;
+  animation: blink 1s steps(1) infinite;
+}
+
+/* GAME MODE: nothing moves, nothing glows; the screen still shows what needs you. */
+html[data-game='on'] *,
+html[data-game='on'] *::before,
+html[data-game='on'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+html[data-game='on']::after {
+  display: none !important;
+}
+
+html[data-game='on'] .tab.attention {
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+html[data-game='on'] .brand::after {
+  content: ' / GAME';
+}

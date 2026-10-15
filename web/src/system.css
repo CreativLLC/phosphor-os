@@ -1,0 +1,248 @@
+/* SYS panel (system.ts): clock, gauges with sparklines, network, drives, volume. Right column, next to
+   MISSION and FILES. Theme tokens only; canvases take their color from CSS `color`. */
+
+#system {
+  padding: 10px 14px 18px;
+}
+
+@media (max-width: 1150px) {
+  #system {
+    padding: 8px 10px 16px;
+  }
+}
+
+/* Three views share the switch: tighter buttons so MISSION still fits on a foldable's sidebar. */
+.panel-switch button {
+  min-width: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.sys-sec {
+  margin-bottom: 12px;
+}
+
+/* ---------- Clock ---------- */
+
+.sys-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5ch;
+  margin: 2px 0 0;
+  color: var(--ph-bright);
+  text-shadow: var(--glow-strong);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sys-time {
+  font-size: calc(var(--fs) * 2.6);
+  letter-spacing: 2px;
+}
+
+.sys-ampm {
+  font-size: var(--fs-lg);
+  letter-spacing: 1px;
+}
+
+.sys-daterow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: 1ch;
+  letter-spacing: 1px;
+}
+
+.sys-up {
+  color: var(--ph-dim);
+}
+
+.sys-error,
+.sys-note {
+  margin: 0 0 12px;
+  padding: 2px 6px;
+  border-left: 3px solid var(--ph-bright);
+  color: var(--ph-bright);
+  font-size: var(--fs-sm);
+}
+
+.sys-note {
+  border-left-color: var(--ph-dim);
+  color: var(--ph-dim);
+}
+
+/* ---------- Gauges: "CPU [bar] 26%", sparkline + side value, detail line ---------- */
+
+.sys-g {
+  display: grid;
+  grid-template-columns: 4.5ch minmax(0, 1fr) 5ch;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  margin-bottom: 6px;
+}
+
+.sys-g .use-bar,
+.sys-disk .use-bar {
+  margin: 0;
+}
+
+.sys-k {
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.sys-v {
+  text-align: right;
+  color: var(--ph-bright);
+  white-space: nowrap;
+}
+
+.sys-side {
+  text-align: right;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.sys-d {
+  grid-column: 2 / 4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.sys-spark,
+.sys-cores {
+  display: block;
+  width: 100%;
+  height: 18px;
+  color: var(--ph);
+  background: rgb(var(--ph-rgb) / 0.05);
+  border-bottom: 1px solid var(--line);
+}
+
+.sys-cores {
+  height: 14px;
+}
+
+.sys-cores-row {
+  margin-top: -4px;
+}
+
+.sys-g.hot .sys-k,
+.sys-g.hot .sys-v,
+.sys-disk.hot .sys-v {
+  color: var(--ph-bright);
+}
+
+.sys-g.hot .seg.on,
+.sys-disk.hot .seg.on {
+  background: var(--ph-bright);
+}
+
+.sys-g.hot .sys-k {
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+/* Network: no bar, the sparkline sits in the bar's place; wider value column for "1.2 MB/s". */
+.sys-net {
+  grid-template-columns: 4.5ch minmax(0, 1fr) 9ch;
+  margin-bottom: 4px;
+}
+
+/* ---------- Drives: name and size on top, bar and % under ---------- */
+
+.sys-disk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5ch;
+  align-items: center;
+  column-gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sys-disk-top {
+  grid-column: 1 / 3;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1ch;
+  min-width: 0;
+}
+
+.sys-disk-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 1px;
+}
+
+.sys-disk-label {
+  color: var(--ph-dim);
+}
+
+.sys-disk-size {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- Volume: segmented slider + MUTE ---------- */
+
+.sys-vol {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.sys-vol-bar {
+  flex: 1;
+  min-height: var(--tap);
+  cursor: pointer;
+  touch-action: pan-y; /* sideways drags change the volume; up and down still scroll the panel */
+}
+
+/* Instant while dragging (the shared bar ripples its segments in). */
+.sys-vol-bar .seg {
+  transition: none;
+}
+
+.sys-vol-bar.muted .seg.on {
+  background: var(--ph-dim);
+  box-shadow: none;
+}
+
+.sys-mute {
+  flex: 0 0 auto;
+  min-width: 9ch;
+}
+
+.sys-mute.on {
+  background: var(--ph);
+  border-color: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.sys-vol-msg {
+  margin-top: 4px;
+}
+
+/* ---------- Summary line (sysSummary) ---------- */
+
+.sys-sum {
+  white-space: nowrap;
+  letter-spacing: 1px;
+  color: var(--ph-dim);
+}
+
+/* The local AI model in video memory, lined up under the VRAM gauge's text. */
+.sys-gpu-model {
+  margin: -2px 0 6px calc(4.5ch + 8px);
+}

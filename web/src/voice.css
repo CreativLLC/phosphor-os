@@ -1,0 +1,142 @@
+/* DICTATE button in the message box (voice.ts). States: data-state = idle | starting | rec | busy.
+   The REC dot uses the accent color (a fourth small splash, only while recording); the level bar is
+   phosphor. PERF: the bar moves by transform only; the dot blinks with steps(). */
+
+#dictate {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+#dictate .dict-dot {
+  display: none;
+  color: var(--accent);
+  text-shadow: 0 0 6px rgb(var(--accent-rgb) / 0.8);
+}
+
+#dictate[data-state='rec'] .dict-dot {
+  display: inline;
+  animation: dict-blink 1.2s steps(1, end) infinite;
+}
+
+@keyframes dict-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+#dictate .dict-short {
+  display: none;
+}
+
+#dictate .dict-meter {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 3px;
+  height: 2px;
+  background: var(--ph-bright);
+  box-shadow: 0 0 4px rgb(var(--ph-rgb) / 0.6);
+  transform: scaleX(0);
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+#dictate[data-state='rec'] .dict-meter {
+  transition: transform 0.08s linear;
+}
+
+#dictate[data-state='busy'],
+#dictate[data-state='starting'] {
+  cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #dictate[data-state='rec'] .dict-dot {
+    animation: none;
+  }
+}
+
+/* ---------- Narrow message box (phone): see the 12-column grid at the end of layout.css ---------- */
+
+@container (max-width: 560px) {
+  #dictate {
+    grid-area: auto;
+    grid-row: 1;
+    grid-column: span 3;
+    padding-inline: 4px;
+  }
+
+  #composer.opts-open #dictate {
+    grid-row: 2;
+  }
+
+  #dictate .dict-long {
+    display: none;
+  }
+
+  #dictate .dict-short {
+    display: inline;
+  }
+
+  /* Claude idle: ATTACH OPTIONS DICTATE SEND, a quarter each (SEND took half before DICTATE). */
+  #stop[hidden] + #send {
+    grid-column: span 3;
+  }
+
+  /* Claude working (STOP shows): five buttons, so 15 columns with 3 each. The pickers row keeps thirds. */
+  #composer.busy .composer-tools {
+    grid-template-columns: repeat(15, minmax(0, 1fr));
+  }
+
+  #composer.busy.opts-open #model,
+  #composer.busy.opts-open #effort,
+  #composer.busy.opts-open .composer-tools #mode {
+    grid-column: span 5;
+  }
+
+  #composer.busy .composer-tools > button {
+    padding-inline: 2px;
+    letter-spacing: 0;
+    font-size: calc(var(--fs) * 0.9);
+  }
+}
+
+/* Live preview line above the message box (voice.ts): the phrase being spoken, dim, one line.
+   When it does not fit, the start is cut off so the newest words stay in view. */
+#voice-live {
+  flex-basis: 100%;
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+  padding: 0 2px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  height: calc(var(--fs-sm) * 1.35);
+  line-height: calc(var(--fs-sm) * 1.35);
+}
+
+/* The '>' prompt mark (theme.css) sits at the top of the message box; move it down past the live line. */
+#composer.dictating::before {
+  transform: translateY(calc(var(--fs-sm) * 1.35 + 8px));
+}
+
+#voice-live[hidden] {
+  display: none;
+}
+
+#voice-live.overflow {
+  justify-content: flex-end;
+}
+
+#voice-live > span {
+  flex: none;
+}
+
+#voice-live.empty {
+  opacity: 0.7;
+}

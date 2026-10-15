@@ -1,0 +1,390 @@
+#!/usr/bin/env bash
+# Tests for the add-on pack (os/omarchy/desktop.sh), setup-linux.sh --undo and the migration from Retro Claude.
+# Everything runs in fake home folders under a temp folder, with stand-in commands first on PATH (omarchy,
+# hyprctl, systemctl, tailscale, curl, mise, sudo, ...). Nothing touches your real desktop, services or files.
+#
+# Run:  bash tests/pack.sh          (needs jq, script, unshare, rsync, curl; Node 24 on PATH; npm ci and
+#                                     npm run build done in the project, for the migration case)
+# Without Omarchy (CI), its default shell.json comes from tests/fixtures/omarchy-shell.json.
+# Keep the temp folder for a look afterwards: PACKTEST_KEEP=1 bash tests/pack.sh
+set -uo pipefail
+
+R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# A missing tool skips the test here, but fails it in CI (where the workflow installs them all).
+missing() { echo "SKIP: needs $*"; [[ -z ${CI:-} ]] || exit 1; exit 0; }
+for t in jq script unshare rsync curl sha256sum timeout node; do command -v "$t" >/dev/null || missing "$t"; done
+[[ -d $R/node_modules && -f $R/web/dist/index.html && -f $R/web/dist/saver/saver.html ]] || missing "npm ci and npm run build in $R"
+[[ $(node -v) == v24.* ]] || { echo "Needs Node 24 first on PATH"; exit 1; }
+NODE_BIN="$(dirname "$(command -v node)")"
+
+T="$(mktemp -d "${TMPDIR:-/tmp}/packtest.XXXXXX")"
+[[ ${PACKTEST_KEEP:-} == 1 ]] && echo "Test folder: $T" || trap 'rm -rf "$T"' EXIT
+D=$R/os/omarchy/desktop.sh
+SV=$R/os/omarchy/screensaver
+PAGE=$R/web/dist/saver # the built screensaver page, which desktop.sh puts into the plugin as page/
+# svsame DIR: the installed screensaver plugin is the pack's folder plus the built page
+svsame() { diff -r -x page "$SV" "$1" && diff -r "$PAGE" "$1/page"; }
+NF=$R/os/omarchy/notifications
+CK=$R/os/omarchy/clock
+OLD=$R/tests/fixtures/retro-claude-pack # desktop.sh and install-fonts.sh as they were before the rename
+OMARCHY_JSON=${OMARCHY_PATH:-/usr/share/omarchy}/config/omarchy/shell.json # where desktop.sh reads it
+if [[ ! -f $OMARCHY_JSON ]]; then # a stand-in Omarchy folder with its default shell.json (Omarchy 4.0.4, MIT)
+  export OMARCHY_PATH=$T/omarchy
+  OMARCHY_JSON=$OMARCHY_PATH/config/omarchy/shell.json
+  mkdir -p "${OMARCHY_JSON%/*}" && cp "$R/tests/fixtures/omarchy-shell.json" "$OMARCHY_JSON"
+  echo "No Omarchy here: using tests/fixtures/omarchy-shell.json"
+elif ! cmp -s "$OMARCHY_JSON" "$R/tests/fixtures/omarchy-shell.json"; then
+  echo "NOTE: Omarchy's shell.json differs from tests/fixtures/omarchy-shell.json; copy it over so CI tests the same."
+fi
+
+PASS=0 FAIL=0
+ok() { echo "PASS: $*"; PASS=$((PASS + 1)); }
+bad() { echo "FAIL: $*"; FAIL=$((FAIL + 1)); }
+check() { local what=$1; shift; if "$@" >/dev/null; then ok "$what"; else bad "$what"; fi; }
+
+# ------------------------------------------------------------------ stand-ins and fonts
+
+mkdir -p "$T/stubs" "$T/fonts"
+stub() { printf '#!/bin/bash\necho "%s $*" >>"$STUBLOG"\n%s\n' "$1" "${2:-}" >"$T/stubs/$1"; chmod +x "$T/stubs/$1"; }
+stub omarchy 'st="$HOME/.local/state/omarchy/current"
+case "$1 $2" in
+  "theme set") mkdir -p "$st"; echo "$3" >"$st/theme.name" ;;
+  "font current") cat "$HOME/.fakefont" 2>/dev/null ;;
+  "font set") echo "$3" >"$HOME/.fakefont" ;;
+esac'
+stub omarchy-shell
+stub omarchy-toggle-bar '[[ $1 == off ]] && rm -f "$HOME/.local/state/omarchy/toggles/bar-off"; exit 0'
+# hyprsunset as a file: its temperature in ~/sunset-temp, "running" while ~/sunset-running exists.
+stub hyprctl '[[ $1 == hyprsunset && $2 == temperature ]] || exit 0
+if [[ -n ${3:-} ]]; then echo "$3" >"$HOME/sunset-temp"; echo ok; else cat "$HOME/sunset-temp" 2>/dev/null || echo 6500; fi'
+stub pgrep '[[ $* == "-x hyprsunset" && -f $HOME/sunset-running ]]'
+stub uwsm-app 'touch "$HOME/sunset-running"'
+stub fc-cache
+stub notify-send
+stub tailscale 'exit 1'
+stub sudo 'exit 1'
+stub pacman 'exit 1'
+stub mise "[[ \$1 == where ]] && echo $(printf '%q' "$(dirname "$NODE_BIN")")"
+stub systemctl '[[ $* == *is-active* ]] && exit 1; exit 0'
+# Fonts: a copy of the pinned files (install-fonts.sh checks their SHA-256), never a download in the test.
+stub curl "out=''; url=''
+while ((\$#)); do case \$1 in -o) out=\$2; shift ;; http*) url=\$1 ;; esac; shift; done
+case \$url in *VT323*) cp $T/fonts/VT323-Regular.ttf \"\$out\" ;; *Antonio*) cp $T/fonts/Antonio-Variable.ttf \"\$out\" ;; *) exit 22 ;; esac"
+for d in "$HOME/.local/share/fonts/phosphor-os" "$HOME/.local/share/fonts/retro-claude"; do
+  [[ -f $d/VT323-Regular.ttf ]] && cp "$d"/*.ttf "$T/fonts/" && break
+done
+if [[ ! -f $T/fonts/VT323-Regular.ttf ]]; then # not installed here: get them once (install-fonts.sh checks them)
+  urls=$(sed -n 's/^  "\([^|]*\)|\([^|]*\)|.*/\1 \2/p' "$R/os/omarchy/install-fonts.sh")
+  while read -r name url; do command curl -fsSL -o "$T/fonts/$name" "$url"; done <<<"$urls"
+fi
+
+# tenv NAME cmd...: run cmd with the fake home $T/NAME and the stand-ins first on PATH
+tenv() {
+  local h=$T/$1; shift
+  env -u HYPRLAND_INSTANCE_SIGNATURE -u WAYLAND_DISPLAY -u XDG_CONFIG_HOME -u PHOSPHOR_NODE -u RETRO_NODE \
+    -u PHOSPHOR_SHELL_DATA -u RETRO_SHELL_DATA -u PHOSPHOR_VOICE_DIR -u RETRO_VOICE_DIR \
+    HOME="$h" XDG_DATA_HOME="$h/.local/share" XDG_STATE_HOME="$h/.local/state" XDG_CACHE_HOME="$h/.cache" \
+    XDG_RUNTIME_DIR="$h/run" STUBLOG="$h/stub.log" PATH="$T/stubs:$PATH" "$@"
+}
+q() { tenv "$@" >/dev/null 2>&1; }
+# Answers every question with y (setup-linux.sh asks on the terminal, so give it one).
+# A fixed number of answers: an endless `yes` would pile up in script's buffer.
+yes_tty() { local name=$1; shift; printf 'y\n%.0s' {1..20} | tenv "$name" timeout 300 script -qec "$(printf '%q ' "$@")" /dev/null >/dev/null 2>&1; }
+# snap NAME [prune...]: every path, link and file hash in the fake home, to compare before and after
+snap() {
+  local h=$T/$1; shift
+  local prune=(-path ./stub.log -o -path ./.cache)
+  for p in "$@"; do prune+=(-o -path "./$p"); done
+  (cd "$h" && find . \( "${prune[@]}" \) -prune -o -printf '%y %p %l\n' | sort &&
+    find . \( "${prune[@]}" \) -prune -o -type f -exec sha256sum {} + | sort -k2)
+}
+mkhome() { # NAME: an Omarchy user before the pack
+  local h=$T/$1
+  rm -rf "$h"
+  mkdir -p "$h/.config/omarchy/bar/modules" "$h/.config/omarchy/themes" "$h/.local/share" "$h/.local/state/omarchy/current" "$h/run"
+  cp "$OMARCHY_JSON" "$h/.config/omarchy/shell.json"
+  chmod 600 "$h/.config/omarchy/shell.json"
+  printf '[font]\nbase-size = 12\n' >"$h/.config/omarchy/shell.toml"
+  cp "$R/os/omarchy/bar/taskbar.qml" "$h/.config/omarchy/bar/modules/taskbar.qml"
+  mkdir -p "$h/.config/omarchy/extensions" # Omarchy's menu file: comments and an empty object
+  printf '{\n  // Extend the menu with JSONC.\n  // "personal.notes": {"icon":"","label":"Notes"},\n}\n' >"$h/.config/omarchy/extensions/omarchy-menu.jsonc"
+  echo tokyo-night >"$h/.local/state/omarchy/current/theme.name"
+  echo "JetBrainsMono Nerd Font" >"$h/.fakefont"
+}
+# The pack as it was before the rename: the fixture scripts, with today's themes and bar.
+OLDPACK=$T/oldpack
+mkdir -p "$OLDPACK"
+cp "$OLD/desktop.sh" "$OLD/install-fonts.sh" "$OLDPACK/"
+cp -r "$OLD/screensaver" "$OLDPACK/screensaver"
+ln -s "$R/os/omarchy/themes" "$OLDPACK/themes"
+ln -s "$R/os/omarchy/bar" "$OLDPACK/bar"
+
+echo "== A: user files exist, full cycle"
+mkhome A; snap A >"$T/A.before"
+tenv A bash "$D" --dry-run >/dev/null; snap A >"$T/A.x"; check "dry-run changes nothing" cmp -s "$T/A.before" "$T/A.x"
+q A bash "$D"; snap A >"$T/A.r1"
+h=$T/A/.config/omarchy
+check "json keys set" grep -q '"position": "bottom"' "$h/shell.json"
+check "idle lock set" grep -q '"lock": 2000000' "$h/shell.json"
+check "taskbar symlink" test "$(readlink "$h/bar/modules/taskbar.qml")" == "$R/os/omarchy/bar/taskbar.qml"
+check "screensaver plugin copied, with the built page" svsame "$h/plugins/phosphor-os.screensaver"
+check "Omarchy's own screensaver never starts (idle.screensaver like idle.lock)" jq -e '.idle.screensaver==2000000' "$h/shell.json"
+check "menu: Screensaver starts ours, file still has its comments" bash -c "grep -q 'omarchy-shell phosphor-os.screensaver show\"}.*phosphor-os:menu' '$h/extensions/omarchy-menu.jsonc' && grep -q 'Extend the menu' '$h/extensions/omarchy-menu.jsonc'"
+check "launcher: syntax, and it waits for the page folder" bash -c "bash -n '$SV/launch.sh' && grep -q 'page/saver.html' '$SV/launch.sh'"
+check "screensaver in plugins[]" jq -e '[.plugins[]|select(.id=="phosphor-os.screensaver")]|length==1' "$h/shell.json"
+check "notifications plugin copied" diff -r "$NF" "$h/plugins/phosphor-os.notifications"
+check "notifications replace the built-in, counter last in the bar" jq -e '([.plugins[]|select(.id=="phosphor-os.notifications")]|length==1) and .disabledPlugins==["omarchy.notifications"] and .cloneSourceRestores==["phosphor-os.notifications"] and .bar.layout.right[-1].id=="phosphor-os.notifications"' "$h/shell.json"
+check "clock plugin copied" diff -r "$CK" "$h/plugins/phosphor-os.clock"
+check "clock and indicators are one widget in the clock's place" jq -e '[.bar.layout[][]|.id]|(index("phosphor-os.clock")!=null) and (index("omarchy.clock")==null) and (index("omarchy.indicators")==null)' "$h/shell.json"
+check "clock clone gets the indicator services; inactive ones never pop out in the row" bash -c "jq -e '.omarchy.clonedFrom==\"omarchy.indicators\"' '$CK/manifest.json' >/dev/null && grep -q 'revealInactiveIndicators: alwaysShowIndicators\$' '$CK/Indicators.qml'"
+check "clock popup: our copy of the calendar, marked; the widget opens it, the IPC target stays" bash -c "test -f '$CK/Panel.qml' && test -f '$CK/Model.js' && test -f '$CK/Agenda.js' && (( \$(grep -c 'Phosphor-OS' '$CK/Panel.qml') >= 8 )) && grep -q 'Qt.resolvedUrl(\"Clock.qml\")' '$CK/BarWidget.qml' && grep -q 'target: \"omarchy.clock\"' '$CK/Clock.qml' && grep -q 'Qt.resolvedUrl(\"Panel.qml\")' '$CK/Clock.qml'"
+check "clock popup: event list logic (node)" node "$R/tests/clock-agenda.mjs"
+check "clone routes the built-in id" jq -e '.omarchy.clonedFrom=="omarchy.notifications" and (.kinds|index("service")) and (.kinds|index("bar-widget"))' "$NF/manifest.json"
+check "every change to Omarchy's copy is marked" bash -c "(( \$(grep -c Phosphor-OS '$NF/Service.qml') >= 10 )) && ! grep -q 'Liberation Sans' '$NF/components/NotificationCard.qml'"
+check "a sender closing a notification takes its waiting row out" bash -c "grep -q 'service.senderClosed(' '$NF/Service.qml' && grep -q 'function senderClosed' '$NF/Service.qml'"
+check "an updated waiting notification pops up again" grep -q 'onTuckedChanged' "$NF/Service.qml"
+if command -v omarchy-plugin-validate >/dev/null; then
+  check "omarchy plugin validate" omarchy-plugin-validate "$h/plugins/phosphor-os.screensaver"
+  check "omarchy plugin validate (notifications)" omarchy-plugin-validate "$h/plugins/phosphor-os.notifications"
+  check "omarchy plugin validate (clock)" omarchy-plugin-validate "$h/plugins/phosphor-os.clock"
+fi
+check "notes under the new name" test -f "$T/A/.local/state/PhosphorOS/desktop.state"
+check "night light timer installed and started" bash -c "diff -q '$R/os/omarchy/nightlight/phosphor-os-nightlight.timer' '$T/A/.config/systemd/user/phosphor-os-nightlight.timer' && diff -q '$R/os/omarchy/nightlight/phosphor-os-nightlight.service' '$T/A/.config/systemd/user/phosphor-os-nightlight.service' && grep -q 'systemctl --user enable --now phosphor-os-nightlight.timer' '$T/A/stub.log'"
+check "the timer runs the script in the clock plugin" bash -c "grep -qx 'ExecStart=%h/.config/omarchy/plugins/phosphor-os.clock/phosphor-nightlight tick' '$R/os/omarchy/nightlight/phosphor-os-nightlight.service' && test -x '$h/plugins/phosphor-os.clock/phosphor-nightlight'"
+rm -f "$T/A/stub.log"; q A bash "$D"; snap A >"$T/A.r2"; check "run 2 changes no file" cmp -s "$T/A.r1" "$T/A.r2"
+check "run 2 called no setter" bash -c "! grep -v 'font current' '$T/A/stub.log'"
+tenv A bash "$D" --undo --dry-run >/dev/null; snap A >"$T/A.x"; check "undo dry-run changes nothing" cmp -s "$T/A.r2" "$T/A.x"
+q A bash "$D" --undo; snap A >"$T/A.u"; check "undo: byte-for-byte as before" cmp -s "$T/A.before" "$T/A.u"
+check "undo stopped the night light timer" grep -q 'systemctl --user disable --now phosphor-os-nightlight.timer' "$T/A/stub.log"
+
+echo "== B: no shell.json, no shell.toml, no bar folder"
+mkhome B; rm -rf "$T/B/.config/omarchy/shell.json" "$T/B/.config/omarchy/shell.toml" "$T/B/.config/omarchy/bar"
+snap B >"$T/B.before"
+q B bash "$D"
+check "files created" test -f "$T/B/.config/omarchy/shell.json" -a "$(cat "$T/B/.config/omarchy/shell.toml")" == $'[font]\nbase-size = 16'
+check "left order" jq -e '.bar.layout.left|map(.id)==["omarchy.menu","omarchy.workspaces","omarchy.spacer","taskbar"]' "$T/B/.config/omarchy/shell.json"
+check "clock bottom right, 12-hour, then the counter" jq -e '(.bar.layout.center|length)==0 and (.bar.layout.right[-3:]|map(.id))==["omarchy.weather","phosphor-os.clock","phosphor-os.notifications"] and .bar.layout.right[-2].format=="dddd h:mm AP"' "$T/B/.config/omarchy/shell.json"
+snap B >"$T/B.r1"; q B bash "$D"; snap B >"$T/B.r2"; check "run 2 no-op" cmp -s "$T/B.r1" "$T/B.r2"
+q B bash "$D" --undo; snap B >"$T/B.u"; check "undo: as before" cmp -s "$T/B.before" "$T/B.u"
+
+echo "== C: files changed after setup (jq -S, like omarchy bar), plus a foreign lcars theme"
+mkhome C; h=$T/C/.config/omarchy
+jq -S . "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t" # as if Omarchy wrote it once
+printf '[bar]\nsize-horizontal = 30\n\n[font]\nbase-size = 12 # mine\nother = 1\n' >"$h/shell.toml"
+mkdir -p "$h/themes/lcars" && echo foreign >"$h/themes/lcars/colors.toml"
+cp "$h/shell.json" "$T/C.json0"; cp "$h/shell.toml" "$T/C.toml0"
+q C bash "$D" --theme lcars
+check "theme lcars on" test "$(cat "$T/C/.local/state/omarchy/current/theme.name")" == lcars
+check "pack lcars copied" diff -rq "$R/os/omarchy/themes/lcars" "$h/themes/lcars"
+jq -S '(.bar.layout[][] | select(.id=="phosphor-os.clock")).format="HH:mm" | .bar.transparent=true' "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t"
+printf 'extra = 2\n' >>"$h/shell.toml"
+q C bash "$D" --undo
+jq -S '.bar.layout.center[1].format="HH:mm" | .bar.transparent=true' "$T/C.json0" >"$T/C.json.want"
+check "json: only our keys put back, user change kept" cmp -s "$T/C.json.want" "$h/shell.json"
+{ cat "$T/C.toml0"; printf 'extra = 2\n'; } | sed 's/^base-size = 12 # mine$/base-size = 12/' >"$T/C.toml.want"
+check "toml: our key put back, user line kept" cmp -s "$T/C.toml.want" "$h/shell.toml"
+check "foreign lcars theme restored" test "$(cat "$h/themes/lcars/colors.toml")" == foreign
+check "theme back to tokyo-night" test "$(cat "$T/C/.local/state/omarchy/current/theme.name")" == tokyo-night
+check "notes gone; pre-setup copies of the two changed files kept" \
+  test ! -e "$T/C/.local/state/PhosphorOS/desktop.state" -a "$(ls "$T/C/.local/state/PhosphorOS/desktop-backup")" == $'shell.json\nshell.toml'
+
+echo "== D: amber, then green, then undo"
+mkhome D; snap D >"$T/D.before"
+q D bash "$D"; q D bash "$D" --theme retro-green
+check "switched to green" test "$(cat "$T/D/.local/state/omarchy/current/theme.name")" == retro-green
+q D bash "$D" --undo; snap D >"$T/D.u"; check "undo: as before (both theme folders gone, tokyo-night back)" cmp -s "$T/D.before" "$T/D.u"
+
+echo "== E: user picks another theme and font after setup: undo leaves them"
+mkhome E; q E bash "$D"
+echo catppuccin >"$T/E/.local/state/omarchy/current/theme.name"; echo "Fira Mono" >"$T/E/.fakefont"; rm -f "$T/E/stub.log"
+q E bash "$D" --undo
+check "undo did not touch theme or font" bash -c "! grep -q set '$T/E/stub.log'"
+
+echo "== F: bad option, bad theme"
+if tenv A bash "$D" --theme nope >/dev/null 2>&1; then bad "bad theme stops"; else ok "bad theme stops"; fi
+check "bad option stops" bash -c "bash '$D' --bogus 2>&1 | grep -q 'Unknown option'"
+
+echo "== G: screensaver: a foreign plugin folder of the same name, plugins dir that Omarchy made, a pack update"
+mkhome G; h=$T/G/.config/omarchy; mkdir -p "$h/plugins/phosphor-os.screensaver" "$h/plugins/acme.other"
+echo mine >"$h/plugins/phosphor-os.screensaver/manifest.json"; echo other >"$h/plugins/acme.other/manifest.json"
+mkdir -p "$h/plugins/phosphor-os.notifications"; echo minenotif >"$h/plugins/phosphor-os.notifications/manifest.json"
+snap G >"$T/G.before"
+tenv G bash "$D" --dry-run >"$T/G.dry"; snap G >"$T/G.x"; check "dry-run changes nothing" cmp -s "$T/G.before" "$T/G.x"
+check "dry-run shows the copy and the plugins[] line" bash -c "grep -q 'cp -r .*screensaver' '$T/G.dry' && grep -q 'phosphor-os.screensaver' '$T/G.dry'"
+q G bash "$D"
+bk=$T/G/.local/state/PhosphorOS/desktop-backup/phosphor-os.screensaver/manifest.json
+check "foreign folder backed up, ours in place" bash -c "$(declare -f svsame); SV='$SV'; PAGE='$PAGE'; svsame '$h/plugins/phosphor-os.screensaver' >/dev/null && [[ \$(cat '$bk') == mine ]]"
+echo "// old" >>"$h/plugins/phosphor-os.screensaver/Service.qml" # installed copy differs from the pack (an update)
+q G bash "$D"
+check "update: pack copy put in, foreign backup untouched" bash -c "$(declare -f svsame); SV='$SV'; PAGE='$PAGE'; svsame '$h/plugins/phosphor-os.screensaver' >/dev/null && [[ \$(cat '$bk') == mine ]]"
+check "foreign notifications folder backed up, ours in place" bash -c "diff -r '$NF' '$h/plugins/phosphor-os.notifications' >/dev/null && [[ \$(cat '${bk%/phosphor-os.screensaver/*}/phosphor-os.notifications/manifest.json') == minenotif ]]"
+q G bash "$D" --undo; snap G >"$T/G.u"; check "undo: foreign folder back, plugins dir kept, byte-for-byte" cmp -s "$T/G.before" "$T/G.u"
+
+echo "== H: plugins[] has a user plugin; user edits shell.json after setup"
+mkhome H; h=$T/H/.config/omarchy
+jq -S '.plugins=[{"id":"acme.weather"}]' "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t"; cp "$h/shell.json" "$T/H.json0"
+q H bash "$D"
+check "appended after the user's plugin" jq -e '.plugins|map(.id)==["acme.weather","phosphor-os.screensaver","phosphor-os.notifications"]' "$h/shell.json"
+jq -S '.idle.screensaver=420' "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t"
+q H bash "$D" --undo
+check "undo: our entry out, user plugin and change kept" bash -c "jq -S '.idle.screensaver=420' '$T/H.json0' | cmp -s - '$h/shell.json'"
+
+echo "== I: upgrade: the pack from before the rename ran first, then this one, then undo"
+check "fixture is the old pack" grep -q 'retro-claude.screensaver' "$OLDPACK/desktop.sh"
+mkhome I; h=$T/I/.config/omarchy; snap I >"$T/I.before"
+q I bash "$OLDPACK/desktop.sh"
+check "old pack: old plugin, old notes, old fonts folder" test -d "$h/plugins/retro-claude.screensaver" -a -f "$T/I/.local/state/RetroClaude/desktop.state" -a -d "$T/I/.local/share/fonts/retro-claude"
+rm -f "$T/I/stub.log"; q I bash "$D"
+check "upgrade: new plugin in, old one out" bash -c "$(declare -f svsame); SV='$SV'; PAGE='$PAGE'; svsame '$h/plugins/phosphor-os.screensaver' >/dev/null && [[ ! -e '$h/plugins/retro-claude.screensaver' ]]"
+check "upgrade: plugins[] has only the new ids" jq -e '.plugins|map(.id)==["phosphor-os.screensaver","phosphor-os.notifications"]' "$h/shell.json"
+check "upgrade: fonts folder moved, not downloaded" bash -c "[[ -d '$T/I/.local/share/fonts/phosphor-os' && ! -e '$T/I/.local/share/fonts/retro-claude' ]] && ! grep -q curl '$T/I/stub.log'"
+check "upgrade: keeps using the old notes folder" test -f "$T/I/.local/state/RetroClaude/desktop.state" -a ! -e "$T/I/.local/state/PhosphorOS"
+snap I >"$T/I.r1"; q I bash "$D"; snap I >"$T/I.r2"; check "upgrade: run 2 no-op" cmp -s "$T/I.r1" "$T/I.r2"
+q I bash "$D" --undo; snap I >"$T/I.u"; check "upgrade undo: byte-for-byte as before" cmp -s "$T/I.before" "$T/I.u"
+
+echo "== J: undo right after the old pack (no new run in between)"
+mkhome J; snap J >"$T/J.before"
+q J bash "$OLDPACK/desktop.sh"; q J bash "$D" --undo; snap J >"$T/J.u"
+check "undo of an old-name install: byte-for-byte as before" cmp -s "$T/J.before" "$T/J.u"
+
+echo "== N: night light schedule (phosphor-nightlight with a fake clock; hyprsunset is a stand-in)"
+mkhome N; h=$T/N
+NL=$CK/phosphor-nightlight
+at() { TZ=UTC date -d "2026-10-13 $1" +%s; } # a fake clock: seconds at HH:MM on a fixed day (UTC)
+nl() { tenv N env TZ=UTC HYPRLAND_INSTANCE_SIGNATURE="${SIG:-s1}" bash "$NL" "$@"; }
+temp() { cat "$h/sunset-temp" 2>/dev/null; }
+check "defaults: 4000 K, no schedule" jq -e '.warmth==4000 and .schedule=="off"' <<<"$(nl status)"
+nl set warmth=3300 >/dev/null 2>&1
+check "warmth saved in ~/.config/phosphor-os/nightlight.json" jq -e '.warmth==3300' "$h/.config/phosphor-os/nightlight.json"
+nl set warmth=9000 >/dev/null 2>&1; w9=$(jq .warmth "$h/.config/phosphor-os/nightlight.json")
+nl set warmth=3300 >/dev/null 2>&1
+if nl set warmth=hot >/dev/null 2>&1 || nl set from=25:00 >/dev/null 2>&1; then bad "bad values refused"; else ok "bad values refused"; fi
+check "warmth capped below Omarchy's off point (6000)" test "$w9" == 5900
+nl set --now "$(at 22:00)" schedule=fixed from=21:00 to=07:00 >/dev/null 2>&1
+check "fixed 21:00-07:00, set at 22:00: on at the chosen warmth (hyprsunset started)" bash -c "[[ \$(cat '$h/sunset-temp') == 3300 && -f '$h/sunset-running' ]]"
+echo 6500 >"$h/sunset-temp" # the owner switches it off by hand
+nl tick --now "$(at 23:00)"; check "a manual off sticks until the next edge" test "$(temp)" == 6500
+nl tick --now "$(at 23:59)"; check "still off a while later" test "$(temp)" == 6500
+echo 4000 >"$h/sunset-temp"; nl tick --now "$(at 07:00)"
+check "edge at 07:00: off" bash -c "[[ \$(cat '$h/sunset-temp') == 6500 && \$(sed -n 2p '$h/.local/state/phosphor-os/nightlight-schedule') == off ]]"
+echo 4000 >"$h/sunset-temp"; nl tick --now "$(at 12:00)"; check "a manual on in the day sticks" test "$(temp)" == 4000
+nl tick --now "$(at 20:59)"; check "still on at 20:59" test "$(temp)" == 4000
+echo 6500 >"$h/sunset-temp"; nl tick --now "$(at 21:00)"; check "edge at 21:00: on at the warmth" test "$(temp)" == 3300
+echo 6500 >"$h/sunset-temp"; SIG=s2 nl tick --now "$(at 21:30)"; check "new login (Hyprland session): applied once" test "$(temp)" == 3300
+echo 6500 >"$h/sunset-temp"; SIG=s2 nl tick --now "$(at 21:31)"; check "... and only once" test "$(temp)" == 6500
+rm -f "$h/sunset-running" "$h/sunset-temp" "$h/stub.log"; nl tick --now "$(at 07:00)"
+check "edge to off with hyprsunset not running: nothing started" bash -c "[[ ! -e '$h/sunset-running' ]] && ! grep -q 'hyprsunset temperature 6500' '$h/stub.log'"
+nl set --now "$(at 03:00)" from=09:00 to=17:00 >/dev/null 2>&1; nl tick --now "$(at 12:00)"
+check "a day window (09:00-17:00): on at noon" test "$(temp)" == 3300
+nl set --now "$(at 03:00)" from=21:00 to=07:00 >/dev/null 2>&1
+rm -f "$h/sunset-temp" "$h/stub.log"; tenv N env TZ=UTC bash "$NL" tick --now "$(at 22:00)"
+check "no Hyprland session: does nothing" bash -c "! grep -qs hyprsunset '$h/stub.log'"
+mkdir -p "$h/.local/state/omarchy/settings"
+echo '{"name":"Nowhere"}' >"$h/.local/state/omarchy/settings/weather.json"
+rm -f "$h/stub.log"; nl set --now "$(at 22:00)" schedule=sun >/dev/null 2>&1
+check "sun without coordinates: says so" jq -e '.coords==false and .place=="Nowhere"' <<<"$(nl status)"
+check "sun without coordinates: switches nothing" bash -c "! grep -qs 'hyprsunset temperature [0-9]' '$h/stub.log'"
+echo '{"name":"Equator","latitude":0,"longitude":0}' >"$h/.local/state/omarchy/settings/weather.json"
+check "sun times worked out locally (equator: ~06:00 and ~18:00 UTC)" jq -e '(.sunrise|test("^0(5:[3-5]|6:[0-2])")) and (.sunset|test("^1(7:[3-5]|8:[0-2])"))' <<<"$(nl status --now "$(at 12:00)")"
+nl tick --now "$(at 12:00)"; check "sun: off at noon" test "$(temp)" == 6500
+nl tick --now "$(at 19:00)"; check "sun: on after sunset" test "$(temp)" == 3300
+echo '{"name":"North","latitude":69.65,"longitude":18.96}' >"$h/.local/state/omarchy/settings/weather.json"
+check "polar night: on all day" jq -e '.allday=="night" and .scheduled=="on"' <<<"$(nl status --now "$(TZ=UTC date -d '2026-12-21 12:00' +%s)")"
+nl set schedule=off >/dev/null 2>&1
+check "schedule off: its state file goes" test ! -e "$h/.local/state/phosphor-os/nightlight-schedule"
+
+# ------------------------------------------------------------------ an install made under the old name
+
+# oldinstall NAME PROJECT: what the old setup-linux.sh left (look via the old pack, Hyprland line, unit, menu entry)
+oldinstall() {
+  local n=$1 p=$2 h=$T/$1
+  q "$n" bash "$OLDPACK/desktop.sh"
+  mkdir -p "$h/.config/hypr" "$h/.config/systemd/user" "$h/.local/share/applications" "$h/.local/share/RetroClaude/shell/electron-44.4.5"
+  printf -- '-- Omarchy config\nrequire("default")\n' >"$h/.config/hypr/hyprland.lua"
+  cp "$h/.config/hypr/hyprland.lua" "$T/$n.hypr0"
+  printf 'retro_claude_dir = "%s"; dofile(retro_claude_dir .. "/os/hyprland/retro-claude.lua") -- retro-claude-desktop (scripts/setup-linux.sh; --undo removes this line)\n' "$p" >>"$h/.config/hypr/hyprland.lua"
+  printf '[Unit]\nDescription=Retro Claude app server\n[Service]\nWorkingDirectory=%s\n' "$p" >"$h/.config/systemd/user/retro-claude-server.service"
+  printf '[Desktop Entry]\nName=Retro Claude\n' >"$h/.local/share/applications/retro-claude.desktop"
+  printf '#!/bin/sh\n' >"$h/.local/share/RetroClaude/shell/electron-44.4.5/electron"
+  chmod +x "$h/.local/share/RetroClaude/shell/electron-44.4.5/electron"
+  printf 'hypr_line=1\nservice=1\nelectron=1\n' >>"$h/.local/state/RetroClaude/setup-linux.state"
+}
+
+echo "== S: setup-linux.sh --undo cleans up an install made under the old name"
+mkhome S; oldinstall S "$T/S/retro-claude"; h=$T/S
+yes_tty S bash "$R/scripts/setup-linux.sh" --undo
+check "old Hyprland line out, rest of hyprland.lua as before" cmp -s "$T/S.hypr0" "$h/.config/hypr/hyprland.lua"
+check "old service stopped and removed" bash -c "grep -q 'systemctl --user disable --now retro-claude-server.service' '$h/stub.log' && [[ ! -e '$h/.config/systemd/user/retro-claude-server.service' ]]"
+check "old menu entry removed" test ! -e "$h/.local/share/applications/retro-claude.desktop"
+check "old plugin out of shell.json and its folder gone" bash -c "! grep -q retro-claude '$h/.config/omarchy/shell.json' && [[ ! -e '$h/.config/omarchy/plugins/retro-claude.screensaver' ]]"
+check "Electron in the old folder removed (asked)" test ! -e "$h/.local/share/RetroClaude/shell/electron-44.4.5"
+check "notes gone" test ! -e "$h/.local/state/RetroClaude/setup-linux.state" -a ! -e "$h/.local/state/RetroClaude/desktop.state"
+check "look back: theme and font as before" bash -c "[[ \$(cat '$h/.local/state/omarchy/current/theme.name') == tokyo-night && \$(cat '$h/.fakefont') == 'JetBrainsMono Nerd Font' ]]"
+
+echo "== M: scripts/migrate-from-retro-claude.sh on a fake home"
+mkhome M; h=$T/M; NEW=$h/phosphor-os OLDP=$h/retro-claude
+rsync -a --exclude .git --exclude node_modules --exclude data --exclude .env --exclude web/dist "$R/" "$NEW/"
+ln -s "$R/node_modules" "$NEW/node_modules" # never npm ci here: it would empty the real one through the link
+mkdir -p "$NEW/web" && cp -r "$R/web/dist" "$NEW/web/dist"
+oldinstall M "$OLDP"
+mkdir -p "$OLDP/data" "$h/ws"
+echo s3cret-key >"$OLDP/data/secret"; echo '[]' >"$OLDP/data/tabs.json"
+printf 'RETRO_PASSWORD="old pass"\nRETRO_CWD=%s\nRETRO_PORT=7399\nPHOSPHOR_PORT=7398\n' "$h/ws" >"$OLDP/.env"; chmod 600 "$OLDP/.env"
+mkdir -p "$h/.local/share/RetroClaude/shell-data"
+bash -c 'exec -a "electron shell/main.mjs" sleep 300' & fake_app=$!
+echo "$fake_app" >"$h/.local/share/RetroClaude/shell-data/app.pid"
+snap M phosphor-os >"$T/M.before"
+# A cgroup namespace: the script refuses to run inside the old server's service (where this test may run).
+mig() { tenv M unshare --user --map-current-user --cgroup bash "$NEW/scripts/migrate-from-retro-claude.sh" --from "$OLDP" "$@"; }
+mig --dry-run >"$T/M.dry" 2>&1; snap M phosphor-os >"$T/M.x"
+check "dry-run changes nothing" cmp -s "$T/M.before" "$T/M.x"
+check "dry-run prints no password" bash -c "! grep -q 'old pass' '$T/M.dry'"
+check "dry-run shows the moves and the setup" bash -c "grep -q 'mv .*retro-claude/data' '$T/M.dry' && grep -q 'RETRO_PASSWORD -> PHOSPHOR_PASSWORD' '$T/M.dry' && grep -q 'phosphor-os-desktop' '$T/M.dry'"
+check "fake old app still running after the dry run" kill -0 "$fake_app"
+mig --yes >"$T/M.run1" 2>&1
+sleep 0.3
+check "old app stopped (by its pid file)" bash -c "! kill -0 $fake_app 2>/dev/null"
+wait "$fake_app" 2>/dev/null
+check "old service stopped and removed" bash -c "grep -q 'disable --now retro-claude-server.service' '$h/stub.log' && [[ ! -e '$h/.config/systemd/user/retro-claude-server.service' ]]"
+check "new service written and started" bash -c "grep -q 'WorkingDirectory=$NEW' '$h/.config/systemd/user/phosphor-os-server.service' && grep -q 'enable --now phosphor-os-server.service' '$h/stub.log'"
+check "data/ and .env moved" bash -c "[[ \$(cat '$NEW/data/secret') == s3cret-key && -f '$NEW/.env' && ! -e '$OLDP/data' && ! -e '$OLDP/.env' ]]"
+check ".env renamed, values kept, existing PHOSPHOR_PORT wins" bash -c "! grep -q '^RETRO_' '$NEW/.env' && grep -qx 'PHOSPHOR_PASSWORD=\"old pass\"' '$NEW/.env' && grep -qx 'PHOSPHOR_PORT=7398' '$NEW/.env' && [[ \$(grep -c '^PHOSPHOR_PORT=' '$NEW/.env') == 1 && \$(grep -c '^PHOSPHOR_CWD=' '$NEW/.env') == 1 ]]"
+check ".env only readable by you" test "$(stat -c %a "$NEW/.env")" == 600
+check "per-PC folders moved" bash -c "[[ -x '$h/.local/share/PhosphorOS/shell/electron-44.4.5/electron' && ! -e '$h/.local/share/RetroClaude' && -d '$h/.local/share/fonts/phosphor-os' && ! -e '$h/.local/share/fonts/retro-claude' && -f '$h/.local/state/PhosphorOS/desktop.state' && ! -e '$h/.local/state/RetroClaude' ]]"
+check "Hyprland: old line swapped for the new one" bash -c "! grep -q retro-claude '$h/.config/hypr/hyprland.lua' && [[ \$(grep -c 'phosphor-os-desktop' '$h/.config/hypr/hyprland.lua') == 1 ]] && grep -q 'phosphor_os_dir = \"$NEW\"' '$h/.config/hypr/hyprland.lua'"
+check "menu entry swapped" bash -c "[[ -f '$h/.local/share/applications/phosphor-os.desktop' && ! -e '$h/.local/share/applications/retro-claude.desktop' ]]"
+check "Phosphor Docs menu entry opens DOCS" bash -c "grep -qx 'Name=Phosphor Docs' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Exec=bash \".*/scripts/phosphor-os.sh\" --docs\$' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Keywords=docs;' '$h/.local/share/applications/phosphor-docs.desktop'"
+check "screensaver plugin swapped" bash -c "[[ -d '$h/.config/omarchy/plugins/phosphor-os.screensaver' && ! -e '$h/.config/omarchy/plugins/retro-claude.screensaver' ]] && jq -e '.plugins|map(.id)==[\"phosphor-os.screensaver\",\"phosphor-os.notifications\"]' '$h/.config/omarchy/shell.json' >/dev/null"
+check "run 1 ends with the setup's Done" grep -q '^== Done' "$T/M.run1"
+snap M phosphor-os retro-claude .npm >"$T/M.r1"
+mig --yes >"$T/M.run2" 2>&1; snap M phosphor-os retro-claude .npm >"$T/M.r2"
+check "run 2 changes nothing" cmp -s "$T/M.r1" "$T/M.r2"
+check "run 2 has nothing left to move" bash -c "grep -q 'Nothing runs under the old name' '$T/M.run2' && grep -q 'Nothing to rename' '$T/M.run2'"
+yes_tty M bash "$NEW/scripts/setup-linux.sh" --undo
+check "undo after the move: Hyprland line out, service, menu entries, plugin gone" bash -c "cmp -s '$T/M.hypr0' '$h/.config/hypr/hyprland.lua' && [[ ! -e '$h/.config/systemd/user/phosphor-os-server.service' && ! -e '$h/.local/share/applications/phosphor-os.desktop' && ! -e '$h/.local/share/applications/phosphor-docs.desktop' && ! -e '$h/.config/omarchy/plugins/phosphor-os.screensaver' && ! -e '$h/.config/omarchy/plugins/phosphor-os.notifications' ]]"
+if grep -q retro-claude-server.service /proc/self/cgroup; then # only testable from inside that service
+  out="$(tenv M bash "$NEW/scripts/migrate-from-retro-claude.sh" --dry-run 2>&1)"
+  check "refuses to run inside the old server's service" grep -q 'would stop itself' <<<"$out"
+fi
+
+echo "== O: the page is not built: Omarchy's own screensaver stays untouched"
+mkdir -p "$T/nb/os" && cp -r "$R/os/omarchy" "$T/nb/os/omarchy" # a pack folder with no web/dist next to it
+mkhome O; h=$T/O/.config/omarchy; snap O >"$T/O.before"
+q O bash "$T/nb/os/omarchy/desktop.sh"
+check "no plugin, no plugins[] entry, idle.screensaver as it was, menu as it was" bash -c "[[ ! -e '$h/plugins/phosphor-os.screensaver' ]] && jq -e '([.plugins[]|select(.id==\"phosphor-os.screensaver\")]|length==0) and .idle.screensaver==150' '$h/shell.json' >/dev/null && ! grep -q phosphor '$h/extensions/omarchy-menu.jsonc'"
+q O bash "$T/nb/os/omarchy/desktop.sh" --undo; snap O >"$T/O.u"; check "undo: byte-for-byte as before" cmp -s "$T/O.before" "$T/O.u"
+
+echo "== P: launch.sh with stand-in browser, hyprctl and omarchy-shell (nothing opens)"
+mkhome K; h=$T/K; : >"$h/stub.log"; kd=$h/.config/omarchy/plugins/phosphor-os.screensaver
+mkdir -p "$kd" && cp -r "$SV/." "$kd/" && cp -r "$PAGE" "$kd/page"
+stub chromium 'sleep 30'
+stub omarchy-shell 'echo false'
+mkdir -p "$h/.local/state/omarchy/indicators" && touch "$h/.local/state/omarchy/indicators/stay-awake"
+tenv K bash "$kd/launch.sh" idle; check "stay awake: no browser started" bash -c "! grep -q '^chromium' '$h/stub.log'"
+rm "$h/.local/state/omarchy/indicators/stay-awake"; mkdir -p "$h/.local/state/omarchy/toggles"; touch "$h/.local/state/omarchy/toggles/screensaver-off"
+tenv K bash "$kd/launch.sh" idle; check "screensaver-off toggle: no browser started" bash -c "! grep -q '^chromium' '$h/stub.log'"
+rm -rf "$kd/page"; if tenv K bash "$kd/launch.sh" force >/dev/null 2>&1; then bad "no page: stops"; else ok "no page: stops"; fi
+
+echo
+echo "$PASS passed, $FAIL failed"
+((FAIL == 0))

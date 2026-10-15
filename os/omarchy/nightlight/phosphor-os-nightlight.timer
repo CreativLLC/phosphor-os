@@ -1,0 +1,10 @@
+# Phosphor-OS: runs the night light schedule every minute (it acts only at the schedule's edges and at login).
+[Unit]
+Description=Phosphor-OS night light schedule, every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

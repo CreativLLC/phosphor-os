@@ -1,0 +1,228 @@
+/* Program bar and web pane (programs.ts, browser.ts, sitebox.ts). Desktop app only: nothing here shows
+   without body.has-shell or body.prog-web. The sites are drawn by the desktop app over .web-slot. */
+
+/* ---------- Program bar (header, after the brand) ---------- */
+
+/* Keeps its size (the chat tabs scroll instead); scrolls itself only past half the header. */
+#programs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 50%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 6px 12px 6px 2px; /* room for the glow inside the scroll box */
+  margin: -6px 0;
+  border-right: 1px solid var(--line);
+}
+
+#top .prog {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 2px 10px;
+  max-width: 11em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+#top .prog.on {
+  background: var(--ph);
+  border-color: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  box-shadow: 0 0 10px rgb(var(--ph-rgb) / 0.3);
+}
+
+#top .prog-add {
+  border-style: dashed;
+  border-color: var(--line);
+  min-width: 36px;
+}
+
+/* A site or WEB tab is playing sound. */
+.prog.audible::after {
+  content: ' ♪';
+}
+
+/* CHAT: blinking block while Claude works; accent "!" while Claude waits for your OK. */
+.prog-mark {
+  display: none;
+}
+
+.prog-chat.busy .prog-mark {
+  display: inline-block;
+  width: 0.45em;
+  height: 0.8em;
+  margin-right: 6px;
+  background: currentColor;
+  animation: blink 1.06s steps(1) infinite;
+}
+
+#top .prog-chat.attention {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.45);
+}
+
+.prog-chat.attention .prog-mark {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  background: var(--accent);
+  color: var(--bg);
+  text-shadow: none;
+  animation: blink 1s steps(1) infinite;
+}
+
+.prog-chat.attention .prog-mark::before {
+  content: '!';
+}
+
+/* ---------- Switching: CHAT shows #app, the others the web pane ---------- */
+
+body.prog-web #app {
+  display: none;
+}
+
+/* The site covers the middle of the screen, so messages show at the top instead. */
+body.prog-web #toasts {
+  top: 8px;
+  bottom: auto;
+}
+
+#webapp {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ---------- Toolbar ---------- */
+
+.web-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--ph-dim);
+  background: rgb(var(--ph-rgb) / 0.03);
+}
+
+.web-bar button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 2px 10px;
+}
+
+.web-reload {
+  min-width: 4.8em; /* same width for RELOAD and STOP */
+}
+
+.web-addr {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 3px 10px;
+}
+
+/* ---------- WEB tab strip (same look as the chat tabs) ---------- */
+
+.web-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.web-tabs .tab-label,
+.web-tabs .tab-close,
+.web-tabs .tab-add {
+  min-height: 32px;
+}
+
+.web-tab .web-sound {
+  flex: 0 0 auto;
+  color: var(--ph-bright);
+}
+
+/* Loading: blinking block, like a busy chat tab. */
+.web-tab.loading .tab-dot {
+  display: inline-block;
+  width: 0.45em;
+  height: 0.8em;
+  background: currentColor;
+  animation: blink 1.06s steps(1) infinite;
+}
+
+/* ---------- Slot: the site is drawn over this box ---------- */
+
+.web-slot {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 8px 16px 12px;
+  background: var(--bg-deep);
+  box-shadow:
+    0 0 0 1px var(--ph-dim),
+    0 0 0 4px var(--bg),
+    0 0 0 5px var(--line);
+}
+
+.web-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  text-align: center;
+  white-space: pre-line;
+  line-height: 1.6;
+  letter-spacing: 1px;
+  color: var(--ph-dim);
+}
+
+.web-empty::first-line {
+  color: var(--ph);
+}
+
+/* ---------- Site box (add / edit / pin) ---------- */
+
+.site-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 0;
+  width: min(480px, calc(100vw - 64px));
+}
+
+.site-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  letter-spacing: 1px;
+  color: var(--ph-dim);
+}
+
+.site-field input {
+  color: var(--ph);
+}
+
+.site-err {
+  margin: 0;
+  color: var(--ph-bright);
+}
+
+.site-form .buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 0 14px;
+}
+
+.site-remove {
+  margin-right: auto;
+}

@@ -1,0 +1,180 @@
+/* Sonarr, Radarr, Prowlarr, Lidarr, Readarr (the *arr apps). Their pages take every color from variables that a
+   script sets on <html style> (light or dark theme), so the skin sets the same names with !important.
+   Login page: tested on the real pages (Sonarr 4, Radarr 5, Prowlarr). Logged-in app: same variable names from
+   the apps' public theme files (frontend/src/Styles/Themes/dark.js); untested here, needs a login.
+   Fonts stay the apps' own: a monospace font made their tight rows collide. */
+
+:root {
+  --white: var(--rc-bright) !important;
+  --black: var(--rc-bg) !important;
+  --offWhite: var(--rc-raise) !important;
+  --textColor: var(--rc-text) !important;
+  --defaultColor: var(--rc-text) !important;
+  --disabledColor: var(--rc-dim) !important;
+  --dimColor: var(--rc-dim) !important;
+  --helpTextColor: var(--rc-dim) !important;
+  --primaryColor: var(--rc-primary) !important;
+  --selectedColor: var(--rc-bright) !important;
+  --successColor: var(--rc-ok) !important;
+  --dangerColor: var(--rc-alert) !important;
+  --warningColor: var(--rc-bright) !important;
+  --infoColor: var(--rc-primary) !important;
+  --themeBlue: var(--rc-primary) !important;
+  --themeAlternateBlue: var(--rc-bright) !important;
+  --themeRed: var(--rc-alert) !important;
+  --themeDarkColor: var(--rc-raise) !important;
+  --themeLightColor: var(--rc-hover) !important;
+  --pageBackground: var(--rc-bg) !important;
+  --pageFooterBackground: var(--rc-raise) !important;
+  --panelBackground: var(--rc-raise) !important;
+
+  --linkColor: var(--rc-bright) !important;
+  --linkHoverColor: var(--rc-primary) !important;
+  --defaultLinkHoverColor: var(--rc-bright) !important;
+
+  --pageHeaderBackgroundColor: var(--rc-raise) !important;
+  --sidebarColor: var(--rc-text) !important;
+  --sidebarBackgroundColor: var(--rc-raise) !important;
+  --sidebarActiveBackgroundColor: var(--rc-hover) !important;
+  --toolbarColor: var(--rc-text) !important;
+  --toolbarBackgroundColor: var(--rc-raise) !important;
+  --toolbarMenuItemBackgroundColor: var(--rc-raise) !important;
+  --toolbarMenuItemHoverBackgroundColor: var(--rc-hover) !important;
+  --toolbarLabelColor: var(--rc-dim) !important;
+  --toobarButtonHoverColor: var(--rc-primary) !important;
+  --toobarButtonSelectedColor: var(--rc-bright) !important;
+
+  --borderColor: var(--rc-line) !important;
+  --inputBorderColor: var(--rc-line) !important;
+  --inputBoxShadowColor: transparent !important;
+  --inputFocusBorderColor: var(--rc-primary) !important;
+  --inputFocusBoxShadowColor: rgba(var(--rc-rgb), 0.35) !important;
+  --inputErrorBorderColor: var(--rc-alert) !important;
+  --inputWarningBorderColor: var(--rc-bright) !important;
+  --inputBackgroundColor: var(--rc-deep) !important;
+  --inputReadOnlyBackgroundColor: var(--rc-raise) !important;
+  --inputHoverBackgroundColor: var(--rc-hover) !important;
+  --inputSelectedBackgroundColor: var(--rc-hover) !important;
+  --advancedFormLabelColor: var(--rc-alert) !important;
+
+  --defaultButtonTextColor: var(--rc-text) !important;
+  --defaultBackgroundColor: var(--rc-raise) !important;
+  --defaultBorderColor: var(--rc-line) !important;
+  --defaultHoverBackgroundColor: var(--rc-hover) !important;
+  --defaultHoverBorderColor: var(--rc-dim) !important;
+  --primaryBackgroundColor: var(--rc-primary) !important;
+  --primaryBorderColor: var(--rc-primary) !important;
+  --primaryHoverBackgroundColor: var(--rc-bright) !important;
+  --primaryHoverBorderColor: var(--rc-bright) !important;
+  --successBackgroundColor: var(--rc-raise) !important;
+  --successBorderColor: var(--rc-ok) !important;
+  --successHoverBackgroundColor: var(--rc-hover) !important;
+  --successHoverBorderColor: var(--rc-ok) !important;
+  --warningBackgroundColor: var(--rc-raise) !important;
+  --warningBorderColor: var(--rc-bright) !important;
+  --warningHoverBackgroundColor: var(--rc-hover) !important;
+  --warningHoverBorderColor: var(--rc-bright) !important;
+  --dangerBackgroundColor: var(--rc-alert) !important;
+  --dangerBorderColor: var(--rc-alert) !important;
+  --dangerHoverBackgroundColor: var(--rc-alert) !important;
+  --dangerHoverBorderColor: var(--rc-alert) !important;
+  --iconButtonDisabledColor: var(--rc-dim) !important;
+  --iconButtonHoverColor: var(--rc-bright) !important;
+  --iconButtonHoverLightColor: var(--rc-bright) !important;
+
+  --modalBackdropBackgroundColor: rgba(0, 0, 0, 0.75) !important;
+  --modalBackgroundColor: var(--rc-bg) !important;
+  --modalCloseButtonHoverColor: var(--rc-bright) !important;
+  --menuItemColor: var(--rc-text) !important;
+  --menuItemHoverColor: var(--rc-bright) !important;
+  --menuItemHoverBackgroundColor: var(--rc-hover) !important;
+  --scrollbarBackgroundColor: var(--rc-dim) !important;
+  --scrollbarHoverBackgroundColor: var(--rc-text) !important;
+  --cardBackgroundColor: var(--rc-raise) !important;
+  --cardAlternateBackgroundColor: var(--rc-hover) !important;
+  --cardShadowColor: transparent !important;
+  --tableRowHoverBackgroundColor: var(--rc-hover) !important;
+
+  --alertDangerBorderColor: var(--rc-alert) !important;
+  --alertDangerBackgroundColor: rgba(var(--rc-alert-rgb), 0.16) !important;
+  --alertDangerColor: var(--rc-alert) !important;
+  --alertInfoBorderColor: var(--rc-line) !important;
+  --alertInfoBackgroundColor: var(--rc-raise) !important;
+  --alertInfoColor: var(--rc-bright) !important;
+  --alertSuccessBorderColor: var(--rc-line) !important;
+  --alertSuccessBackgroundColor: var(--rc-raise) !important;
+  --alertSuccessColor: var(--rc-ok) !important;
+  --alertWarningBorderColor: var(--rc-line) !important;
+  --alertWarningBackgroundColor: var(--rc-raise) !important;
+  --alertWarningColor: var(--rc-bright) !important;
+
+  --popoverTitleBackgroundColor: var(--rc-raise) !important;
+  --popoverTitleBorderColor: var(--rc-line) !important;
+  --popoverShadowColor: transparent !important;
+  --popoverArrowBorderColor: var(--rc-line) !important;
+  --popoverTitleBackgroundInverseColor: var(--rc-raise) !important;
+  --popoverTitleBorderInverseColor: var(--rc-line) !important;
+  --popoverShadowInverseColor: transparent !important;
+  --popoverArrowBorderInverseColor: var(--rc-line) !important;
+
+  --calendarTodayBackgroundColor: var(--rc-hover) !important;
+  --calendarBackgroundColor: var(--rc-raise) !important;
+  --calendarBorderColor: var(--rc-line) !important;
+  --calendarTextDim: var(--rc-dim) !important;
+  --calendarTextDimAlternate: var(--rc-text) !important;
+
+  --progressBarFrontTextColor: var(--rc-on-primary) !important;
+  --progressBarBackTextColor: var(--rc-text) !important;
+  --progressBarBackgroundColor: var(--rc-raise) !important;
+  --seriesBackgroundColor: var(--rc-raise) !important;
+  --movieBackgroundColor: var(--rc-raise) !important;
+  --addSeriesBackgroundColor: var(--rc-raise) !important;
+  --searchIconContainerBackgroundColor: var(--rc-raise) !important;
+  --collapseButtonBackgroundColor: var(--rc-raise) !important;
+  --seasonBackgroundColor: var(--rc-raise) !important;
+  --episodesBackgroundColor: var(--rc-raise) !important;
+
+  --forgotPasswordColor: var(--rc-dim) !important;
+  --forgotPasswordAltColor: var(--rc-text) !important;
+  --failedColor: var(--rc-alert) !important;
+}
+
+/* Login page (a plain page with its own small stylesheet). */
+.panel,
+.panel-header,
+.panel-body {
+  border-radius: 0 !important;
+}
+
+.panel {
+  border: 1px solid var(--rc-line);
+  border-radius: var(--rc-radius) !important;
+  overflow: hidden;
+}
+
+.panel-header {
+  border-bottom: 1px solid var(--rc-line);
+}
+
+.sign-in {
+  font-family: var(--rc-display);
+  color: var(--rc-head);
+  text-shadow: var(--rc-glow);
+  letter-spacing: 2px;
+  font-size: 1.15em;
+}
+
+.button {
+  color: var(--rc-on-primary) !important;
+  border-radius: var(--rc-pill) !important;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.form-input {
+  border-radius: 0 !important;
+}
+
+.copy {
+  color: var(--rc-dim) !important;
+}

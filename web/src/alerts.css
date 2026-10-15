@@ -1,0 +1,104 @@
+/* SETTINGS > ALERTS (alerts.ts). Rows reuse .set-label and .seg from settings.css. */
+
+.set-alerts {
+  margin-top: 8px;
+  padding: 8px 12px 0;
+  border-top: 1px dashed var(--line, var(--ph-dim));
+}
+
+.set-alerts .set-label {
+  margin-top: 6px;
+}
+
+.alerts-note {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.25;
+  margin: 5px 0 2px;
+}
+
+.alerts-note.alerts-warn {
+  color: var(--ph);
+}
+
+.alerts-options[hidden],
+.alerts-quiet[hidden],
+.alerts-devices[hidden] {
+  display: none;
+}
+
+.alerts-quiet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.alerts-time {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  color-scheme: dark;
+}
+
+.alerts-devbtn {
+  width: 100%;
+  margin-top: 10px;
+  letter-spacing: 2px;
+}
+
+.alerts-devices {
+  margin-top: 4px;
+}
+
+.alerts-dev {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line, var(--ph-dim));
+}
+
+.alerts-dev-info {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.alerts-dev-name {
+  overflow-wrap: anywhere;
+}
+
+.alerts-dev-meta {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.alerts-dev-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.alerts-dev-btns button {
+  padding: 2px 8px;
+}
+
+/* DONE and NEEDS YOU are two separate switches, not a choice of one: keep a gap so two lit ones read as two. */
+.alerts-when {
+  gap: 6px;
+}
+
+.alerts-when button + button {
+  margin-left: 0;
+}
+
+/* With ALERTS the SETTINGS box can be taller than a desktop window: let it scroll. Narrow screens already do this
+   in layout.css (#settings .settings-pop wins over this). For the lead: move into settings.css if it gets reworked. */
+.settings-pop {
+  max-height: calc(100dvh - 70px);
+  overflow-y: auto;
+}

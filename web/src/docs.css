@@ -1,0 +1,1278 @@
+/* DOCS (docs.ts): the document program. Theme tokens only (theme.css contract), so every theme fits.
+   Wide screens: the view takes the chat's place under the header. Phones and the Fold: full screen.
+   Print (@media print at the end): just the document, black on white.
+   Speed: no looping animation except the CONFLICT label's steps() blink (opacity). */
+
+.docs {
+  grid-row: 2;
+  grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.docs:focus {
+  outline: none;
+}
+
+/* The chat and the web pane are not drawn while DOCS is open. */
+body.docs-open #app,
+body.docs-open #webapp {
+  display: none !important;
+}
+
+/* The desktop app has DOCS in its program bar. */
+body.has-shell #btn-docs {
+  display: none;
+}
+
+.docs button {
+  min-height: 34px;
+  padding: 2px 10px;
+}
+
+/* ---------- Top bar ---------- */
+
+.dc-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ph-dim);
+  background: rgb(var(--ph-rgb) / 0.03);
+}
+
+.dc-tag {
+  flex: 0 0 auto;
+  padding: 2px 10px 1px;
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  letter-spacing: 3px;
+}
+
+.dc-files-btn {
+  display: none;
+}
+
+.dc-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.dc-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-bright);
+  letter-spacing: 0.5px;
+}
+
+.dc-state {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  letter-spacing: 2px;
+  color: var(--ph-dim);
+}
+
+.dc-st-dirty,
+.dc-st-saving {
+  color: var(--ph);
+}
+
+.dc-st-conflict,
+.dc-st-error {
+  padding: 0 6px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.dc-st-conflict {
+  animation: dc-blink 1.06s steps(1) infinite;
+}
+
+.dc-tools {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dc-seg {
+  display: flex;
+}
+
+.dc-seg button + button {
+  border-left-width: 0;
+}
+
+.docs .dc-seg button.on {
+  background: var(--ph);
+  border-color: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+/* ---------- Two columns: files | editor ---------- */
+
+.dc-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: clamp(240px, 21vw, 380px) minmax(0, 1fr);
+}
+
+.dc-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--ph-dim);
+  background: rgb(var(--ph-rgb) / 0.02);
+}
+
+.dc-side-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dc-root {
+  min-width: 0;
+  cursor: help;
+}
+
+.dc-root-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-bright);
+  letter-spacing: 2px;
+}
+
+.dc-root-path {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.dc-side-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.dc-side-btns button {
+  flex: 1;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.dc-search {
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 10px;
+}
+
+.dc-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0 12px;
+}
+
+/* Rows are buttons: undo the theme's button look (and LCARS's pills), keep the phosphor text. */
+.docs .dc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 4px 10px 4px calc(10px + var(--d, 0) * 1.2em);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ph);
+  font-weight: normal;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
+}
+
+.dc-glyph {
+  flex: 0 0 auto;
+  white-space: pre;
+  color: var(--ph-dim);
+}
+
+.dc-nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dc-size,
+.dc-ro {
+  flex: 0 0 auto;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.dc-ro {
+  letter-spacing: 1px;
+}
+
+.docs .dc-row.dc-other {
+  color: var(--ph-dim);
+}
+
+.docs .dc-row.sel {
+  background: var(--ph-faint);
+}
+
+.docs .dc-row.on {
+  color: var(--ph-bright);
+  box-shadow: inset 3px 0 0 var(--ph);
+}
+
+@media (hover: hover) {
+  .docs .dc-row:hover {
+    background: rgb(var(--ph-rgb) / 0.1);
+    color: var(--ph-bright);
+  }
+}
+
+.docs .dc-row:active {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.dc-note-row {
+  padding: 4px 10px 4px calc(10px + var(--d, 0) * 1.2em + 2.2em);
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.dc-err {
+  color: var(--ph-bright);
+  overflow-wrap: anywhere;
+}
+
+.dc-loading::after {
+  content: '_';
+  animation: dc-blink 1s steps(1) infinite;
+}
+
+.dc-msg {
+  padding: 10px 12px;
+  color: var(--ph-dim);
+  line-height: 1.25;
+}
+
+.dc-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 10px 6px;
+  border-bottom: 1px dashed var(--line);
+  color: var(--ph-bright);
+  letter-spacing: 2px;
+}
+
+.docs .dc-hitrow {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.dc-hit-top {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dc-hit-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 2.2em;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.dc-snip {
+  padding-left: 2.2em;
+  font-size: var(--fs-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dc-trow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.dc-ttext {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dc-ttext .dc-nm {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dc-ttext .dc-hit-where {
+  padding-left: 0;
+}
+
+.dc-side-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.dc-sel {
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.dc-side-foot button {
+  flex: 1;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/* ---------- Editor side ---------- */
+
+.dc-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dc-note {
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--ph-faint);
+  color: var(--ph-bright);
+}
+
+.dc-find {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgb(var(--ph-rgb) / 0.03);
+}
+
+.dc-find-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dc-find-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 4px 10px;
+}
+
+.dc-count {
+  min-width: 6.5em;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.dc-panes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.docs:not(.dc-has-doc) .dc-panes,
+.docs:not(.dc-has-doc) .dc-status,
+.docs.dc-has-doc .dc-empty {
+  display: none;
+}
+
+/* The writing column stays about 80 letters wide on big screens. */
+.docs .dc-ed {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 14px max(16px, calc((100% - 82ch) / 2)) 40px;
+  background: var(--bg-deep);
+  color: var(--ph);
+  font: var(--fs) / 1.35 var(--mono, var(--font));
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 4;
+  overscroll-behavior: contain;
+}
+
+.docs .dc-ed:focus {
+  box-shadow: none;
+}
+
+.dc-rich-host {
+  display: none;
+  min-height: 0;
+}
+
+.docs[data-view='doc'] .dc-ed {
+  display: none;
+}
+
+.docs[data-view='doc'] .dc-rich-host {
+  display: flex;
+}
+
+/* Waiting for the editor's code (first DOC view only). */
+.dc-rich-host:empty::before {
+  content: 'LOADING THE EDITOR';
+  margin: 14px auto;
+  color: var(--ph-dim);
+  letter-spacing: 2px;
+}
+
+/* DOC view: the document itself (docs-editor.ts). Same column as SOURCE. */
+.dc-pm h1,
+.dc-pm h2,
+.dc-pm h3,
+.dc-pm h4 {
+  margin: 0.9em 0 0.4em;
+  color: var(--ph-bright);
+  text-shadow: var(--glow-strong);
+  letter-spacing: 2px;
+}
+
+.dc-pm h1 {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--ph-dim);
+  font-size: var(--fs-lg);
+}
+
+.dc-pm > :first-child {
+  margin-top: 0;
+}
+
+.dc-pm p,
+.dc-pm ul,
+.dc-pm ol,
+.dc-pm blockquote,
+.dc-pm pre,
+.dc-pm table {
+  margin: 0 0 0.8em;
+}
+
+.dc-pm ul,
+.dc-pm ol {
+  padding-left: 1.6em;
+}
+
+.dc-pm code {
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  background: var(--bg-deep);
+  font-family: var(--mono, var(--font));
+}
+
+.dc-pm pre {
+  padding: 8px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: var(--bg-deep);
+}
+
+.dc-pm pre code {
+  padding: 0;
+  border: 0;
+}
+
+.dc-pm blockquote {
+  margin-left: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--ph-dim);
+  color: var(--ph-dim);
+}
+
+.dc-pm table {
+  border-collapse: collapse;
+}
+
+.dc-pm th,
+.dc-pm td {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+}
+
+.dc-pm th {
+  color: var(--ph-bright);
+}
+
+.dc-pm hr {
+  border: 0;
+  border-top: 1px dashed var(--ph-dim);
+}
+
+/* DOC view parts: toolbar, the scrolling page, checkboxes, links, RAW boxes, tables. */
+.dc-rich {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-deep);
+}
+
+.dc-tb {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px max(12px, calc((100% - 82ch) / 2));
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.dc-tb::-webkit-scrollbar {
+  display: none;
+}
+
+.docs .dc-tb-btn {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 1px 8px;
+  letter-spacing: 1px;
+}
+
+.dc-tb-b {
+  font-weight: bold;
+}
+
+.dc-tb-i {
+  font-style: italic;
+}
+
+.dc-tb-u {
+  text-decoration: underline;
+}
+
+.dc-tb-s {
+  text-decoration: line-through;
+}
+
+.dc-tb-sep {
+  flex: 0 0 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--line);
+}
+
+.dc-rich-ro .dc-tb {
+  display: none;
+}
+
+.dc-rich-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.dc-pm {
+  min-height: 100%;
+  padding: 14px max(16px, calc((100% - 78ch) / 2)) 40px;
+  color: var(--ph);
+  font: var(--fs) / 1.35 var(--font);
+  overflow-wrap: anywhere;
+  outline: none;
+  caret-color: var(--ph-bright);
+}
+
+.dc-pm ::selection {
+  background: rgb(var(--ph-rgb) / 0.35);
+  color: var(--ph-bright);
+}
+
+.dc-pm strong {
+  color: var(--ph-bright);
+}
+
+.dc-pm s {
+  color: var(--ph-dim);
+}
+
+.dc-pm u {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dc-pm a {
+  color: var(--accent-bright);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dc-pm pre code {
+  font-family: var(--mono, var(--font));
+}
+
+.dc-pm li > p {
+  margin: 0;
+}
+
+/* Checklists: real boxes, ticked ones dimmed and struck. Big enough for a finger. */
+.dc-pm ul[data-type='taskList'] {
+  padding-left: 0.2em;
+  list-style: none;
+}
+
+.dc-pm ul[data-type='taskList'] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+
+.dc-pm ul[data-type='taskList'] > li > label {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 1.35em;
+  padding: 0 0.15em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dc-pm ul[data-type='taskList'] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.dc-pm ul[data-type='taskList'] > li > div > p {
+  margin: 0;
+}
+
+.dc-pm input[type='checkbox'] {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 0.95em;
+  height: 0.95em;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--ph);
+  background: transparent;
+  box-shadow: var(--glow);
+  cursor: pointer;
+}
+
+.dc-pm input[type='checkbox']:checked {
+  background: var(--ph);
+  box-shadow: inset 0 0 0 2px var(--bg-deep), var(--glow);
+}
+
+.dc-pm input[type='checkbox']:focus-visible {
+  outline: 1px dashed var(--ph-bright);
+  outline-offset: 2px;
+}
+
+.dc-pm ul[data-type='taskList'] > li[data-checked='true'] > div {
+  color: var(--ph-dim);
+  text-decoration: line-through;
+}
+
+/* Kept as written (raw HTML, front matter...): shown, changed in SOURCE. */
+.dc-pm .dc-raw {
+  margin: 0 0 0.8em;
+  padding: 4px 10px 6px;
+  border: 1px dashed var(--ph-dim);
+  background: rgb(var(--ph-rgb) / 0.05);
+  color: var(--ph-dim);
+  cursor: default;
+}
+
+.dc-pm .dc-raw::before {
+  content: attr(data-label) ' · KEPT AS WRITTEN · EDIT IN SOURCE';
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+  opacity: 0.8;
+}
+
+.dc-pm .dc-raw pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  white-space: pre-wrap;
+  font-family: var(--mono, var(--font));
+}
+
+.dc-pm .ProseMirror-selectednode,
+.dc-pm .dc-raw.ProseMirror-selectednode {
+  outline: 2px solid var(--ph-bright);
+}
+
+.dc-pm .tableWrapper {
+  margin: 0 0 0.8em;
+  overflow-x: auto;
+}
+
+.dc-pm .tableWrapper table {
+  margin: 0;
+}
+
+.dc-pm td p,
+.dc-pm th p {
+  margin: 0;
+}
+
+.dc-pm .selectedCell {
+  background: rgb(var(--ph-rgb) / 0.2);
+}
+
+.dc-pm .ProseMirror-gapcursor::after {
+  border-top-color: var(--ph-bright);
+}
+
+.dc-box {
+  margin-right: 0.3em;
+  white-space: pre;
+  color: var(--ph-bright);
+}
+
+.dc-plain {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+/* Find: the current match, boxed over the editor (placed with transform). */
+.dc-hit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  outline: 2px solid var(--ph-bright);
+  background: rgb(var(--ph-rgb) / 0.25);
+}
+
+/* Hidden copy of the editor's text, for measuring where a match sits. Empty between measurements. */
+.dc-mirror {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  box-sizing: border-box;
+  border-style: solid;
+  border-color: transparent;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.dc-status {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 12px;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.dc-empty {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.dc-empty-box {
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--ph-dim);
+  text-align: center;
+  line-height: 1.25;
+}
+
+.dc-empty-big {
+  color: var(--ph-bright);
+  text-shadow: var(--glow-strong);
+  letter-spacing: 2px;
+  overflow-wrap: anywhere;
+}
+
+.dc-empty-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.dc-empty-where {
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Conflict: both versions, the owner keeps one ---------- */
+
+.dc-conflict {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  padding: 10px;
+  background: var(--bg);
+}
+
+.dc-c-box {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 2px solid var(--ph-bright);
+}
+
+.dc-c-title {
+  display: inline-block;
+  padding: 1px 10px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+  letter-spacing: 3px;
+}
+
+.dc-c-text {
+  margin-top: 6px;
+  color: var(--ph-bright);
+  line-height: 1.2;
+}
+
+.dc-c-cols {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.dc-c-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--ph-dim);
+}
+
+.dc-c-label {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ph-bright);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.dc-c-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 8px;
+  background: var(--bg-deep);
+  font: calc(var(--fs) * 0.9) / 1.25 var(--mono, var(--font));
+}
+
+.dc-c-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dc-c-diff {
+  background: var(--ph-faint);
+  color: var(--ph-bright);
+  box-shadow: inset 3px 0 0 var(--ph-bright);
+  padding-left: 6px;
+}
+
+.dc-c-gone {
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: var(--ph-dim);
+  text-align: center;
+  white-space: pre-line;
+}
+
+.dc-c-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------- Boxes: new document, new folder, rename ---------- */
+
+.dc-dlg {
+  width: min(540px, calc(100vw - 24px));
+}
+
+.dc-dlg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.dc-dlg-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.dc-dlg-in {
+  width: 100%;
+}
+
+.dc-dlg-hint {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+}
+
+.dc-tpls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dc-tpls button {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.dc-tpls button.on {
+  background: var(--ph);
+  border-color: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.dc-dlg .buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------- Phones and the Fold: full screen, touch sizes ---------- */
+
+@media (max-width: 820px), (pointer: coarse) and (max-width: 1150px) {
+  .docs {
+    position: fixed;
+    inset: 0;
+    z-index: 45; /* over the side panels; drawers, boxes and toasts stay above */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  .docs button,
+  .dc-search,
+  .dc-find-row input {
+    min-height: var(--tap);
+  }
+
+  .dc-bar {
+    flex-wrap: wrap;
+    padding: 6px 8px;
+  }
+
+  .dc-tools {
+    order: 5;
+    flex: 1 0 100%;
+  }
+
+  .dc-tools > button,
+  .dc-seg {
+    flex: 1 1 auto;
+  }
+
+  .dc-seg button {
+    flex: 1;
+  }
+
+  .dc-body {
+    grid-template-columns: clamp(220px, 30vw, 300px) minmax(0, 1fr);
+  }
+
+  .docs .dc-ed,
+  .dc-pm {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* One column: the file list or the document; FILES switches. */
+@media (max-width: 700px) {
+  .dc-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docs:not(.dc-show-side) .dc-side,
+  .docs.dc-show-side .dc-main {
+    display: none;
+  }
+
+  .dc-side {
+    border-right: 0;
+  }
+
+  .docs .dc-files-btn {
+    display: inline-block;
+  }
+
+  .docs.dc-show-side .dc-files-btn {
+    background: var(--ph);
+    color: var(--bg);
+    text-shadow: none;
+  }
+
+  .dc-tag {
+    display: none;
+  }
+
+  .dc-tools > button,
+  .dc-seg button {
+    padding-left: 4px;
+    padding-right: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  .dc-find-row:first-child {
+    flex-wrap: wrap;
+  }
+
+  .dc-find-row:first-child input {
+    flex-basis: 100%;
+  }
+
+  .dc-find-row button {
+    flex: 1;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .dc-count {
+    min-width: 0;
+    flex: 1;
+    text-align: left;
+  }
+
+  .dc-c-cols {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .dc-c-btns button {
+    flex: 1 1 auto;
+  }
+
+  .dc-status {
+    padding: 3px 8px;
+  }
+
+  .dc-fmt {
+    display: none;
+  }
+}
+
+@keyframes dc-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------- Print: the document alone, black on white ---------- */
+
+.docs-print {
+  display: none;
+}
+
+@media print {
+  html.docs-printing,
+  html.docs-printing body {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  html.docs-printing::before,
+  html.docs-printing::after,
+  html.docs-printing body > :not(.docs-print) {
+    display: none !important;
+  }
+
+  html.docs-printing .docs-print {
+    display: block !important;
+    font: 11pt / 1.45 Georgia, 'Times New Roman', serif;
+  }
+
+  .docs-print,
+  .docs-print * {
+    color: #000 !important;
+    background: transparent !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+    letter-spacing: normal !important;
+  }
+
+  .docs-print h1,
+  .docs-print h2,
+  .docs-print h3,
+  .docs-print h4 {
+    margin: 14pt 0 6pt;
+    font-weight: bold;
+    break-after: avoid;
+  }
+
+  .docs-print h1 {
+    font-size: 20pt;
+  }
+
+  .docs-print h2 {
+    font-size: 15pt;
+  }
+
+  .docs-print h3 {
+    font-size: 12.5pt;
+  }
+
+  .docs-print .dp-md > :first-child {
+    margin-top: 0;
+  }
+
+  .docs-print p,
+  .docs-print ul,
+  .docs-print ol,
+  .docs-print table,
+  .docs-print blockquote {
+    margin: 0 0 8pt;
+    orphans: 3;
+    widows: 3;
+  }
+
+  .docs-print pre,
+  .docs-print code,
+  .docs-print .dp-plain {
+    font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+    font-size: 9.5pt;
+  }
+
+  .docs-print pre {
+    padding: 6pt;
+    border: 1px solid #999;
+    white-space: pre-wrap;
+    break-inside: avoid;
+  }
+
+  .docs-print .dp-plain {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: 10.5pt;
+    line-height: 1.4;
+    break-inside: auto;
+  }
+
+  .docs-print table {
+    border-collapse: collapse;
+  }
+
+  .docs-print th,
+  .docs-print td {
+    padding: 3pt 6pt;
+    border: 1px solid #999;
+  }
+
+  .docs-print blockquote {
+    margin-left: 0;
+    padding-left: 10pt;
+    border-left: 3px solid #999;
+  }
+
+  .docs-print hr {
+    border: 0;
+    border-top: 1px solid #999;
+  }
+
+  .docs-print a {
+    text-decoration: underline;
+  }
+
+  @page {
+    margin: 18mm 16mm;
+  }
+}

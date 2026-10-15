@@ -1,0 +1,187 @@
+/* Nextcloud (also the Nextcloud AIO admin page, which uses the same variable names).
+   Nextcloud draws almost everything from its theming variables (apps/theming: :root, [data-theme-*]), so the skin
+   sets those (with !important: the theming CSS loads later and some values are inline), plus a few login-page rules.
+   Tested on the real login pages (Nextcloud 31 and AIO); the logged-in apps follow the same variables. */
+
+:root,
+:root body,
+[data-themes],
+[data-theme-light],
+[data-theme-dark],
+[data-theme-default],
+[data-theme-light-highcontrast],
+[data-theme-dark-highcontrast] {
+  --color-main-background: var(--rc-bg) !important;
+  --color-main-background-rgb: var(--rc-bg-rgb) !important;
+  --color-main-background-translucent: rgba(var(--rc-bg-rgb), 0.97) !important;
+  --color-main-background-blur: rgba(var(--rc-bg-rgb), 0.92) !important;
+  --gradient-main-background: var(--rc-bg) 0%, rgba(var(--rc-bg-rgb), 0.97) 85%, transparent 100% !important;
+  --color-background-hover: var(--rc-hover) !important;
+  --color-background-dark: var(--rc-raise) !important;
+  --color-background-darker: var(--rc-hover) !important;
+  --color-placeholder-light: var(--rc-raise) !important;
+  --color-placeholder-dark: var(--rc-hover) !important;
+  --color-main-text: var(--rc-text) !important;
+  --color-text-maxcontrast: var(--rc-dim) !important;
+  --color-text-maxcontrast-default: var(--rc-dim) !important;
+  --color-text-maxcontrast-background-blur: var(--rc-dim) !important;
+  --color-text-light: var(--rc-text) !important;
+  --color-text-lighter: var(--rc-dim) !important;
+  --color-border: var(--rc-line) !important;
+  --color-border-dark: rgba(var(--rc-rgb), 0.5) !important;
+  --color-border-maxcontrast: var(--rc-dim) !important;
+  --color-scrollbar: var(--rc-dim) transparent !important;
+  --color-loading-light: var(--rc-faint) !important;
+  --color-loading-dark: var(--rc-text) !important;
+  --color-box-shadow-rgb: 0, 0, 0 !important;
+  --color-box-shadow: #000 !important;
+
+  --color-primary: var(--rc-primary) !important;
+  --color-primary-text: var(--rc-on-primary) !important;
+  --color-primary-hover: var(--rc-bright) !important;
+  --color-primary-light: var(--rc-faint) !important;
+  --color-primary-light-text: var(--rc-bright) !important;
+  --color-primary-light-hover: rgba(var(--rc-rgb), 0.22) !important;
+  --color-primary-element: var(--rc-primary) !important;
+  --color-primary-element-hover: var(--rc-bright) !important;
+  --color-primary-element-text: var(--rc-on-primary) !important;
+  --color-primary-element-text-dark: var(--rc-on-primary) !important;
+  --color-primary-element-light: var(--rc-faint) !important;
+  --color-primary-element-light-text: var(--rc-bright) !important;
+  --color-primary-element-light-hover: rgba(var(--rc-rgb), 0.22) !important;
+  --gradient-primary-background: linear-gradient(var(--rc-raise), var(--rc-raise)) !important;
+  --color-background-plain: var(--rc-bg) !important;
+  --color-background-plain-text: var(--rc-text) !important;
+  --image-background: none !important;
+  --image-background-default: none !important;
+  /* Dark page: the dark icons turn light; icons on the bright buttons stay dark. */
+  --background-invert-if-dark: invert(100%) !important;
+  --background-invert-if-bright: no !important;
+  --background-image-invert-if-bright: no !important;
+  --primary-invert-if-bright: invert(100%) !important;
+  --primary-invert-if-dark: no !important;
+
+  --color-error: rgba(var(--rc-alert-rgb), 0.16) !important;
+  --color-error-hover: rgba(var(--rc-alert-rgb), 0.26) !important;
+  --color-error-text: var(--rc-alert) !important;
+  --color-text-error: var(--rc-alert) !important;
+  --color-element-error: var(--rc-alert) !important;
+  --color-border-error: var(--rc-alert) !important;
+  --color-warning: var(--rc-raise) !important;
+  --color-warning-hover: var(--rc-hover) !important;
+  --color-warning-text: var(--rc-bright) !important;
+  --color-element-warning: var(--rc-bright) !important;
+  --color-success: var(--rc-raise) !important;
+  --color-success-hover: var(--rc-hover) !important;
+  --color-success-text: var(--rc-ok) !important;
+  --color-text-success: var(--rc-ok) !important;
+  --color-element-success: var(--rc-ok) !important;
+  --color-border-success: var(--rc-ok) !important;
+  --color-info: var(--rc-raise) !important;
+  --color-info-hover: var(--rc-hover) !important;
+  --color-info-text: var(--rc-bright) !important;
+  --color-element-info: var(--rc-bright) !important;
+
+  --font-face: var(--rc-font) !important;
+  --border-radius-small: min(4px, var(--rc-radius)) !important;
+  --border-radius-element: min(8px, var(--rc-radius)) !important;
+  --border-radius-container: var(--rc-radius) !important;
+  --border-radius-container-large: var(--rc-radius) !important;
+  --border-radius: min(4px, var(--rc-radius)) !important;
+  --border-radius-large: var(--rc-radius) !important;
+  --border-radius-rounded: var(--rc-pill) !important;
+  --border-radius-pill: var(--rc-pill) !important;
+  --body-container-radius: var(--rc-radius) !important;
+
+  /* AIO admin page names. */
+  --color-input-background: var(--rc-deep) !important;
+  --color-main-border: var(--rc-line) !important;
+  --color-main-border-hover: var(--rc-dim) !important;
+  --color-nextcloud-blue: var(--rc-primary) !important;
+  --color-nextcloud-logo: var(--rc-primary) !important;
+  --color-running: var(--rc-ok) !important;
+  --color-disabled: var(--rc-dim) !important;
+  --color-text-disabled: var(--rc-dim) !important;
+  --color-border-disabled: var(--rc-line) !important;
+  --color-loader: var(--rc-primary) !important;
+  --border: var(--rc-line) !important;
+  --border-hover: var(--rc-dim) !important;
+}
+
+html,
+body,
+#body-login,
+#body-user,
+#body-settings,
+#body-public {
+  background-color: var(--rc-bg) !important;
+  background-image: none !important;
+  color: var(--rc-text);
+  font-family: var(--rc-font);
+}
+
+/* Headings and the title line in the display font. */
+h1,
+h2,
+.login-box h2,
+.guest-box h2,
+#app-navigation .app-navigation-caption {
+  font-family: var(--rc-display);
+  color: var(--rc-head);
+  text-shadow: var(--rc-glow);
+  letter-spacing: 1px;
+}
+
+/* Login page: one plain panel on the screen, no picture behind it. */
+#body-login .guest-box,
+.wrapper .login {
+  background: var(--rc-raise) !important;
+  border: 1px solid var(--rc-line);
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  border-radius: var(--rc-radius) !important;
+}
+
+#body-login .guest-box .login-box,
+#body-login .guest-box .login-form {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* The AIO page keeps its picture on .wrapper. */
+.wrapper {
+  background: var(--rc-bg) !important;
+}
+
+#body-login footer .info,
+#body-login .footer,
+#body-login footer p {
+  background: var(--rc-raise) !important;
+  color: var(--rc-dim) !important;
+  border-radius: var(--rc-radius) !important;
+  backdrop-filter: none !important;
+}
+
+/* The white logo in the theme color. */
+#body-login .logo,
+#header .logo,
+.app-menu-entry img {
+  filter: var(--rc-logo-filter) !important;
+}
+
+/* Inputs: dark well with a theme border. */
+input[type='text'],
+input[type='password'],
+input[type='email'],
+input[type='search'],
+input[type='url'],
+input[type='number'],
+textarea {
+  background-color: var(--rc-deep) !important;
+  color: var(--rc-text) !important;
+}
+
+:focus-visible {
+  outline-color: var(--rc-primary) !important;
+}

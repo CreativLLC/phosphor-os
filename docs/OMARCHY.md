@@ -1,0 +1,105 @@
+# The Phosphor-OS add-on pack for Omarchy 4
+
+This file lists every change Phosphor-OS makes to Omarchy: what, why, which file, and how to undo it.
+Made for Omarchy 4 (Arch, Hyprland 0.55 with a Lua config, the Quickshell bar).
+
+Two scripts apply the pack. Both are safe to run again, both have `--dry-run` and `--undo`.
+
+| Script | What it does |
+|---|---|
+| `scripts/setup-linux.sh` | The whole thing: the app, its server, and desktop mode. Its step 8 runs the next one. |
+| `os/omarchy/desktop.sh` | Only the look: theme, font, the bar with the taskbar, the clock (with a night light schedule), the screensaver (the app's flight scene on every monitor), the notifications. Runs alone too. |
+
+## What the pack changes
+
+| # | What | Why | File | Undo |
+|---|---|---|---|---|
+| 1 | Copies the theme (`retro-amber`, or `--theme retro-green` / `lcars`) and turns it on with `omarchy theme set` | The whole desktop matches the app | `~/.config/omarchy/themes/<theme>/` | Puts your old theme back, removes the folder (a folder it replaced comes back) |
+| 2 | Installs the fonts VT323 and Antonio (pinned SHA-256) | VT323 is the retro look; Antonio is for LCARS | `~/.local/share/fonts/phosphor-os/` | Removes the folder, if the pack installed it |
+| 3 | `omarchy font set VT323` | One monospace font for terminals and the bar | fontconfig and terminal configs (Omarchy's own command) | Puts your old font back |
+| 4 | `[font]` `base-size = 16` | VT323 is small at Omarchy's default size | `~/.config/omarchy/shell.toml` | Restores the file (see "How undo works") |
+| 5 | The bar goes to the bottom: `bar.position = "bottom"` | The taskbar at the bottom, like a classic desktop | `~/.config/omarchy/shell.json` | Restores the old value |
+| 6 | The taskbar in the bar: `{"id":"omarchy.spacer","size":12}` and `{"id":"taskbar","type":"qml"}` after `omarchy.workspaces` in `bar.layout.left` | One button per window on the workspace this monitor shows (icon and name), plus minimized windows (dimmed). Click = to the front; click the front one or right click = minimize; middle click = close. Notifications: the sending app's button gets a red dot and a `MSG` button with a red dot shows there are any (click = notification history); a dot clears after 2 s on the app (mouse-over focus alone does not clear it) or on a click. It watches `~/.local/state/omarchy/notifications/` (bar add-ons get no access to the notification service) | `~/.config/omarchy/shell.json` | Takes the two entries out |
+| 6b | The middle of the bar moves to the right end: indicators, update and keyboard-layout before the tray; weather and the clock last. Clock `format = "dddd h:mm AP"` | Clock and weather bottom right like Windows, 12-hour time ("Tuesday 6:14 PM"). (Since 6c the indicators sit with the clock.) | `~/.config/omarchy/shell.json` (`bar.layout.center`, `bar.layout.right`) | Puts the saved middle back (keeping later changes to those widgets) and the old clock format |
+| 7 | The taskbar module, as a link to the pack | `git pull` updates it (then `omarchy restart shell`: bar QML does not reload by itself) | `~/.config/omarchy/bar/modules/taskbar.qml` -> `os/omarchy/bar/taskbar.qml` | Removes the link; a file it replaced comes back |
+| 8 | `idle.lock = 2000000` and `idle.screensaver = 2000000` (about 23 days, so never in practice) | No lock after idle: the password is asked only at boot. Omarchy's own screensaver never starts: row 9 watches the idle time itself (5 min, then the screen off 25 min later, 30 min idle). The PC never sleeps, so the phone can always reach it | `~/.config/omarchy/shell.json` | Restores the old value |
+| 9 | The screensaver of the whole computer is the app's: a shell plugin (`{"id":"phosphor-os.screensaver"}` in `plugins[]`) plus one line in Omarchy's menu file | After 5 min idle `launch.sh` opens the app's flight scene (grid, stars, sleeping crew, big clock; the page `web/src/saver.ts`, built to `web/dist/saver/`, a static page with no server and no personal data) in a Chromium kiosk window on every monitor, in the theme's colors. Any key, mouse move, click or scroll ends it (the compositor's idle signal; the page closes itself on input too; losing focus ends it as well). No password. 25 min later the displays go off; waking runs Omarchy's own `omarchy-system-wake`. Omarchy's terminal screensaver is not used any more; its menu entry now starts this one (`omarchy-shell phosphor-os.screensaver show`). Why a kiosk window: Omarchy's idle runs `omarchy-launch-screensaver` from its own bin folder, which a user file cannot shadow, so the plugin does the idle watch itself (row 8) and a browser page reuses the app's drawing code unchanged at about 6% of one core, nothing resident while idle. Needs the page built (`npm run build`) and Chromium (or Chrome, Brave); without the page nothing is changed | `~/.config/omarchy/plugins/phosphor-os.screensaver/` (`os/omarchy/screensaver/` plus the built page in `page/`), `~/.config/omarchy/shell.json`, `~/.config/omarchy/extensions/omarchy-menu.jsonc` (the line marked `phosphor-os:menu`) | Takes the entry and the menu line out, removes the folder (a folder it replaced comes back) |
+| 6c | The clock and the indicators become one widget where the clock was: `omarchy.clock` turns into `{"id":"phosphor-os.clock", ...the clock's settings}` and `omarchy.indicators` comes out of the bar (its settings move along). The widget is a shell plugin (`os/omarchy/clock/`, `clonedFrom` `omarchy.indicators`, which is what gives its toggles the DND, night light and stay-awake services) | Hover the clock: all six toggles (dictation, screen recording, reminder, night light, DND, stay awake) pop up above it, each with what a click does; move away and they go. Active ones (recording, DND on, ...) still show in the bar, left of the clock; inactive ones no longer pop out in the bar row. The clock is Omarchy's own: click = calendar, right click = next format, middle click = time zone. The toggles and the clock are Omarchy's own files, loaded as they are; only `Indicators.qml` is a copy, with two changes marked `Phosphor-OS:` | `~/.config/omarchy/plugins/phosphor-os.clock/` (a copy), `~/.config/omarchy/shell.json` | Puts Omarchy's clock back in that place (keeping its settings) and the indicators where they were; removes the folder (a folder it replaced comes back) |
+| 6d | Night light warmth and schedule, in the clock popup: a click on Night light switches it at the warmth set here; a right click opens its options: warmth (2500 K very warm to 5900 K barely; dragging shows it live while night light is on) and a schedule: off, fixed times (from/to, hour and minute you click or scroll), or sundown to sunup. Settings in `~/.config/phosphor-os/nightlight.json`. A systemd user timer runs `phosphor-nightlight tick` (in the clock plugin's folder) every minute | Omarchy's night light is one fixed 4000 K and has no schedule. Sundown to sunup uses the weather widget's saved place (its lat/lon; with none it says so: click the weather, click the place name, pick from the list) and works out sunset and sunrise itself (NOAA formula, no network). The script switches only at the schedule's edges (it keeps the last one in `~/.local/state/phosphor-os/`), so a click by hand sticks until the next edge; at a new login (a new Hyprland session) it applies the scheduled state once. A timer, not a Timer in the widget: it runs once (the widget runs once per monitor), also with the bar off or restarting, and its logic is tested with a fake clock. The toggle keys and menus outside the popup (`omarchy toggle nightlight`) still use 4000 K. Omarchy's `~/.config/hypr/hyprsunset.conf` switches night light off at 07:00 by itself while hyprsunset runs: a schedule that ends later ends at 07:00 | `~/.config/systemd/user/phosphor-os-nightlight.{service,timer}` (copies of `os/omarchy/nightlight/`), the clock plugin folder | Stops and removes the timer and its state file; the settings file stays |
+| 6e | Your calendar events in the clock's calendar popup: a dot under each day that has events (one colour per calendar when there are several), click a day to select it, and under the month an agenda for that day (default today): time (12-hour) or "all day", title, location dimmed, "No events" when empty, "updated HH:MM" dimmed when the cache is over an hour old. The popup reads the cache file again each time it opens; no network from the bar | The Phosphor-OS server (`PHOSPHOR_CALENDAR_ICS` in `.env`) writes `~/.local/state/phosphor-os/calendar.json` (31 days back to 92 ahead, every 10 minutes); the bar only reads it. `Panel.qml` is a copy of Omarchy's `panels/clock/Panel.qml` and `Clock.qml` a copy of its `BarWidget.qml` (only so it opens our panel), with `Model.js`; each change in `Panel.qml` is marked `Phosphor-OS:`, the event logic is in `Agenda.js` (tested by `tests/clock-agenda.mjs`). After an Omarchy update that changes those files, diff them against `/usr/share/omarchy/shell/plugins/panels/clock/`. The calendar key (`Super+Ctrl+Alt+D`) and `omarchy-shell omarchy.clock toggle` still work (the copy keeps the `omarchy.clock` IPC target). `PHOSPHOR_CALENDAR_FILE` in the shell's environment points the popup at another file (tests). Each event row has an EDIT link and the agenda a `+ NEW` link: both open Google Calendar in the default browser (`xdg-open`, one argument, fully detached; `Agenda.js` keeps only `https://calendar.google.com/calendar/...` addresses from the cache); nothing is written to the calendar | `~/.config/omarchy/plugins/phosphor-os.clock/` (`Clock.qml`, `Panel.qml`, `Model.js`, `Agenda.js`), `~/.local/state/phosphor-os/calendar.json` (the cache, read only) | Same as 6c: removing the clock plugin folder brings back Omarchy's own calendar. The cache stays |
+| 9b | Notifications that wait: our copy of Omarchy's notifications plugin (`os/omarchy/notifications/`, id `phosphor-os.notifications`, `clonedFrom` `omarchy.notifications`), plus `{"id":"phosphor-os.notifications"}` in `plugins[]` and last in `bar.layout.right` (after the clock), and `omarchy.notifications` in `disabledPlugins[]` (`cloneSourceRestores[]` too, so Omarchy's own off switch for the copy brings the built-in back) | A pop-up slides away after its usual time but is not lost: a bell with a count at the bottom right shows how many wait until you dismiss them. Click the bell = show them all as cards above it (click again = tuck them away; with none waiting, click = the history). Right click = dismiss all. On a card: X = dismiss, click = run its action and dismiss, right click = dismiss. With DND on (bell with a slash) nothing pops up, but it waits in the count. Cards stack bottom right, in the theme's colors and font. Waiting ones survive a shell restart. One its sender withdraws (Discord, read elsewhere) leaves the count. A waiting one its app updates in place pops up again. `omarchy-shell notifications ...` and the `Super + ,` keys work as before (`Super + ,` dismisses the newest waiting one); new IPC: `toggleWaiting`, `waiting`. The pop-up files in `~/.local/state/omarchy/notifications/` stay the same, so the taskbar's red dots still work | `~/.config/omarchy/plugins/phosphor-os.notifications/` (a copy), `~/.config/omarchy/shell.json` | Takes the entries out (the built-in comes back), removes the folder (a folder it replaced comes back) |
+| 10 | One line at the end of `hyprland.lua` loads `os/hyprland/phosphor-os.lua` | Desktop mode and keys (next table) | `~/.config/hypr/hyprland.lua` (backup next to it) | `setup-linux.sh --undo` removes the line |
+| 11 | App menu entry "Phosphor-OS" | Start the app from the menu; gives the window its class | `~/.local/share/applications/phosphor-os.desktop` | `setup-linux.sh --undo` removes it |
+| 12 | App menu entry "Phosphor Docs" (keywords docs, documents, notes, markdown) | `Super + Space`, type "doc": the app comes to the front on DOCS (`phosphor-os.sh --docs`; starts it if needed) | `~/.local/share/applications/phosphor-docs.desktop` | `setup-linux.sh --undo` removes it |
+
+The bar stays on. Older versions of `setup-linux.sh` hid it. Run the new one and it shows the bar again.
+`setup-linux.sh --undo` also shows it again.
+
+What `os/hyprland/phosphor-os.lua` does (nothing else in Omarchy's Hyprland files changes):
+
+- Starts Phosphor-OS at login on workspace 1, maximized and tiled, under the bar. No border, no rounded corners.
+- No gaps between windows or at the screen edge.
+- Steam's main window tiles like other apps (Omarchy floats it). Its popups still float.
+- The keys in the next table.
+
+## Keys
+
+| Key | What it does |
+|---|---|
+| `Super + Alt + R` | Restart the Phosphor-OS app (the server and running chats keep going) |
+| `Super + Alt + T` | A plain terminal. The safety net: works even when Phosphor-OS does not |
+| `Super + T` | The window to full size, under the bar (Omarchy: float toggle) |
+| `Super + F` | Real full screen, over the bar (Omarchy's own: games, video) |
+| `Super + Shift + T` | Floating on or off (moved here from `Super + T`) |
+| `Super + M` | Minimize: the window goes to a hidden workspace; its dimmed taskbar button (or a notification click) brings it back |
+| `Super + Space` | Omarchy's menu |
+| `Super + Return` | Omarchy's terminal |
+| `Super + Shift + Space` | Hide or show the bar (Omarchy's own) |
+| `Super + Ctrl + Alt + D` | The calendar (Omarchy's key, bound again to ask the clock itself, so it reaches the pack's clock too) |
+| `Super + 1` to `Super + 9` | Workspaces; Phosphor-OS lives on 1 |
+
+## Apply, update, undo
+
+Apply everything (app and look): `bash scripts/setup-linux.sh`. Only the look: `bash os/omarchy/desktop.sh`.
+Another theme: add `--theme retro-green` or `--theme lcars`. See first what would change: add `--dry-run`.
+
+Update: get the new files (`git pull`, or the `rsync` line in `docs/LINUX.md`), then run the same script
+again. It changes only what is different. After a new `taskbar.qml`, screensaver or notifications plugin:
+`omarchy restart shell` (the plugins are copied in again, but the running shell keeps the old code until then; a changed screensaver page needs `npm run build` first).
+
+The notifications plugin and the clock's `Indicators.qml` are copies of Omarchy 4.0.4's; every change is marked
+`Phosphor-OS:` in the code. After an Omarchy update that changes `/usr/share/omarchy/shell/plugins/notifications/` or
+`plugins/bar/widgets/Indicators.qml`, merge those changes into the copies.
+
+Undo the look: `bash os/omarchy/desktop.sh --undo`. Undo everything: `bash scripts/setup-linux.sh --undo`
+(it runs the look's undo first), then log out and in.
+
+### How undo works
+
+- The pack writes notes in `~/.local/state/PhosphorOS/desktop.state`: what it changed and the old values.
+  Undo takes back only those changes. A thing that was already as the pack wants it is not noted, so undo
+  leaves it alone.
+- Before it changes `shell.json`, `shell.toml`, `taskbar.qml` or a plugin folder of the same name the first time, the pack keeps a copy in
+  `~/.local/state/PhosphorOS/desktop-backup/`.
+- If the file is still as the pack left it, undo puts the copy back, byte for byte.
+- If you or Omarchy changed the file since (for example with `omarchy bar move`), undo puts back only the
+  pack's keys and keeps your changes. The copy stays in the backup folder.
+- Theme and font: undo puts your old ones back only if the pack's theme or VT323 is still on. If you picked
+  another one since, it stays.
+- `shell.json` is written the way Omarchy's own `omarchy bar` writes it (sorted keys, two spaces).
+- Applied under the old name (Retro Claude)? Both scripts read the old notes in `~/.local/state/RetroClaude/`,
+  swap the old names for the new ones on the next run, and `--undo` takes back either (`docs/MIGRATE.md`).
+
+## App-side Linux fixes
+
+Changes in the app itself, not in Omarchy:
+
+- `shell/main.mjs`: in desktop mode on Linux the window is maximized, not full screen, so the bar stays visible.
+- `shell/web.mjs`: pasting a screenshot reads the clipboard with Electron first; when that finds no picture
+  on Wayland, it asks `wl-paste`.
+
+## Local model (optional)
+
+Not part of the look. `scripts/setup-local-model.sh` installs a user service (`phosphor-local-model.service`), a key and
+a chat template under `~/.config`, and five `PHOSPHOR_LOCAL_*` lines in `.env`; `--undo` removes them. Needs the pacman
+packages `llama-cpp` and `ggml-hip`. Details and traps: `docs/LOCAL-MODEL.md`.

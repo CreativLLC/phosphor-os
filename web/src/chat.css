@@ -1,0 +1,938 @@
+/* Chat log, message items, permission and question cards, composer. Owner: look team.
+   Markup comes from chat.ts: .item.user/.claude/.tool/.note/.perm/.ask */
+
+#log {
+  line-height: 1.25;
+}
+
+.item {
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+}
+
+.item .who {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 2px;
+  line-height: 1.1;
+  margin-bottom: 3px;
+}
+
+/* ---------- You: a lit, filled block with a bright bar on the left ---------- */
+
+.item.user {
+  background: rgb(var(--ph-rgb) / 0.08);
+  border-left: 3px solid var(--ph-bright);
+  padding: 6px 12px 8px;
+  box-shadow: inset 0 0 0 1px rgb(var(--ph-rgb) / 0.12);
+}
+
+.item.user .who {
+  color: var(--ph);
+}
+
+.item.user .body {
+  white-space: pre-wrap;
+  color: var(--ph-bright);
+}
+
+/* ---------- Claude: open text under a ruled label ---------- */
+
+.item.claude .who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.item.claude .who::after {
+  content: '';
+  flex: 1;
+  height: 0;
+  border-top: 1px dashed var(--line);
+}
+
+.item.claude .body {
+  color: var(--ph);
+  padding-left: 2px;
+}
+
+/* ---------- Tool lines: compact, dim, one per row ---------- */
+
+.item.tool {
+  margin: 0 0 1px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  text-shadow: none;
+}
+
+/* Breathing room where a run of tool lines starts or ends. */
+.item:not(.tool) + .item.tool {
+  margin-top: -4px;
+}
+.item.tool + .item:not(.tool) {
+  margin-top: 10px;
+}
+
+.item.tool .line {
+  display: flex;
+  gap: 0.5em;
+  align-items: baseline;
+  padding: 1px 4px 1px 0;
+  min-width: 0;
+}
+
+.item.tool .line::before {
+  content: '-';
+  flex: 0 0 3ch;
+  text-align: center;
+  white-space: nowrap;
+  color: rgb(var(--ph-rgb) / 0.4);
+}
+
+.item.tool .name {
+  flex: 0 0 auto;
+  color: var(--ph);
+  opacity: 0.85;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.item.tool .detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Lines that open: [+] / [-] and the whole row is the tap target. */
+.item.tool.expandable .line {
+  cursor: pointer;
+}
+
+.item.tool.expandable .line::before {
+  content: '[+]';
+  color: var(--ph);
+}
+
+.item.tool.expandable:has(> pre) .line::before {
+  content: '[-]';
+  color: var(--ph-bright);
+}
+
+.item.tool.expandable:has(> pre) .detail {
+  white-space: normal;
+}
+
+@media (hover: hover) {
+  .item.tool.expandable .line:hover {
+    background: rgb(var(--ph-rgb) / 0.1);
+    color: var(--ph);
+  }
+}
+
+@media (pointer: coarse) {
+  .item.tool.expandable .line {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+}
+
+.item.tool > pre.code {
+  margin: 2px 0 8px 3.5ch;
+}
+
+.item.tool.error .name::after {
+  content: 'FAIL';
+  display: inline-block;
+  margin-left: 0.5em;
+  padding: 0 4px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  letter-spacing: 1px;
+}
+
+.item.tool.error .detail {
+  color: var(--ph);
+}
+
+/* ---------- Notes: centered between rules ---------- */
+
+.item.note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.item.note::before,
+.item.note::after {
+  content: '';
+  flex: 1 1 24px;
+  border-top: 1px dashed var(--line);
+}
+
+.item.note .body {
+  max-width: 85%;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+/* ---------- Code and diffs ---------- */
+
+pre.code {
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.15;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow: auto;
+  margin: 6px 0;
+  padding: 6px 0;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ph-dim);
+  color: var(--ph);
+  text-shadow: var(--glow);
+}
+
+pre.code > span {
+  display: block;
+  padding: 0 10px;
+}
+
+pre.code .add {
+  color: var(--ph-bright);
+  background: rgb(var(--ph-rgb) / 0.13);
+  box-shadow: inset 3px 0 0 var(--ph-bright);
+}
+
+pre.code .del {
+  color: var(--ph-dim);
+  text-decoration: line-through;
+  text-decoration-color: rgb(var(--ph-rgb) / 0.45);
+  text-shadow: none;
+}
+
+/* ---------- Permission / question: priority alert cards ---------- */
+
+.item.perm,
+.item.ask {
+  border: 2px solid var(--ph);
+  background: rgb(var(--ph-rgb) / 0.05);
+  padding: 0 12px 12px;
+  margin-top: 6px;
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 0 4px rgb(var(--ph-rgb) / 0.4),
+    0 0 22px rgb(var(--ph-rgb) / 0.16);
+}
+
+.item.perm .who,
+.item.ask .who {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -12px 10px;
+  padding: 5px 12px 4px;
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  font-size: var(--fs);
+  letter-spacing: 3px;
+}
+
+.item.perm .who::after,
+.item.ask .who::after {
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+
+.item.perm .who::after {
+  content: 'PRIORITY';
+}
+
+.item.ask .who::after {
+  content: 'AWAITING INPUT';
+}
+
+/* Waiting for you: the right-hand label blinks. */
+.item.perm:not(:has(> .status)) .who::after,
+.item.ask:not(:has(> .status)) .who::after {
+  animation: blink 1.2s steps(1) infinite;
+}
+
+.item.perm .title,
+.item.ask .title {
+  color: var(--ph-bright);
+  margin: 0 0 6px;
+}
+
+.item.perm .plan {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  background: rgb(var(--ph-rgb) / 0.04);
+}
+
+.item.ask .title + .options {
+  margin-top: 4px;
+}
+
+/* Answered or done: the card calms down. */
+.item.perm:has(> .status),
+.item.ask:has(> .status) {
+  border-color: var(--ph-dim);
+  border-width: 1px;
+  background: transparent;
+  box-shadow: none;
+  padding-bottom: 8px;
+}
+
+.item.perm:has(> .status) .who,
+.item.ask:has(> .status) .who {
+  background: rgb(var(--ph-rgb) / 0.16);
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.item.perm:has(> .status) .who::after {
+  content: 'CLOSED';
+}
+
+.item.ask:has(> .status) .who::after {
+  content: 'ANSWERED';
+}
+
+.item .status {
+  color: var(--ph-bright);
+  letter-spacing: 2px;
+  margin-top: 2px;
+}
+
+.item .buttons,
+.options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.item.perm .buttons button,
+.item.ask .buttons button {
+  min-height: 44px;
+  min-width: 140px;
+  padding: 6px 18px;
+  letter-spacing: 3px;
+}
+
+.item.ask .options {
+  margin-top: 6px;
+}
+
+.item.ask button.option {
+  min-height: max(var(--tap), 40px);
+  padding: 6px 14px 6px 10px;
+  text-align: left;
+  line-height: 1.1;
+}
+
+.item.ask button.option::before {
+  content: '[ ]';
+  margin-right: 8px;
+  color: var(--ph-dim);
+}
+
+.item.ask button.option.on {
+  background: var(--ph);
+  border-color: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.item.ask button.option.on::before {
+  content: '[X]';
+  color: var(--bg);
+}
+
+.item.ask input.other {
+  width: 100%;
+  margin-top: 8px;
+}
+
+@media (max-width: 560px) {
+  .item.perm .buttons button,
+  .item.ask .buttons button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .item.ask button.option {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---------- Markdown in Claude's replies ---------- */
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p {
+  margin: 0 0 0.6em;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  color: var(--ph-bright);
+  text-shadow: var(--glow-strong);
+  font-weight: normal;
+  letter-spacing: 2px;
+  line-height: 1.1;
+  margin: 0.9em 0 0.4em;
+}
+
+.md h1 {
+  font-size: 1.4em;
+  padding-bottom: 4px;
+  border-bottom: 3px double var(--ph-dim);
+}
+
+.md h2 {
+  font-size: 1.22em;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--ph-dim);
+}
+
+.md h3 {
+  font-size: 1.08em;
+}
+
+.md h3::before,
+.md h4::before {
+  content: '> ';
+  color: var(--ph-dim);
+}
+
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 1em;
+  text-shadow: var(--glow);
+}
+
+.md strong,
+.md b {
+  font-weight: normal;
+  color: var(--ph-bright);
+  text-shadow: var(--glow-strong);
+}
+
+.md em,
+.md i {
+  font-style: normal;
+  text-decoration: underline;
+  text-decoration-color: rgb(var(--ph-rgb) / 0.5);
+  text-underline-offset: 3px;
+}
+
+.md ul,
+.md ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.7em;
+}
+
+.md ul {
+  list-style: none;
+}
+
+.md ul > li {
+  position: relative;
+}
+
+.md ul > li::before {
+  content: '\2022';
+  position: absolute;
+  left: -1.1em;
+  color: var(--ph-dim);
+}
+
+.md ul ul > li::before {
+  content: '-';
+}
+
+.md ol > li::marker {
+  color: var(--ph-dim);
+}
+
+.md li + li {
+  margin-top: 0.15em;
+}
+
+.md li > ul,
+.md li > ol {
+  margin: 0.15em 0 0.2em;
+}
+
+.md li > p {
+  margin: 0 0 0.3em;
+}
+
+.md code {
+  font-family: var(--font);
+  font-size: 1em;
+  color: var(--ph-bright);
+  background: rgb(var(--ph-rgb) / 0.1);
+  border: 1px solid rgb(var(--ph-rgb) / 0.18);
+  padding: 0 0.3em;
+}
+
+.md pre {
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.15;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ph-dim);
+  padding: 8px 12px;
+  margin: 0.3em 0 0.8em;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.md .code-box {
+  position: relative;
+}
+
+/* COPY icon on a code block: shows when the pointer is over the block; always shown on touch screens. */
+.md .code-copy {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  min-width: 0;
+  min-height: 0; /* buttons get a finger-size minimum elsewhere; this one must fit a one-line block */
+  padding: 0;
+  color: var(--ph);
+  background: var(--bg-deep);
+  border: 1px solid var(--ph-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.md .code-copy:hover {
+  color: var(--ph-bright);
+  border-color: var(--ph);
+}
+
+.md .code-box:hover .code-copy,
+.md .code-copy:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .md .code-copy {
+    opacity: 0.85;
+  }
+}
+
+.md pre code {
+  color: var(--ph);
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.md blockquote {
+  margin: 0 0 0.6em;
+  padding: 2px 0 2px 12px;
+  border-left: 3px double var(--ph-dim);
+  color: var(--ph-dim);
+}
+
+.md blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.md a {
+  color: var(--ph-bright);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (hover: hover) {
+  .md a:hover {
+    background: var(--ph-bright);
+    color: var(--bg);
+    text-shadow: none;
+    text-decoration: none;
+  }
+}
+
+.md hr {
+  border: 0;
+  height: 1px;
+  margin: 0.9em 0;
+  background: repeating-linear-gradient(to right, var(--ph-dim) 0 8px, transparent 8px 14px);
+}
+
+.md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.3em 0 0.8em;
+  font-size: var(--fs-sm);
+  line-height: 1.15;
+}
+
+.md th,
+.md td {
+  border: 1px solid var(--line);
+  padding: 3px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th {
+  background: rgb(var(--ph-rgb) / 0.14);
+  color: var(--ph-bright);
+  letter-spacing: 1px;
+  font-weight: normal;
+  border-bottom: 2px solid var(--ph-dim);
+}
+
+.md tr:nth-child(even) td {
+  background: rgb(var(--ph-rgb) / 0.04);
+}
+
+/* ---------- Message box: wrap the tools under it when the column is narrow ---------- */
+
+#center {
+  container-type: inline-size;
+}
+
+#composer.busy #input {
+  border-color: rgb(var(--ph-rgb) / 0.4);
+}
+
+@container (max-width: 600px) {
+  #composer {
+    flex-wrap: wrap;
+  }
+  #input {
+    flex-basis: 100%;
+  }
+  .composer-tools {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  /* Phones: wrap long code lines instead of scrolling sideways. */
+  .md pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 820px), (pointer: coarse) and (max-width: 1150px) {
+  #composer::before {
+    left: calc(8px + 10px);
+    top: calc(6px + 1px + 9px);
+  }
+}
+
+/* BYPASS permission mode: inverse video so it is never on by accident. */
+#mode.bypass {
+  background: var(--ph-bright);
+  color: var(--bg);
+  border-color: var(--ph-bright);
+  text-shadow: none;
+}
+
+/* ---------- Attachments: tray above the message box, thumbnails in the chat ---------- */
+
+#tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-basis: 100%;
+}
+
+.att-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 2px 2px 2px 4px;
+  border: 1px solid var(--ph-dim);
+  background: var(--bg-raise);
+}
+
+.att-chip.busy {
+  border-style: dashed;
+}
+
+.att-chip.failed {
+  opacity: 0.6;
+}
+
+.att-chip img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+}
+
+.att-icon {
+  color: var(--ph-dim);
+}
+
+.att-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm, 0.88em);
+}
+
+.att-x {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+}
+
+.att-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+/* Thumbnails are tinted to the phosphor color; hover shows the real colors. */
+.att-thumb {
+  display: block;
+  border: 1px solid var(--ph-dim);
+  background: var(--ph);
+}
+
+.att-thumb img {
+  display: block;
+  max-width: min(320px, 100%);
+  max-height: 220px;
+  filter: grayscale(1) contrast(1.1);
+  mix-blend-mode: multiply;
+}
+
+.att-thumb:hover img {
+  filter: none;
+  mix-blend-mode: normal;
+}
+
+.att-chip-sm {
+  padding: 2px 6px;
+  border: 1px solid var(--ph-dim);
+  font-size: var(--fs-sm, 0.88em);
+}
+
+#center.drop-target {
+  outline: 2px dashed var(--ph-bright);
+  outline-offset: -6px;
+}
+
+/* ---------- Prominence (owner's ask): Claude's words are loud, tool steps are quiet ---------- */
+
+.item.claude {
+  margin: 8px 0 18px;
+}
+
+.item.claude .body {
+  font-size: 1.1em;
+  line-height: 1.3;
+  border-left: 2px solid var(--ph);
+  padding: 2px 0 2px 12px;
+}
+
+/* A run of tool steps folds into one dim line. */
+.tool-group {
+  margin: 0 0 8px;
+  color: var(--ph-dim);
+  font-size: calc(var(--fs-sm, 0.88em) * 0.92);
+  line-height: 1.2;
+  opacity: 0.65;
+  text-shadow: none;
+}
+
+.tool-group:hover,
+.tool-group.open {
+  opacity: 1;
+}
+
+.tg-sum {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 2px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.tg-sum::before {
+  content: '+ ';
+}
+
+.tool-group.open .tg-sum::before {
+  content: '- ';
+}
+
+.tg-sum:focus-visible {
+  outline: 1px dashed var(--ph);
+}
+
+@media (pointer: coarse) {
+  .tg-sum {
+    padding: 8px 4px;
+  }
+}
+
+.tool-group:not(.open) .tg-list {
+  display: none;
+}
+
+.tool-group .tg-list {
+  margin: 2px 0 4px 4px;
+  padding-left: 1.5ch;
+  border-left: 1px dashed var(--line);
+}
+
+.item.note {
+  opacity: 0.6;
+  font-size: calc(var(--fs-sm) * 0.92);
+}
+
+/* AUTO model: what the router chose for this message */
+.item.user .route {
+  margin-top: 4px;
+  color: var(--ph-dim);
+  font-size: calc(var(--fs-sm) * 0.92);
+  letter-spacing: 1px;
+}
+
+/* ---------- UNDO: quiet button on your messages, confirm dialog ---------- */
+
+.item.user .who {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.undo-btn {
+  min-height: 0;
+  padding: 0 6px;
+  border-color: transparent;
+  color: var(--ph-dim);
+  font-size: calc(var(--fs-sm, 0.88em) * 0.9);
+  letter-spacing: 1px;
+  text-shadow: none;
+  opacity: 0;
+}
+
+.item.user:hover .undo-btn,
+.undo-btn:focus-visible {
+  opacity: 1;
+}
+
+.undo-btn:hover {
+  border-color: var(--ph);
+  color: var(--ph-bright);
+}
+
+@media (hover: none) {
+  .undo-btn {
+    opacity: 0.7;
+    padding: 4px 8px;
+  }
+}
+
+#undo-dialog .undo-files {
+  max-height: 40dvh;
+  overflow-y: auto;
+  margin: 6px 0;
+  padding-left: 2ch;
+  color: var(--ph-bright);
+}
+
+#undo-dialog .undo-what,
+#undo-dialog .undo-stats {
+  margin: 6px 0;
+}
+
+#undo-dialog .undo-stats {
+  color: var(--ph-dim);
+}
+
+/* Jump back to the newest line (shows when you scrolled up to read). */
+.jump-latest {
+  position: absolute;
+  right: 22px;
+  bottom: 150px;
+  z-index: 5;
+  background: var(--bg-raise);
+  border-color: var(--accent);
+  color: var(--accent);
+  text-shadow: none;
+  box-shadow: 0 0 10px rgb(0 0 0 / 0.6);
+}
+
+/* Yes/no box (ui.ts confirmBox). */
+dialog.confirm-box p {
+  max-width: 46ch;
+}
+
+/* AUTO-CONTINUE (web/src/resume.ts): the banner above the progress row, and the message it sent. */
+.resume-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-raise);
+  color: var(--ph-bright);
+  letter-spacing: 1px;
+}
+
+.resume-bar[hidden] {
+  display: none;
+}
+
+.resume-text {
+  flex: 1 1 24ch;
+  min-width: 0;
+}
+
+.item.user.auto .who {
+  color: var(--ph-dim);
+}
+
+.item.user.auto .body {
+  color: var(--ph-dim);
+}

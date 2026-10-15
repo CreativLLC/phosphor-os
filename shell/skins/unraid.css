@@ -1,0 +1,96 @@
+/* Unraid webGUI. Login page: fully skinned, tested on the real page (Unraid 7). The logged-in pages load their
+   theme stylesheets only after login, so they could not be checked from here: they keep Unraid's own colors and
+   get only the frame, scrollbars and selection (base.css). Readability first. */
+
+body:has(> #login) {
+  background: var(--rc-bg) !important;
+  color: var(--rc-text) !important;
+  font-family: var(--rc-font) !important;
+}
+
+#login {
+  background: var(--rc-raise) !important;
+  border: 1px solid var(--rc-line);
+  border-radius: var(--rc-radius) !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+/* The red-orange header wedge (.angle::after) becomes a flat theme bar. */
+#login .logo,
+#login .logo.angle {
+  height: auto !important;
+  border-radius: 0 !important;
+  border-bottom: 2px solid var(--rc-primary);
+}
+
+#login .angle::after {
+  background: var(--rc-raise) !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+#login .logo svg,
+#login .wordmark svg {
+  fill: var(--rc-primary) !important;
+  color: var(--rc-primary) !important;
+}
+
+#login .logo svg *,
+#login .wordmark svg * {
+  fill: var(--rc-primary) !important;
+}
+
+#login h1 {
+  font-family: var(--rc-display) !important;
+  color: var(--rc-head) !important;
+  text-shadow: var(--rc-glow);
+  letter-spacing: 2px;
+}
+
+#login h2 {
+  color: var(--rc-dim) !important;
+}
+
+#login .case,
+#login .case span {
+  color: var(--rc-primary) !important;
+}
+
+#login input {
+  background: var(--rc-deep) !important;
+  color: var(--rc-text) !important;
+  border: 1px solid var(--rc-line) !important;
+  border-radius: 0 !important;
+  font-family: var(--rc-font) !important;
+}
+
+#login input:focus {
+  border-color: var(--rc-primary) !important;
+}
+
+#login input::placeholder {
+  color: var(--rc-dim) !important;
+}
+
+#login .button,
+#login button {
+  background: var(--rc-primary) !important;
+  color: var(--rc-on-primary) !important;
+  border: 0 !important;
+  border-image: none !important;
+  border-radius: var(--rc-pill) !important;
+  -webkit-text-fill-color: var(--rc-on-primary) !important;
+  background-clip: border-box !important;
+}
+
+#login a {
+  color: var(--rc-bright) !important;
+  -webkit-text-fill-color: var(--rc-bright) !important;
+  background: none !important;
+}
+
+#login .error,
+#login .error a {
+  color: var(--rc-alert) !important;
+}

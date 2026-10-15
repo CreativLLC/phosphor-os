@@ -1,0 +1,10 @@
+/* UPDATE chip (sdkupdate.ts): inverse colors of the theme, so it stands out in every theme. */
+#top .top-tools > #btn-update {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+#top .top-tools > #btn-update:disabled {
+  opacity: 0.7;
+}

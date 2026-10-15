@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p .
+
+      - name: Build
+        run: npm run build
+
+      - name: List shell scripts
+        run: |
+          git ls-files | while read -r f; do
+            if [[ $f == *.sh ]] || head -n1 "$f" | grep -qE '^#!.*\b(ba)?sh\b'; then echo "$f"; fi
+          done >"$RUNNER_TEMP/shell-files"
+          cat "$RUNNER_TEMP/shell-files"
+
+      - name: Shell syntax (bash -n)
+        run: xargs -a "$RUNNER_TEMP/shell-files" -n1 bash -n
+
+      # Warnings and errors only. tests/fixtures holds a frozen copy of the old pack, left as it was.
+      - name: ShellCheck
+        run: grep -v '^tests/fixtures/' "$RUNNER_TEMP/shell-files" | xargs shellcheck -S warning
+
+      - name: Tools for tests/pack.sh
+        run: |
+          missing=()
+          for t in jq rsync script unshare; do command -v "$t" >/dev/null || missing+=("$t"); done
+          if ((${#missing[@]})); then sudo apt-get update -q && sudo apt-get install -y -q jq rsync util-linux; fi
+          # The migration case uses `unshare --user --cgroup`; Ubuntu 24.04 limits user namespaces by default.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Pack tests (fake HOME, stand-in commands)
+        run: bash tests/pack.sh

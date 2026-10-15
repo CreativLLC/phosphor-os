@@ -1,0 +1,7 @@
+# Phosphor-OS: switches night light at the edges of the schedule set in the clock popup (desktop.sh installs it).
+[Unit]
+Description=Phosphor-OS night light schedule
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/omarchy/plugins/phosphor-os.clock/phosphor-nightlight tick

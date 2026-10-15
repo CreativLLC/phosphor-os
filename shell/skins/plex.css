@@ -1,0 +1,45 @@
+/* Plex web. Plex is already a dark app; most of its colors are fixed in hashed class names, only a few come from
+   variables (.react-chroma-dark). So the skin is light: theme accents through those variables, the page
+   background, font kept (its layout is tight). The sign-in form is a frame inside the page (Plex's own address),
+   which page CSS cannot reach. Tested: the sign-in screen. The library screens need a login: untested. */
+
+.react-chroma-dark,
+:root {
+  --color-brand-accent: var(--rc-primary) !important;
+  --color-static-yellow: var(--rc-primary) !important;
+  --color-background-accent: var(--rc-primary) !important;
+  --color-background-accent-focus: var(--rc-bright) !important;
+  --color-text-accent: var(--rc-primary) !important;
+  --color-text-on-accent: var(--rc-on-primary) !important;
+  --color-text-default: var(--rc-text) !important;
+  --color-text-muted: var(--rc-dim) !important;
+  --color-text-alert: var(--rc-alert) !important;
+  --color-background-modal: var(--rc-raise) !important;
+  --color-overlay-background: var(--rc-raise) !important;
+  --color-menu: var(--rc-raise) !important;
+  --color-keyboard-focus: var(--rc-bright) !important;
+  --color-highlight-focus: var(--rc-bright) !important;
+  --color-highlight-control-focus: rgba(var(--rc-rgb), 0.8) !important;
+}
+
+html,
+body,
+#plex {
+  background-color: var(--rc-bg) !important;
+}
+
+/* The sign-in screen's gradient backdrop. */
+body > div[class*='background'],
+div[class*='Background-background'],
+div[class*='FullPageBackground'] {
+  background: var(--rc-bg) !important;
+}
+
+/* White Plex logo in the theme color. */
+img[alt='Plex'],
+img[src*='logo'],
+svg[class*='PlexLogo'],
+svg[class*='logo'],
+a[class*='Logo'] svg {
+  filter: var(--rc-logo-filter);
+}

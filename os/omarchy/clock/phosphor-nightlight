@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# Phosphor-OS night light: a warmth and a schedule for Omarchy's night light (hyprsunset).
+#
+#   phosphor-nightlight tick [--now EPOCH]    the timer, every minute: switch at the schedule's edges only
+#   phosphor-nightlight set KEY=VALUE...      save settings: warmth=2500..5900, schedule=off|fixed|sun,
+#                                             from=HH:MM, to=HH:MM; then tick
+#   phosphor-nightlight status [--now EPOCH]  settings, the weather location and today's sun times, as JSON
+#   phosphor-nightlight toggle                on at the saved warmth, or off (the clock popup's click)
+#   phosphor-nightlight preview KELVIN        while on: show this warmth now, without saving it (the slider)
+#
+# Settings: ~/.config/phosphor-os/nightlight.json. The last scheduled state: ~/.local/state/phosphor-os/.
+# A tick acts only when the scheduled state (on/off) differs from the last one it applied, or when the schedule
+# or the Hyprland session changed (a login): so a manual toggle sticks until the next edge.
+# "sun" uses the weather widget's saved place (~/.local/state/omarchy/settings/weather.json, lat/lon), with
+# sunset and sunrise worked out here (NOAA formula, no network).
+set -uo pipefail
+
+CONF="$HOME/.config/phosphor-os/nightlight.json"
+state_home=${XDG_STATE_HOME:-}
+[[ $state_home == /* ]] || state_home="$HOME/.local/state"
+STATE="$state_home/phosphor-os/nightlight-schedule"
+WEATHER="$HOME/.local/state/omarchy/settings/weather.json"
+DAY_TEMP=6500 # Omarchy's "off" (its service and omarchy-toggle-nightlight use the same)
+
+die() { echo "phosphor-nightlight: $*" >&2; exit 1; }
+
+cmd=${1:-}
+[[ $# -gt 0 ]] && shift
+NOW=$(date +%s)
+if [[ ${1:-} == --now ]]; then
+  [[ ${2:-} =~ ^[0-9]+$ ]] || die "--now needs seconds since 1970"
+  NOW=$2
+  shift 2
+fi
+
+# ---- settings
+
+load() {
+  local out
+  out=$(jq -r '[(.warmth // 4000), (.schedule // "off"), (.from // "21:00"), (.to // "07:00")] | @tsv' "$CONF" 2>/dev/null) ||
+    out=$'4000\toff\t21:00\t07:00'
+  IFS=$'\t' read -r WARMTH SCHEDULE FROM TO <<<"$out"
+}
+
+# The weather place: "name<TAB>lat<TAB>lon" (lat/lon empty when only a name is saved).
+place() {
+  jq -r '[(.name // "" | tostring), (.latitude // "" | tostring), (.longitude // "" | tostring)] | @tsv' "$WEATHER" 2>/dev/null
+}
+
+minutes() { echo $((10#${1%:*} * 60 + 10#${1#*:})); }
+
+# lat lon: "RISE SET" (seconds since 1970) for the local day of NOW, or "night" / "day" when the sun stays down
+# or up all day. NOAA's solar equations (the ones in its sunrise/sunset spreadsheet).
+sun() {
+  local base
+  base=$(date -u -d "$(date -d "@$NOW" +%F)" +%s) # midnight UTC of today's local date
+  jq -nr --argjson lat "$1" --argjson lon "$2" --argjson base "$base" '
+    def rad: . * 3.141592653589793 / 180;
+    def deg: . * 180 / 3.141592653589793;
+    def fold: . - 360 * ((. / 360) | floor);
+    (($base / 86400 + 2440588 - 2451545) / 36525) as $t
+    | (280.46646 + $t * (36000.76983 + $t * 0.0003032) | fold) as $l0
+    | (357.52911 + $t * (35999.05029 - 0.0001537 * $t)) as $m
+    | (0.016708634 - $t * (0.000042037 + 0.0000001267 * $t)) as $e
+    | (($m | rad | sin) * (1.914602 - $t * (0.004817 + 0.000014 * $t))
+       + (2 * $m | rad | sin) * (0.019993 - 0.000101 * $t) + (3 * $m | rad | sin) * 0.000289) as $c
+    | (125.04 - 1934.136 * $t) as $om
+    | ($l0 + $c - 0.00569 - 0.00478 * ($om | rad | sin)) as $app
+    | (23 + (26 + (21.448 - $t * (46.815 + $t * (0.00059 - $t * 0.001813))) / 60) / 60
+       + 0.00256 * ($om | rad | cos)) as $eps
+    | (($eps | rad | sin) * ($app | rad | sin) | asin) as $decl
+    | ($eps / 2 | rad | tan | . * .) as $y
+    | (4 * ($y * (2 * $l0 | rad | sin) - 2 * $e * ($m | rad | sin)
+       + 4 * $e * $y * ($m | rad | sin) * (2 * $l0 | rad | cos)
+       - 0.5 * $y * $y * (4 * $l0 | rad | sin) - 1.25 * $e * $e * (2 * $m | rad | sin) | deg)) as $eqtime
+    | ((90.833 | rad | cos) / (($lat | rad | cos) * ($decl | cos)) - ($lat | rad | tan) * ($decl | tan)) as $x
+    | if $x > 1 then "night" elif $x < -1 then "day"
+      else ($x | acos | deg) as $ha | (720 - 4 * $lon - $eqtime) as $noon
+        | "\($base + (($noon - 4 * $ha) * 60 | round)) \($base + (($noon + 4 * $ha) * 60 | round))"
+      end'
+}
+
+# What the schedule wants now: on or off. Fails for "sun" without a saved place with coordinates.
+scheduled() {
+  case $SCHEDULE in
+    fixed)
+      local now f t
+      now=$(minutes "$(date -d "@$NOW" +%H:%M)") f=$(minutes "$FROM") t=$(minutes "$TO")
+      if ((f < t)); then ((now >= f && now < t)) && echo on || echo off
+      elif ((f > t)); then ((now >= f || now < t)) && echo on || echo off
+      else echo off; fi
+      ;;
+    sun)
+      local name lat lon times
+      IFS=$'\t' read -r name lat lon <<<"$(place)"
+      [[ -n $lat && -n $lon ]] || return 1
+      times=$(sun "$lat" "$lon") || return 1
+      case $times in
+        night) echo on ;;
+        day) echo off ;;
+        *) ((NOW < ${times% *} || NOW >= ${times#* })) && echo on || echo off ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# ---- hyprsunset
+
+current() { hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+' | head -n 1; }
+
+apply() { # on|off
+  local temp=$DAY_TEMP
+  if [[ $1 == on ]]; then
+    temp=$WARMTH
+    if ! pgrep -x hyprsunset >/dev/null; then
+      setsid uwsm-app -- hyprsunset >/dev/null 2>&1 &
+      sleep 1
+    fi
+  elif ! pgrep -x hyprsunset >/dev/null; then
+    return 0 # not running: already off
+  fi
+  # A freshly started hyprsunset applies its default at the end of its start: send until it sticks.
+  for _ in {1..10}; do
+    hyprctl hyprsunset temperature "$temp" >/dev/null 2>&1
+    sleep 0.2
+    if [[ $(current) == "$temp" ]]; then
+      omarchy-shell -q nightlight refresh >/dev/null 2>&1
+      return 0
+    fi
+  done
+  return 1
+}
+
+tick() {
+  load
+  if [[ $SCHEDULE == off ]]; then
+    rm -f "$STATE"
+    return 0
+  fi
+  local session=${HYPRLAND_INSTANCE_SIGNATURE:-} want key last_key="" last_state=""
+  [[ -n $session ]] || return 0 # no desktop to switch
+  if ! want=$(scheduled); then # "sun" without a place: forget the last edge, so a place or a change applies anew
+    rm -f "$STATE"
+    return 0
+  fi
+  key="$session|$SCHEDULE|$FROM|$TO"
+  [[ $SCHEDULE == sun ]] && key+="|$(place | cut -f2,3)"
+  { IFS= read -r last_key; IFS= read -r last_state; } 2>/dev/null <"$STATE"
+  [[ $key == "$last_key" && $want == "$last_state" ]] && return 0
+  apply "$want" || return 1
+  mkdir -p "${STATE%/*}"
+  printf '%s\n%s\n' "$key" "$want" >"$STATE"
+}
+
+set_settings() {
+  load
+  local kv
+  for kv in "$@"; do
+    case $kv in
+      warmth=*)
+        [[ ${kv#*=} =~ ^[0-9]{1,5}$ ]] || die "warmth: a number of kelvin"
+        WARMTH=$((10#${kv#*=}))
+        WARMTH=$((WARMTH < 2500 ? 2500 : WARMTH > 5900 ? 5900 : WARMTH)) # 6000 and up counts as off in Omarchy
+        ;;
+      schedule=off | schedule=fixed | schedule=sun) SCHEDULE=${kv#*=} ;;
+      from=* | to=*)
+        [[ ${kv#*=} =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || die "${kv%%=*}: HH:MM"
+        [[ $kv == from=* ]] && FROM=${kv#*=} || TO=${kv#*=}
+        ;;
+      *) die "unknown setting: $kv" ;;
+    esac
+  done
+  mkdir -p "${CONF%/*}"
+  jq -n --argjson warmth "$WARMTH" --arg schedule "$SCHEDULE" --arg from "$FROM" --arg to "$TO" \
+    '{$warmth, $schedule, $from, $to}' >"$CONF.tmp" && mv "$CONF.tmp" "$CONF"
+  tick
+}
+
+status() {
+  load
+  local name lat lon times rise="" sunset="" allday="" want=""
+  IFS=$'\t' read -r name lat lon <<<"$(place)"
+  if [[ -n $lat && -n $lon ]] && times=$(sun "$lat" "$lon"); then
+    case $times in
+      night | day) allday=$times ;;
+      *) rise=$(date -d "@${times% *}" +%H:%M) sunset=$(date -d "@${times#* }" +%H:%M) ;;
+    esac
+  fi
+  [[ $SCHEDULE != off ]] && want=$(scheduled)
+  jq -nc --argjson warmth "$WARMTH" --arg schedule "$SCHEDULE" --arg from "$FROM" --arg to "$TO" \
+    --arg place "$name" --argjson coords "$([[ -n $lat && -n $lon ]] && echo true || echo false)" \
+    --arg sunrise "$rise" --arg sunset "$sunset" --arg allday "$allday" --arg scheduled "$want" \
+    '{$warmth, $schedule, $from, $to, $place, $coords, $sunrise, $sunset, $allday, $scheduled}'
+}
+
+# Off = not running or at Omarchy's day value (it counts 6000 and up as off).
+is_on() { pgrep -x hyprsunset >/dev/null && (($(current || echo $DAY_TEMP) < 6000)); }
+
+case $cmd in
+  toggle) load; if is_on; then apply off; else apply on; fi ;;
+  preview)
+    [[ ${1:-} =~ ^[0-9]+$ ]] && (($1 >= 1000 && $1 < 6000)) || die "preview needs a warmth, 1000..5999"
+    is_on && hyprctl hyprsunset temperature "$1" >/dev/null 2>&1
+    ;;
+  tick) tick ;;
+  set) set_settings "$@" ;;
+  status) status ;;
+  *) sed -n '4,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

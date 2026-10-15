@@ -1,0 +1,333 @@
+/* STATION (station.ts): the owner's self-hosted services. A wide drawer, like HISTORY and MCP.
+   Theme tokens only; the LCARS block at the end gives lamps and tiles that theme's colors.
+   Speed: nothing animates; sparklines are canvases drawn only after new data. */
+
+.drawer.station {
+  width: min(1180px, 100vw);
+}
+
+#station:focus {
+  outline: none;
+}
+
+.st-head-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.st-sub {
+  margin: 8px 0 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.st-sub.st-alert {
+  color: var(--ph-bright);
+}
+
+.st-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding-bottom: 12px;
+}
+
+.st-h {
+  color: var(--ph-bright);
+  letter-spacing: 3px;
+  margin: 0 0 6px;
+}
+
+/* ---------- tiles ---------- */
+
+.st-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  gap: 10px;
+}
+
+.st-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-raise);
+}
+
+.st-tile.st-down {
+  border-color: var(--ph-bright);
+  box-shadow: inset 4px 0 0 var(--ph-bright);
+}
+
+.st-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.st-lamp {
+  flex: 0 0 auto;
+  min-width: 6ch;
+  padding: 0 4px;
+  text-align: center;
+  letter-spacing: 1px;
+  border: 1px solid var(--ph-dim);
+  color: var(--ph-dim);
+}
+
+.st-up .st-lamp {
+  border-color: var(--ph);
+  background: rgb(var(--ph-rgb) / 0.16);
+  color: var(--ph-bright);
+}
+
+.st-slow .st-lamp {
+  border-style: dashed;
+  border-color: var(--ph);
+  color: var(--ph);
+}
+
+/* Down: inverse, like a FAIL tag in the chat. */
+.st-down .st-lamp {
+  border-color: var(--ph-bright);
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.st-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-bright);
+  font-size: var(--fs-lg);
+  letter-spacing: 1px;
+}
+
+.st-ms {
+  flex: 0 0 auto;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.st-meta,
+.st-note {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-down .st-note {
+  color: var(--ph);
+  white-space: normal;
+}
+
+.st-spark {
+  display: block;
+  width: 100%;
+  height: 26px;
+  color: var(--ph-dim);
+  --st-slow: var(--ph);
+  --st-down: var(--ph-bright);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Status line and buttons share a row when they fit. */
+.st-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 2px;
+}
+
+.st-foot .st-note {
+  flex: 1 1 12ch;
+  min-width: 0;
+}
+
+/* Down: the reason gets its own line above the buttons. */
+.st-down .st-foot .st-note {
+  flex-basis: 100%;
+}
+
+.st-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.st-empty {
+  padding: 18px 6px;
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.st-empty p {
+  margin: 0 0 6px;
+}
+
+/* ---------- DISCOVER ---------- */
+
+.st-discover {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+}
+
+.st-disc-form {
+  display: flex;
+  gap: 8px;
+}
+
+.st-disc-host {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.st-disc-note {
+  margin: 6px 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.st-found {
+  display: grid;
+  grid-template-columns: 7ch minmax(9ch, 16ch) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.st-port {
+  color: var(--ph-dim);
+}
+
+.st-app {
+  color: var(--ph-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-where {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-added {
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+  padding: 0 12px;
+}
+
+/* Narrow: the address goes under the name. */
+@media (max-width: 620px) {
+  .st-found {
+    grid-template-columns: 7ch minmax(0, 1fr) auto;
+  }
+  .st-where {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* ---------- ADD / EDIT box (site box look from browser.css) ---------- */
+
+.station-box .site-form {
+  overflow-y: auto;
+}
+
+.st-toggle .seg {
+  max-width: 220px;
+}
+
+.st-help {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 0;
+}
+
+/* ---------- LCARS ---------- */
+
+html[data-theme='lcars'] .st-tile {
+  border: 0;
+  border-left: 10px solid var(--lc-lilac);
+  border-radius: 18px 0 0 18px;
+  background: var(--lc-deep);
+}
+
+html[data-theme='lcars'] .st-tile.st-down {
+  border-left-color: var(--lc-red);
+  box-shadow: none;
+}
+
+html[data-theme='lcars'] .st-lamp {
+  border: 0;
+  border-radius: 999px;
+  padding: 1px 8px 0;
+  background: var(--lc-off);
+  color: var(--ph-dim);
+  font-weight: 700;
+}
+
+html[data-theme='lcars'] .st-up .st-lamp {
+  background: var(--accent);
+  color: var(--lc-ink);
+}
+
+html[data-theme='lcars'] .st-slow .st-lamp {
+  background: var(--lc-butter);
+  color: var(--lc-ink);
+}
+
+html[data-theme='lcars'] .st-down .st-lamp {
+  background: var(--lc-red);
+  color: var(--lc-ink);
+}
+
+html[data-theme='lcars'] .st-name {
+  color: var(--lc-peach);
+  font-weight: 700;
+}
+
+html[data-theme='lcars'] .st-h {
+  color: var(--lc-orange);
+  font-weight: 700;
+}
+
+html[data-theme='lcars'] .st-spark {
+  color: var(--lc-lavender);
+  --st-slow: var(--lc-butter);
+  --st-down: var(--lc-red);
+  border-bottom: 2px solid var(--lc-off);
+}
+
+html[data-theme='lcars'] .st-discover {
+  border: 0;
+  border-left: 10px solid var(--lc-orange);
+  border-radius: 18px 0 0 18px;
+  background: var(--lc-deep);
+}
+
+html[data-theme='lcars'] .st-sub.st-alert,
+html[data-theme='lcars'] .st-down .st-note {
+  color: #ffb3a8;
+}

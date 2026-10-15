@@ -1,0 +1,57 @@
+import { randomBytes } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { adoptOldEnv } from '../shared/names.mjs';
+
+export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export const DATA_DIR = join(ROOT, 'data');
+export const WEB_DIST = join(ROOT, 'web', 'dist');
+mkdirSync(DATA_DIR, { recursive: true });
+
+const envFile = join(ROOT, '.env');
+if (existsSync(envFile)) process.loadEnvFile(envFile);
+adoptOldEnv(); // .env files from before the rename say RETRO_*
+
+// First run: make a password and save it to .env so the owner can read or change it.
+let newPassword = false;
+if (!process.env.PHOSPHOR_PASSWORD) {
+  process.env.PHOSPHOR_PASSWORD = randomBytes(9).toString('base64url');
+  appendFileSync(envFile, `PHOSPHOR_PASSWORD=${process.env.PHOSPHOR_PASSWORD}\n`);
+  newPassword = true;
+}
+
+export const config = {
+  port: Number(process.env.PHOSPHOR_PORT || 7337),
+  password: process.env.PHOSPHOR_PASSWORD,
+  newPassword,
+  cwd: resolve(process.env.PHOSPHOR_CWD || homedir()),
+  // Localhost only. The phone reaches it through `tailscale serve` (private HTTPS on the tailnet).
+  host: '127.0.0.1',
+};
+
+// Optional local models (scripts/setup-local-model.sh): one llama.cpp server that answers in Claude's API format and
+// loads whichever model a request names. PHOSPHOR_LOCAL_MODELS="name=label,name=label"; the first is the picker value
+// "local" (saved tabs keep working), the others "local:<name>". Without it, the single PHOSPHOR_LOCAL_MODEL/_LABEL pair.
+const localUrl = process.env.PHOSPHOR_LOCAL_URL;
+const localList = (process.env.PHOSPHOR_LOCAL_MODELS || (process.env.PHOSPHOR_LOCAL_MODEL ? `${process.env.PHOSPHOR_LOCAL_MODEL}=${process.env.PHOSPHOR_LOCAL_LABEL ?? ''}` : ''))
+  .split(',')
+  .map((x) => x.trim())
+  .filter(Boolean)
+  .map((x, i) => {
+    const [name, ...label] = x.split('=');
+    return { value: i === 0 ? 'local' : `local:${name.trim()}`, name: name.trim(), label: label.join('=').trim() || `${name.trim()} (local)` };
+  });
+export const localModel =
+  localUrl && localList.length
+    ? { url: localUrl, models: localList, key: process.env.PHOSPHOR_LOCAL_KEY || 'local', context: Number(process.env.PHOSPHOR_LOCAL_CONTEXT) || 32768 }
+    : undefined;
+// The configured local model a picker value stands for ("local", "local:<name>", also "local:<first name>"), if any.
+export const localChoice = (value?: string) => localModel?.models.find((m) => m.value === value) ?? localModel?.models.find((m) => `local:${m.name}` === value);
+delete process.env.PHOSPHOR_LOCAL_KEY;
+
+// Keep the password out of the environment, so the Claude processes this server starts
+// (and every command they run) do not inherit it.
+delete process.env.PHOSPHOR_PASSWORD;
+delete process.env.RETRO_PASSWORD;

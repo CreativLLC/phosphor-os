@@ -1,0 +1,44 @@
+{
+  "name": "phosphor-os",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && vite build -c vite.saver.config.ts",
+    "start": "npm run build && node scripts/serve.mjs",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:web": "vite",
+    "typecheck": "tsc --noEmit",
+    "test:docs": "tsx tests/docs-roundtrip.ts",
+    "test:router": "tsx tests/router.ts",
+    "test:sdkversion": "tsx tests/sdkversion.ts",
+    "test:calendar": "tsx tests/calendar.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.300",
+    "@fontsource/vt323": "^5.3.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.3",
+    "@tiptap/core": "3.31.3",
+    "@tiptap/extension-hard-break": "3.31.3",
+    "@tiptap/extension-list": "3.31.3",
+    "@tiptap/extension-table": "3.31.3",
+    "@tiptap/extension-underline": "3.31.3",
+    "@tiptap/markdown": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
+    "dompurify": "^3.4.16",
+    "marked": "^18.1.0",
+    "node-ical": "0.27.3",
+    "tsx": "^4.23.15",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

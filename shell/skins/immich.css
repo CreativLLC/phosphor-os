@@ -1,0 +1,44 @@
+/* Immich. Its pages (Svelte + Tailwind) take colors from "r g b" variables: --immich-* (light), --immich-dark-*
+   (dark mode, html.dark) and, since about v1.130, @immich/ui's --immich-ui-*. The skin sets both modes to the
+   theme so either looks the same. NOT TESTED: no Immich answered on this network; written from Immich's public
+   stylesheet variable names. If a screen is hard to read, turn SKIN off for it in STATION. */
+
+:root,
+.dark,
+:root.dark {
+  --immich-primary: var(--rc-t-primary) !important;
+  --immich-bg: var(--rc-t-bg) !important;
+  --immich-fg: var(--rc-t-fg) !important;
+  --immich-gray: var(--rc-t-gray) !important;
+  --immich-error: var(--rc-t-alert) !important;
+  --immich-success: var(--rc-t-ok) !important;
+  --immich-warning: var(--rc-t-ok) !important;
+  --immich-dark-primary: var(--rc-t-primary) !important;
+  --immich-dark-bg: var(--rc-t-bg) !important;
+  --immich-dark-fg: var(--rc-t-fg) !important;
+  --immich-dark-gray: var(--rc-t-gray) !important;
+  --immich-dark-error: var(--rc-t-alert) !important;
+  --immich-dark-success: var(--rc-t-ok) !important;
+  --immich-dark-warning: var(--rc-t-ok) !important;
+  --immich-ui-primary: var(--rc-t-primary) !important;
+  --immich-ui-light: var(--rc-t-bg) !important;
+  --immich-ui-dark: var(--rc-t-fg) !important;
+  --immich-ui-gray: var(--rc-t-gray) !important;
+  --immich-ui-danger: var(--rc-t-alert) !important;
+  --immich-ui-success: var(--rc-t-ok) !important;
+  --immich-ui-warning: var(--rc-t-ok) !important;
+  --immich-ui-info: var(--rc-t-primary) !important;
+}
+
+html,
+body {
+  background-color: var(--rc-bg) !important;
+  color: var(--rc-text);
+}
+
+/* Light mode puts white text on the primary color; on a bright theme color it must be dark. */
+[class~='bg-immich-primary'],
+[class*='bg-immich-primary '],
+[class~='bg-primary'] {
+  color: var(--rc-on-primary) !important;
+}

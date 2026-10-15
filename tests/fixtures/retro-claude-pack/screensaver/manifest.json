@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "retro-claude.screensaver",
+  "name": "Retro Claude screensaver",
+  "version": "1.0.0",
+  "author": "Retro Claude",
+  "description": "Draws Omarchy's screensaver in the Retro Claude look: the theme's colors, the Omarchy font, a clock.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

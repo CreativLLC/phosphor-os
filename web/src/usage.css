@@ -1,0 +1,228 @@
+/* PLAN USAGE (usage.ts): gauge in the progress row, left of CTX, and the USAGE drawer.
+   The gauge copies the CTX gauge's look (mission.css .pg-ctx). Its grid column is 'use' in mission.css. */
+
+/* ---------- Gauge: "5H ▮▮▯▯▯ 29%". Bright, with an inverse label, at 80% or more (no blinking). ---------- */
+
+.pg-use {
+  grid-area: use;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 0;
+  padding: 0 6px;
+  border-color: transparent;
+  color: var(--ph-dim);
+  font-size: calc(var(--fs) * 0.8);
+  letter-spacing: 1px;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+.pg-use:hover {
+  border-color: var(--ph);
+  color: var(--ph);
+}
+
+.pg-use-bar {
+  display: flex;
+  gap: 1px;
+}
+
+.pg-use-bar i {
+  width: 5px;
+  height: 10px;
+  background: var(--ph-faint);
+}
+
+.pg-use-bar i.on {
+  background: var(--ph);
+}
+
+.pg-use.hot {
+  color: var(--ph-bright);
+}
+
+.pg-use.hot .pg-use-bar i.on {
+  background: var(--ph-bright);
+}
+
+.pg-use.hot .pg-use-k {
+  padding: 0 3px;
+  background: var(--ph-bright);
+  color: var(--bg);
+}
+
+@container (max-width: 560px) {
+  .pg-use {
+    min-height: 28px;
+  }
+}
+
+/* Small phone: "5H 29%" (no bar), so it fits next to CTX. */
+@container (max-width: 440px) {
+  .pg-use-bar {
+    display: none;
+  }
+}
+
+/* Standby with numbers: keep the row so the gauge shows (also on phones), like CTX. */
+@media (max-width: 820px), (pointer: coarse) and (max-width: 1150px) {
+  #progress[data-state='standby'].has-use {
+    display: block;
+  }
+}
+
+/* ---------- Drawer ---------- */
+
+#usage:focus {
+  outline: none;
+}
+
+.use-head-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.use-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.use-plan {
+  display: flex;
+  justify-content: space-between;
+  gap: 1ch;
+  color: var(--ph-bright);
+  letter-spacing: 1px;
+}
+
+.use-plan span + span {
+  color: var(--ph-dim);
+}
+
+.use-note {
+  margin: 4px 0 12px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.use-error {
+  margin: 6px 0 12px;
+  padding: 2px 6px;
+  border-left: 3px solid var(--ph-bright);
+  color: var(--ph-bright);
+  font-size: var(--fs-sm);
+}
+
+.use-sec {
+  margin-bottom: 14px;
+}
+
+.use-bar {
+  height: 14px;
+  padding: 1px;
+  gap: 1px;
+  margin: 2px 0 3px;
+}
+
+.use-when {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.use-sec.hot .ms-h-label,
+.use-sec.hot .ms-h-extra {
+  color: var(--ph-bright);
+}
+
+.use-sec.hot .use-bar .seg.on {
+  background: var(--ph-bright);
+}
+
+.use-sec.hot .ms-h-label {
+  padding: 0 4px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.use-table {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7ch 7ch;
+  column-gap: 1ch;
+  row-gap: 1px;
+}
+
+.use-table .num {
+  text-align: right;
+}
+
+.use-table .th {
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.use-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.use-sub {
+  margin: 10px 0 2px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+/* ---------- PLAN USAGE box at the top of the mission panel ---------- */
+
+.use-panel {
+  cursor: pointer;
+}
+
+.use-pl {
+  display: grid;
+  grid-template-columns: 7ch minmax(0, 1fr) 4.5ch;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.use-pl .use-bar {
+  margin: 0;
+}
+
+.use-pl-k {
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.use-pl-pct {
+  text-align: right;
+  color: var(--ph-bright);
+}
+
+.use-pl.hot .use-pl-k,
+.use-pl.hot .use-pl-pct {
+  color: var(--ph-bright);
+}
+
+.use-pl.hot .use-bar .seg.on {
+  background: var(--ph-bright);
+}
+
+.use-pl-when {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  margin: 1px 0 2px;
+}
+
+@media (hover: hover) {
+  .use-panel:hover .ms-h-label {
+    color: var(--ph-bright);
+  }
+}

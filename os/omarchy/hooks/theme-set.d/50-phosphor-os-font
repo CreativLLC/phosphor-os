@@ -1,0 +1,35 @@
+#!/bin/bash
+# Optional Omarchy hook: VT323 while a retro theme is on, your own font back for every other theme.
+# Omarchy 4 has one system-wide monospace font (a theme cannot set it), so this follows the theme instead.
+# Install: cp to ~/.config/omarchy/hooks/theme-set.d/  (Omarchy runs it after each theme change, theme name in $1)
+# Needs VT323 installed first (os/omarchy/install-fonts.sh). Remove the file to stop it.
+
+theme="${1:-}"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/phosphor-os"
+old="${state%/*}/retro-claude" # its name before the rename (Retro Claude): a font saved there still counts
+if [[ ! -e $state && -d $old ]]; then state=$old; fi
+saved="$state/font-before"
+want="VT323"
+current=$(omarchy-font-current 2>/dev/null || true)
+
+case "$theme" in
+  retro-amber | retro-green)
+    if ! fc-list | grep -qi -- "$want"; then
+      echo "VT323 is not installed; run os/omarchy/install-fonts.sh first." >&2
+      exit 0
+    fi
+    [[ $current == "$want" ]] && exit 0
+    # Remember the font that was on before, once, so leaving the retro themes puts it back.
+    mkdir -p "$state"
+    [[ -f $saved ]] || printf '%s\n' "$current" >"$saved"
+    omarchy-font-set "$want"
+    ;;
+  *)
+    [[ -f $saved ]] || exit 0
+    before=$(<"$saved")
+    rm -f "$saved"
+    if [[ -n $before && $before != "$current" ]]; then
+      omarchy-font-set "$before"
+    fi
+    ;;
+esac

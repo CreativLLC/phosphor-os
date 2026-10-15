@@ -1,0 +1,26 @@
+/* Every skinned page (shell/skins.mjs adds the --rc-* variables first).
+   A frame drawn over the page edge marks it as part of Phosphor-OS; it never takes a click. Phosphor themes:
+   a thin line all round. LCARS: a thick orange bar down the left with rounded corners (an elbow). */
+
+html::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  border-style: solid;
+  border-color: var(--rc-frame);
+  border-width: var(--rc-frame-top) var(--rc-frame-side, var(--rc-frame-top)) var(--rc-frame-top) var(--rc-frame-w);
+  border-radius: var(--rc-frame-r) 0 0 var(--rc-frame-r);
+}
+
+/* Scrollbars in the theme (thin, no arrows). */
+:root {
+  scrollbar-color: var(--rc-dim) transparent;
+}
+
+::selection {
+  background: var(--rc-primary);
+  color: var(--rc-on-primary);
+  text-shadow: none;
+}

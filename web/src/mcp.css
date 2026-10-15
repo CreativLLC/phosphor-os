@@ -1,0 +1,242 @@
+/* MCP screen (mcp.ts) and the "/" command menu (slash.ts). */
+
+/* ---------- MCP screen (a drawer, like HISTORY) ---------- */
+
+#mcp:focus {
+  outline: none;
+}
+
+.mcp-head-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.mcp-sub {
+  margin: 8px 0 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.mcp-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.mcp-count {
+  padding: 4px 2px 8px;
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+  font-size: var(--fs-sm);
+}
+
+.mcp-row {
+  padding: 8px 4px 10px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.mcp-top {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.mcp-lamp {
+  flex: 0 0 auto;
+  min-width: 6.5ch;
+  padding: 0 4px;
+  text-align: center;
+  letter-spacing: 1px;
+  border: 1px solid var(--ph-dim);
+  color: var(--ph-dim);
+}
+
+.mcp-on .mcp-lamp {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Needs you: inverse, like a FAIL tag in the chat. */
+.mcp-login .mcp-lamp,
+.mcp-fail .mcp-lamp {
+  border-color: var(--ph-bright);
+  background: var(--ph-bright);
+  color: var(--bg);
+}
+
+.mcp-name {
+  color: var(--ph-bright);
+  overflow-wrap: anywhere;
+}
+
+.mcp-off .mcp-name {
+  color: var(--ph-dim);
+}
+
+.mcp-meta {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.5px;
+}
+
+.mcp-help {
+  margin: 6px 0 0;
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.mcp-help a {
+  color: var(--accent);
+}
+
+.mcp-error {
+  color: var(--ph-dim);
+}
+
+.mcp-tools {
+  margin-top: 4px;
+  font-size: var(--fs-sm);
+  color: var(--ph-dim);
+}
+
+.mcp-tools summary {
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+
+.mcp-tools p {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.mcp-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mcp-working {
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.mcp-foot {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--ph-dim);
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.mcp-foot code,
+.mcp-help code {
+  font: inherit;
+  color: var(--ph);
+}
+
+/* ---------- "/" menu: a list that opens above the message box ---------- */
+
+.slash-menu {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100% + 4px);
+  z-index: 30;
+  max-height: min(45dvh, 420px);
+  overflow-y: auto;
+  background: var(--bg);
+  border: 2px solid var(--ph);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.7);
+}
+
+.slash-menu[hidden] {
+  display: none;
+}
+
+.slash-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 4px 10px;
+  cursor: pointer;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.slash-row.on {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+@media (hover: hover) {
+  .slash-row:not(.on):hover {
+    background: rgb(var(--ph-rgb) / 0.12);
+  }
+}
+
+.slash-name {
+  flex: 0 0 auto;
+  color: var(--ph-bright);
+}
+
+/* Skills, plugins and your own commands: accent, so they stand apart from Claude Code's. */
+.slash-skill .slash-name {
+  color: var(--accent);
+}
+
+.slash-hint {
+  flex: 0 1 auto;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30%;
+}
+
+.slash-desc {
+  flex: 1 1 0;
+  min-width: 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slash-row.on .slash-name,
+.slash-row.on .slash-hint,
+.slash-row.on .slash-desc {
+  color: var(--bg);
+}
+
+.slash-empty {
+  padding: 6px 10px;
+  color: var(--ph-dim);
+}
+
+/* Phones: full width, and the description under the name. */
+@media (max-width: 820px), (pointer: coarse) and (max-width: 1150px) {
+  .slash-menu {
+    left: 6px;
+    right: 6px;
+  }
+
+  .slash-row {
+    flex-wrap: wrap;
+    padding: 6px 10px;
+  }
+
+  .slash-hint {
+    max-width: none;
+  }
+
+  .slash-desc {
+    flex-basis: 100%;
+  }
+}

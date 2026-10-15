@@ -1,0 +1,453 @@
+/* Left sidebar: operator card and crew cards with pixel sprites. Owner: art team.
+   Theme tokens only (see theme.css). Sprite canvases get --sw/--sh (grid size) from the
+   engine; --px is the pixel scale, set per card here. */
+
+.crew {
+  padding: 8px 10px 16px;
+  font-size: var(--fs-sm, 0.88em);
+  line-height: 1.12;
+}
+
+.crew .sprite {
+  display: block;
+  width: calc(var(--sw, 24) * var(--px, 3) * 1px);
+  height: calc(var(--sh, 24) * var(--px, 3) * 1px);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 2px rgb(var(--ph-rgb, 255 176 0) / 0.55));
+}
+
+html[data-crt='off'] .crew .sprite {
+  filter: none;
+}
+
+.crew-ell,
+.op-line,
+.agent-name,
+.agent-desc,
+.agent-line,
+.op-stat,
+.agent-stat {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Section headings: LABEL ------------ extra */
+.crew-h {
+  display: flex;
+  align-items: baseline;
+  gap: 1ch;
+  margin: 2px 0 6px;
+  font-size: var(--fs);
+  color: var(--ph-bright);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.crew-h::after {
+  content: '------------------------------------------------------------';
+  order: 1;
+  flex: 1 1 0;
+  min-width: 2ch;
+  overflow: hidden;
+  color: var(--ph-dim);
+  letter-spacing: 0;
+}
+
+.crew-h-link {
+  cursor: pointer;
+}
+
+.crew-h-link > span:first-child {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.crew-h-link:hover > span:first-child,
+.crew-h-link:focus-visible > span:first-child {
+  color: var(--ph);
+  text-decoration-style: solid;
+}
+
+.crew-h-link:focus-visible {
+  outline: 1px solid var(--ph-bright);
+}
+
+.crew-h-extra {
+  order: 2;
+  color: var(--ph);
+  font-size: var(--fs-sm, 0.88em);
+  letter-spacing: 1px;
+}
+
+.crew-h-extra:empty {
+  display: none;
+}
+
+/* ---------- Operator card ---------- */
+
+.op {
+  --px: 3;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'head head'
+    'title title'
+    'sprite info'
+    'line line';
+  gap: 4px 8px;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 4px 6px 6px;
+  border: 3px double var(--ph-dim);
+  background: var(--bg-raise);
+  box-shadow: inset 0 0 14px rgb(var(--ph-rgb, 255 176 0) / 0.06);
+}
+
+.op-head {
+  grid-area: head;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line, var(--ph-dim));
+  min-width: 0;
+}
+
+.op-title {
+  grid-area: title;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  background: transparent;
+  color: var(--ph-bright);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.op-title:hover:not(:disabled),
+.op-title:focus {
+  border-bottom-color: var(--ph-dim);
+  outline: none;
+}
+
+.op .sprite {
+  grid-area: sprite;
+}
+
+.op-info {
+  grid-area: info;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.op-name {
+  font-size: var(--fs);
+  letter-spacing: 2px;
+  color: var(--ph-bright);
+  white-space: nowrap;
+}
+
+.op-tag {
+  color: var(--ph-bright);
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.op-stat {
+  color: var(--ph-dim);
+}
+
+.op-line {
+  grid-area: line;
+  padding-top: 4px;
+  border-top: 1px solid var(--line, var(--ph-dim));
+}
+
+.op-line::before,
+.agent-line::before {
+  content: '> ';
+  color: var(--ph-bright);
+}
+
+.op[data-state='working'] {
+  border-color: var(--ph);
+}
+
+.op[data-state='alert'] {
+  border-color: var(--ph-bright);
+  box-shadow:
+    0 0 12px rgb(var(--ph-rgb, 255 176 0) / 0.4),
+    inset 0 0 18px rgb(var(--ph-rgb, 255 176 0) / 0.14);
+  animation: crew-alert 1s steps(1) infinite;
+}
+
+.op[data-state='alert'] .op-tag {
+  padding: 0 4px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.op[data-state='alert'] .op-line {
+  color: var(--ph-bright);
+}
+
+@keyframes crew-alert {
+  50% {
+    border-color: var(--ph-dim);
+    box-shadow: inset 0 0 18px rgb(var(--ph-rgb, 255 176 0) / 0.06);
+  }
+}
+
+/* ---------- Crew cards ---------- */
+
+.crew-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent {
+  --px: 3;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'name name'
+    'sprite info'
+    'desc desc'
+    'line line';
+  gap: 2px 8px;
+  align-items: center;
+  padding: 5px 6px 6px;
+  border: 1px solid var(--line, var(--ph-dim));
+  background: var(--bg-raise);
+  cursor: pointer;
+}
+
+.agent.fresh {
+  animation: crew-in 0.36s steps(6) both;
+}
+
+.agent-name {
+  grid-area: name;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line, var(--ph-dim));
+  font-size: var(--fs);
+  letter-spacing: 1px;
+  color: var(--ph-bright);
+}
+
+.agent .sprite {
+  grid-area: sprite;
+}
+
+.agent-info {
+  grid-area: info;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.agent-tag {
+  align-self: flex-start;
+  margin-bottom: 2px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.agent-stat {
+  color: var(--ph-dim);
+}
+
+.agent-desc {
+  grid-area: desc;
+}
+
+.agent-line {
+  grid-area: line;
+  color: var(--ph-dim);
+}
+
+.agent.open .agent-desc,
+.agent.open .agent-line {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.agent.st-running {
+  border-color: var(--ph-dim);
+}
+
+.agent.st-running .agent-tag {
+  color: var(--ph-bright);
+}
+
+.agent.st-running .agent-tag::after {
+  content: '_';
+  animation: crew-blink 1s steps(1) infinite;
+}
+
+.agent.st-running .agent-line {
+  color: var(--ph);
+}
+
+/* Finished crew: compact. Smaller sprite with the name beside it, quieter colors. */
+.agent:not(.st-running) {
+  --px: 2;
+  grid-template-areas:
+    'sprite name'
+    'sprite info'
+    'desc desc'
+    'line line';
+  grid-template-rows: auto 1fr;
+  align-items: start;
+}
+
+.agent:not(.st-running) .agent-name {
+  border-bottom: 0;
+  padding: 0;
+}
+
+.agent:not(.st-running) .agent-info {
+  flex-flow: row wrap;
+  gap: 1px 1ch;
+}
+
+.agent:not(.st-running) .agent-tag {
+  margin: 0;
+}
+
+.agent:not(.st-running) .agent-stat {
+  flex: none;
+}
+
+.agent.st-completed .agent-name,
+.agent.st-stopped .agent-name {
+  color: var(--ph);
+}
+
+.agent.st-stopped {
+  border-style: dashed;
+}
+
+.agent.st-stopped .agent-desc,
+.agent.st-stopped .agent-tag {
+  color: var(--ph-dim);
+}
+
+.agent.st-failed {
+  border-color: var(--ph-dim);
+}
+
+.agent.st-failed .agent-tag {
+  padding: 0 4px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.agent.st-failed .agent-line {
+  color: var(--ph-bright);
+}
+
+.agent.flash {
+  animation: crew-flash 0.7s steps(4) both;
+}
+
+@keyframes crew-in {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes crew-flash {
+  0%,
+  50% {
+    background: rgb(var(--ph-rgb, 255 176 0) / 0.28);
+    border-color: var(--ph-bright);
+  }
+}
+
+@keyframes crew-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------- Empty and more ---------- */
+
+.crew-empty {
+  padding: 14px 8px;
+  border: 1px dashed var(--line, var(--ph-dim));
+  text-align: center;
+}
+
+.crew-empty-title {
+  letter-spacing: 2px;
+  color: var(--ph);
+}
+
+.crew-empty-title::after {
+  content: '_';
+  animation: crew-blink 1s steps(1) infinite;
+}
+
+.crew-empty-sub {
+  margin-top: 4px;
+  color: var(--ph-dim);
+}
+
+.crew-more {
+  width: 100%;
+  margin-top: 8px;
+  color: var(--ph-dim);
+  letter-spacing: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent.fresh,
+  .agent.flash,
+  .op[data-state='alert'],
+  .agent.st-running .agent-tag::after,
+  .crew-empty-title::after {
+    animation: none;
+  }
+}
+
+/* ---------- Big screens: bigger sprites; crew in two columns once the panel is wide ---------- */
+
+@media (min-width: 1500px) {
+  .op {
+    --px: 5;
+  }
+
+  .agent {
+    --px: 4;
+  }
+
+  .agent:not(.st-running) {
+    --px: 3;
+  }
+}
+
+@media (min-width: 2200px) {
+  .crew-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    align-items: start;
+  }
+}
+

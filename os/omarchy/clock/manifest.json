@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "phosphor-os.clock",
+  "name": "Phosphor-OS clock",
+  "version": "1.0.0",
+  "author": "Phosphor-OS",
+  "description": "Omarchy's clock with its indicators: active ones show next to it, and hovering the clock pops up all the toggles above it",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Clock and indicators",
+    "description": "Clock; hover it for the indicator toggles (dictation, recording, reminder, night light, DND, stay awake)",
+    "category": "Time",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.indicators"
+  }
+}
