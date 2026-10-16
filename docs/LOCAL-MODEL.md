@@ -2,18 +2,20 @@
 
 **Optional. Skip this file unless you want models on your own machine.** Phosphor-OS works without it, with Claude only.
 What it takes: Arch or Omarchy, an AMD GPU with about 18 GB of free VRAM (ROCm; another GPU needs a different
-`device` in the preset), and about 27 GB of disk for the model files (downloaded to `~/models`, or the folder in
+`device` in the preset), and about 31 GB of disk for the model files (downloaded to `~/models`, or the folder in
 `PHOSPHOR_MODELS_DIR`). The sizes and speeds below were measured on one 20 GB AMD card; yours will differ.
 
 Four entries in the model picker: "Qwen3.8 27B (local)", "Qwen3.6 35B MoE (local)", "Gemma 4 26B MoE (local)" and "Gemma 4 E4B (local)". They run on your PC: no plan
 limits, no network. Claude Code (the Agent SDK) talks to a llama.cpp server in Claude's own API format, so tools,
 edits and permission cards work. Only one model fits in GPU memory: picking the other one swaps them (the first
 message waits about 30 to 50 s, the activity line says "Loading local model").
+All four see images (screenshots Claude reads, pictures you attach): each loads its own vision file (`mmproj`,
+about 1 GB, on the GPU with the model). Without it a model fails on any image with "image input is not supported".
 
 ## Set up
 
 1. `sudo pacman -S llama-cpp ggml-hip` (llama.cpp with the ROCm backend; `llama-server --list-devices` shows `ROCm0`).
-2. `bash scripts/setup-local-model.sh` (downloads about 27 GB to `~/models`, installs the service, writes `.env`).
+2. `bash scripts/setup-local-model.sh` (downloads about 31 GB to `~/models`, installs the service, writes `.env`).
    `--dry-run` prints every step first.
 3. `systemctl --user restart phosphor-os-server` (when idle: it stops the running chats).
 

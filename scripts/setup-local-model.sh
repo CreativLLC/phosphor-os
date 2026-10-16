@@ -6,6 +6,8 @@
 # One llama-server runs in router mode: the "model" in each request picks the model, and only one stays in GPU memory
 # (--models-max 1), so choosing the other one swaps them (about 30 s). Each model has its own section in the preset
 # file (~/.config/phosphor-os/local-models.ini), so per-model settings (like the MTP draft) stay.
+# Each model also gets its vision file (mmproj, about 1 GB, F16): without it a model fails on any image (a
+# screenshot Claude reads, a picture you attach) with "image input is not supported".
 # Needs a GPU with about 18 GB free, through ROCm (Arch/Omarchy). Another GPU or size: change device and ctx-size
 # in the preset text below.
 #
@@ -35,6 +37,11 @@ DRAFT=mtp-Qwen3.8-27B-Q4_0.gguf
 MOE=Qwen3.6-35B-A3B-UD-IQ3_S.gguf
 GEMMA=gemma-4-26B-A4B-it-UD-IQ4_XS.gguf
 GEMMA_SMALL=gemma-4-E4B-it-Q4_K_M.gguf
+# Vision files: each repo names its own mmproj-F16.gguf, so they are saved under the model's name.
+MAIN_VISION=mmproj-Qwen3.8-27B-F16.gguf
+MOE_VISION=mmproj-Qwen3.6-35B-A3B-F16.gguf
+GEMMA_VISION=mmproj-gemma-4-26B-A4B-it-F16.gguf
+GEMMA_SMALL_VISION=mmproj-gemma-4-E4B-it-F16.gguf
 PORT=8081
 CONTEXT=98304
 # The picker entries, "name=label" (the first one is the picker value "local"); the name is what a request calls the model.
@@ -91,6 +98,10 @@ run mkdir -p "$MODELS"
 [[ -f "$MODELS/$MOE" ]] || run curl -fL -C - -o "$MODELS/$MOE" "$HF/Qwen3.6-35B-A3B-GGUF/resolve/main/$MOE"
 [[ -f "$MODELS/$GEMMA" ]] || run curl -fL -C - -o "$MODELS/$GEMMA" "$HF/gemma-4-26B-A4B-it-GGUF/resolve/main/$GEMMA"
 [[ -f "$MODELS/$GEMMA_SMALL" ]] || run curl -fL -C - -o "$MODELS/$GEMMA_SMALL" "$HF/gemma-4-E4B-it-GGUF/resolve/main/$GEMMA_SMALL"
+[[ -f "$MODELS/$MAIN_VISION" ]] || run curl -fL -C - -o "$MODELS/$MAIN_VISION" "$HF/Qwen3.8-27B-GGUF/resolve/main/mmproj-F16.gguf"
+[[ -f "$MODELS/$MOE_VISION" ]] || run curl -fL -C - -o "$MODELS/$MOE_VISION" "$HF/Qwen3.6-35B-A3B-GGUF/resolve/main/mmproj-F16.gguf"
+[[ -f "$MODELS/$GEMMA_VISION" ]] || run curl -fL -C - -o "$MODELS/$GEMMA_VISION" "$HF/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-F16.gguf"
+[[ -f "$MODELS/$GEMMA_SMALL_VISION" ]] || run curl -fL -C - -o "$MODELS/$GEMMA_SMALL_VISION" "$HF/gemma-4-E4B-it-GGUF/resolve/main/mmproj-F16.gguf"
 
 if [[ ! -f "$KEY_FILE" ]]; then
   run mkdir -p "$(dirname "$KEY_FILE")"
@@ -118,6 +129,7 @@ sleep-idle-seconds = 900
 
 [qwen3.8-27b]
 model = $MODELS/$MAIN
+mmproj = $MODELS/$MAIN_VISION
 chat-template-file = $TEMPLATE
 model-draft = $MODELS/$DRAFT
 spec-type = draft-mtp
@@ -125,14 +137,17 @@ spec-draft-n-max = 3
 
 [qwen3.6-35b]
 model = $MODELS/$MOE
+mmproj = $MODELS/$MOE_VISION
 chat-template-file = $TEMPLATE
 chat-template-kwargs = {\"reasoning_effort\":\"low\"}
 
 [gemma4-26b]
 model = $MODELS/$GEMMA
+mmproj = $MODELS/$GEMMA_VISION
 
 [gemma4-e4b]
 model = $MODELS/$GEMMA_SMALL
+mmproj = $MODELS/$GEMMA_SMALL_VISION
 "
 
 UNIT_TEXT="[Unit]
