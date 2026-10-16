@@ -14,9 +14,13 @@
 // Night light: a click on its row switches it at the warmth set here (Omarchy's own is a fixed 4000 K); a right
 // click opens its options (warmth, schedule). Settings and the schedule: the phosphor-nightlight script next to
 // this file (a systemd user timer runs it every minute; desktop.sh installs it).
+// DICTATE in any app (Ctrl+Space, phosphor-dictate): while a take runs, a box above the bar on the focused monitor
+// says LISTENING (then TYPING) and shows the words heard so far. It never takes clicks or the keyboard.
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
@@ -39,6 +43,99 @@ BarWidget {
   readonly property bool opened: root.clock ? root.clock.opened === true : false
   function open() { if (root.clock) root.clock.open() }
   function close() { if (root.clock) root.clock.close() }
+
+  // ---- DICTATE overlay: the state file phosphor-dictate writes (line 1 the state, then the text so far)
+  property string dictState: "idle"
+  property string dictText: ""
+  readonly property bool dictOn: dictState === "recording" || dictState === "transcribing"
+  readonly property color dictFg: root.bar ? root.bar.foreground : Color.foreground
+  readonly property string dictFont: root.bar ? root.bar.fontFamily : Style.font.family
+  // The bar's screen, read here: inside the window it would loop (its screen depends on whether it shows).
+  readonly property var dictScreen: root.QsWindow.window ? root.QsWindow.window.screen : null
+
+  FileView {
+    path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/phosphor-os/dictate"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var t = text(), i = t.indexOf("\n")
+      root.dictState = (i < 0 ? t : t.slice(0, i)).trim() || "idle"
+      root.dictText = i < 0 ? "" : t.slice(i + 1).trim()
+    }
+    onLoadFailed: root.dictState = "idle"
+  }
+
+  PanelWindow {
+    id: dictWindow
+    // One box: on the monitor you are working on (each bar has this widget, so each monitor has a window).
+    screen: root.dictScreen
+    visible: root.dictOn && !!root.dictScreen && !!Hyprland.focusedMonitor && Hyprland.focusedMonitor.name === root.dictScreen.name
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "phosphor-dictate"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    exclusionMode: ExclusionMode.Ignore
+    mask: Region {} // shows only: clicks and keys go to the window under it
+
+    Rectangle {
+      id: dictCard
+      readonly property int pad: Style.space(14)
+      width: Math.min(dictWindow.width * 0.5, Math.max(Style.space(260), dictBody.implicitWidth + pad * 2))
+      height: dictHead.height + (dictBody.text ? dictBody.height + Style.space(8) : 0) + pad * 2
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.bottom: parent.bottom
+      anchors.bottomMargin: Style.space(67)
+      color: Util.alpha(Color.background, 0.95)
+      border.color: root.dictFg
+      border.width: Math.max(1, Style.space(2))
+      radius: Style.cornerRadius
+
+      Row {
+        id: dictHead
+        x: dictCard.pad
+        y: dictCard.pad
+        spacing: Style.space(10)
+        Rectangle {
+          id: dictDot
+          width: Style.space(12)
+          height: width
+          radius: width / 2
+          anchors.verticalCenter: parent.verticalCenter
+          color: root.dictState === "recording" ? "#ff3b30" : root.dictFg // red = the mic is on, in every theme
+          SequentialAnimation on opacity {
+            running: dictWindow.visible
+            loops: Animation.Infinite
+            NumberAnimation { to: 0.25; duration: root.dictState === "recording" ? 600 : 250 }
+            NumberAnimation { to: 1; duration: root.dictState === "recording" ? 600 : 250 }
+          }
+        }
+        Text {
+          textFormat: Text.PlainText
+          text: root.dictState === "recording" ? "LISTENING  (Ctrl+Space to type it)" : "TYPING…"
+          color: root.dictFg
+          font.family: root.dictFont
+          font.pixelSize: Style.font.title
+        }
+      }
+      Text {
+        id: dictBody
+        x: dictCard.pad
+        y: dictHead.y + dictHead.height + Style.space(8)
+        width: dictCard.width - dictCard.pad * 2
+        textFormat: Text.PlainText
+        // The newest words: long takes keep their end in view.
+        text: root.dictText.length > 280 ? "…" + root.dictText.slice(-280) : root.dictText
+        wrapMode: Text.Wrap
+        maximumLineCount: 4
+        color: root.dictFg
+        opacity: 0.85
+        font.family: root.dictFont
+        font.pixelSize: Style.font.body
+      }
+    }
+  }
 
   implicitWidth: layout.implicitWidth
   implicitHeight: layout.implicitHeight

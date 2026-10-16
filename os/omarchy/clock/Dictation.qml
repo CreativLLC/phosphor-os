@@ -24,7 +24,7 @@ BarIndicator {
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: root.state = text().trim() || "idle"
+    onLoaded: root.state = text().split("\n")[0].trim() || "idle" // line 1; the rest is the text so far
     onLoadFailed: root.state = "idle"
   }
 

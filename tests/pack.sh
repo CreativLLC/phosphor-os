@@ -293,46 +293,82 @@ check "polar night: on all day" jq -e '.allday=="night" and .scheduled=="on"' <<
 nl set schedule=off >/dev/null 2>&1
 check "schedule off: its state file goes" test ! -e "$h/.local/state/phosphor-os/nightlight-schedule"
 
-echo "== V: DICTATE in any app (phosphor-dictate; the mic, the server and typing are stand-ins)"
+echo "== V: DICTATE in any app (phosphor-dictate + its live client; the mic, the server and typing are stand-ins)"
 mkhome V; h=$T/V
 DT=$CK/phosphor-dictate
 APP=$h/app; mkdir -p "$APP" "$T/vstubs"
-printf 'PHOSPHOR_PASSWORD="s3cret pw"\nPORT=7999\n' >"$APP/.env"
-# The mic: writes a second of silence, then runs until stopped (as pw-record does).
-printf '#!/bin/bash\nhead -c 40000 /dev/zero >"${@: -1}"\ntrap "exit 0" INT TERM\nwhile :; do sleep 0.05; done\n' >"$T/vstubs/pw-record"
+ln -s "$R/node_modules" "$APP/node_modules"; cp "$R/package.json" "$APP/" # the live client takes ws from the app
+# The mic: raw audio to stdout until stopped (as pw-record - does).
+printf '#!/bin/bash\ntrap "exit 0" INT TERM\nwhile :; do head -c 3200 /dev/zero; sleep 0.1; done\n' >"$T/vstubs/pw-record"
 printf '#!/bin/bash\nshift; printf "%%s" "$*" >>"$HOME/typed"\n' >"$T/vstubs/wtype"
-# The server: login writes the cookie; transcribe answers 401 without it. FAKE_DOWN=1: nothing listens.
+printf '#!/bin/bash\nexec /usr/bin/pgrep "$@"\n' >"$T/vstubs/pgrep" # the pack tests stub pgrep for hyprsunset
+# Login and warm-up (bash side): login writes the cookie; FAKE_DOWN=1: nothing listens.
 cat >"$T/vstubs/curl" <<'STUB'
 #!/bin/bash
 echo "curl $*" >>"$STUBLOG"
 [[ -n ${FAKE_DOWN:-} ]] && exit 7
-jar_in='' jar_out='' url=''
-while (($#)); do case $1 in -b) jar_in=$2; shift ;; -c) jar_out=$2; shift ;; http*) url=$1 ;; esac; shift; done
+jar_out='' url=''
+while (($#)); do case $1 in -c) jar_out=$2; shift ;; http*) url=$1 ;; esac; shift; done
 case $url in
-  */login) cat >/dev/null; [[ -n $jar_out ]] && echo "127.0.0.1 FALSE / FALSE 0 rcs 1.x" >"$jar_out" ;;
-  */api/voice/warm) printf '{"ok":true}\n202' ;;
-  */api/transcribe) if grep -q rcs "$jar_in" 2>/dev/null; then printf '{"text":"hello there.","ms":5,"seconds":1}\n200'; else printf '{"error":"login needed"}\n401'; fi ;;
+  */login) cat >/dev/null; printf '#HttpOnly_127.0.0.1\tFALSE\t/\tFALSE\t0\trcs\t1.x\n' >"$jar_out" ;;
+  */api/voice/warm) printf 202 ;;
 esac
 STUB
 chmod +x "$T/vstubs"/*
-dt() { tenv V env PATH="$T/vstubs:$T/stubs:$PATH" PHOSPHOR_OS_DIR="$APP" bash "$DT" "$@"; }
-dstate() { cat "$h/.local/state/phosphor-os/dictate" 2>/dev/null; }
-dt toggle
-check "press 1: recording, the mic runs" bash -c "[[ \$(cat '$h/.local/state/phosphor-os/dictate') == recording ]] && kill -0 \$(cat '$h/run/phosphor-dictate/rec.pid')"
-rec=$(cat "$h/run/phosphor-dictate/rec.pid")
-dt toggle
-check "press 2: the words typed, a space after the sentence" test "$(cat "$h/typed")" == "hello there. "
-check "press 2: back to idle, the mic stopped, the take deleted" bash -c "[[ \$(cat '$h/.local/state/phosphor-os/dictate') == idle ]] && ! kill -0 $rec 2>/dev/null && [[ ! -e '$h/run/phosphor-dictate/take.wav' ]]"
-check "logged in once, with the password from .env" grep -q '/login' "$h/stub.log"
+# The speech server: /ws/voice (needs the cookie; a partial per audio frame, on "end" one final and done) and
+# /api/transcribe (the one-shot fallback). NOWS=1 in its folder: the socket is refused.
+cat >"$T/fakevoice.mjs" <<'JS'
+import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+const { WebSocketServer } = createRequire(process.argv[2] + '/package.json')('ws');
+const flag = process.argv[3];
+const wss = new WebSocketServer({ noServer: true });
+const srv = createServer((req, res) => {
+  req.resume();
+  const ok = (req.headers.cookie ?? '').includes('rcs=1.x');
+  res.writeHead(ok ? 200 : 401, { 'Content-Type': 'application/json' }).end(JSON.stringify(ok ? { text: 'from one shot.', ms: 1, seconds: 1 } : { error: 'login needed' }));
+});
+srv.on('upgrade', (req, sock, head) => {
+  if (existsSync(flag) || !(req.headers.cookie ?? '').includes('rcs=1.x')) return sock.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
+  wss.handleUpgrade(req, sock, head, (ws) => {
+    ws.send(JSON.stringify({ t: 'ready' }));
+    ws.on('message', (d, bin) => {
+      if (bin) return ws.send(JSON.stringify({ t: 'partial', text: 'hello' }));
+      ws.send(JSON.stringify({ t: 'final', text: 'hello there.', end: 1 }));
+      ws.send(JSON.stringify({ t: 'done', end: 1 }));
+    });
+  });
+});
+srv.listen(0, '127.0.0.1', () => console.log(srv.address().port));
+JS
+node "$T/fakevoice.mjs" "$R" "$T/NOWS" >"$T/fakevoice.port" 2>/dev/null &
+FAKEV=$!
+for _ in $(seq 50); do [[ -s $T/fakevoice.port ]] && break; sleep 0.1; done
+printf 'PHOSPHOR_PASSWORD="s3cret pw"\nPORT=%s\n' "$(cat "$T/fakevoice.port")" >"$APP/.env"
+dt() { tenv V env PATH="$T/vstubs:$T/stubs:$PATH" PHOSPHOR_OS_DIR="$APP" PHOSPHOR_NODE="$(command -v node)" bash "$DT" "$@"; }
+dstate() { head -n1 "$h/.local/state/phosphor-os/dictate" 2>/dev/null; }
+untilidle() { for _ in $(seq 60); do [[ $(dstate) == idle ]] && return 0; sleep 0.1; done; return 1; }
+dt toggle; sleep 0.8
+check "press 1: listening, the take runs" bash -c "[[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == recording ]] && kill -0 \$(cat '$h/run/phosphor-dictate/take.pid')"
+check "the words heard so far, for the overlay" grep -q '^hello$' "$h/.local/state/phosphor-os/dictate"
+take=$(cat "$h/run/phosphor-dictate/take.pid")
+dt toggle; untilidle; sleep 0.3
+check "press 2: the whole text typed, capital and a space after" test "$(cat "$h/typed" 2>/dev/null)" == "Hello there. "
+check "press 2: idle, the text cleared, the take gone" bash -c "[[ \$(cat '$h/.local/state/phosphor-os/dictate') == idle ]] && ! kill -0 $take 2>/dev/null"
+check "logged in, with the password from .env" grep -q '/login' "$h/stub.log"
 check "the password never on a command line" bash -c "! grep -q 's3cret' '$h/stub.log'"
 check "the cookie jar is private" test "$(stat -c %a "$h/run/phosphor-dictate/cookie")" == 600
-echo "stale" >"$h/run/phosphor-dictate/cookie"; rm -f "$h/typed" "$h/stub.log"
-dt toggle; dt toggle
-check "an old cookie: logs in again and still types" bash -c "[[ \$(cat '$h/typed') == 'hello there. ' ]] && grep -q '/login' '$h/stub.log'"
-rm -f "$h/typed"; dt toggle; dt cancel
-check "cancel: idle, nothing typed" bash -c "[[ \$(cat '$h/.local/state/phosphor-os/dictate') == idle && ! -e '$h/typed' ]]"
-rm -f "$h/stub.log"; dt toggle; FAKE_DOWN=1 dt toggle
-check "server down: says so, types nothing, back to idle" bash -c "grep -q 'notify-send.*not answering' '$h/stub.log' && [[ ! -e '$h/typed' && \$(cat '$h/.local/state/phosphor-os/dictate') == idle ]]"
+touch "$T/NOWS"; rm -f "$h/typed"
+dt toggle; sleep 0.8
+check "live socket refused: says the text comes at the end" grep -q 'no live preview' "$h/.local/state/phosphor-os/dictate"
+dt toggle; untilidle; sleep 0.3
+check "... and the take still gets typed (one shot)" test "$(cat "$h/typed" 2>/dev/null)" == "from one shot. "
+rm -f "$T/NOWS" "$h/typed"; dt toggle; sleep 0.5; take=$(cat "$h/run/phosphor-dictate/take.pid"); dt cancel; sleep 0.5
+check "cancel: idle, nothing typed, the take gone" bash -c "[[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == idle && ! -e '$h/typed' ]] && ! kill -0 $take 2>/dev/null"
+rm -f "$h/stub.log"; FAKE_DOWN=1 dt toggle
+check "server down: says so, back to idle" bash -c "grep -q 'notify-send.*not answering' '$h/stub.log' && [[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == idle ]]"
+kill "$FAKEV" 2>/dev/null
 echo recording >"$h/.local/state/phosphor-os/dictate"; dt reset
 check "reset at login: a cut-off take leaves no mic dot" test "$(dstate)" == idle
 check "Hyprland: Ctrl+Space dictates, and in Phosphor-OS goes on to the app" bash -c "grep -q 'hl.bind(\"CTRL + SPACE\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'w.class == \"phosphor-os\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'phosphor-dictate\") .. \"\\? reset\\|dictate .. \" reset\"' '$R/os/hyprland/phosphor-os.lua'"
