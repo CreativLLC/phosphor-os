@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The Phosphor-OS look for Omarchy 4: theme, VT323 font, the bar at the bottom with a taskbar, no idle lock,
 # the screensaver (the app's flight scene, on every monitor), notifications that wait in a bar counter until dismissed, the indicator
-# toggles in a popup over the clock, a night light schedule (a systemd user timer).
+# toggles in a popup over the clock, a night light schedule (a systemd user timer), the mic indicator for
+# DICTATE in any app (Ctrl+Space; the key itself is in os/hyprland/phosphor-os.lua).
 # docs/OMARCHY.md lists every change, why, and how to undo it.
 #
 # Run:  bash os/omarchy/desktop.sh [--theme NAME] [--dry-run] [--undo]
@@ -509,6 +510,27 @@ nightlight_step() {
   ((DRY)) || say "  Night light schedule: $NL_TIMER on."
 }
 
+# DICTATE in any app: the clock's mic indicator (clock/Dictation.qml) watches this one-word file, which
+# clock/phosphor-dictate writes. It has to exist before the bar starts, or the watch never sees it.
+DICTATE_STATE="$state_home/phosphor-os/dictate"
+dictate_step() {
+  [[ -e $DICTATE_STATE ]] && return 0
+  keep dictate_state 1
+  [[ -d ${DICTATE_STATE%/*} ]] || keep dictate_dir 1
+  run mkdir -p "${DICTATE_STATE%/*}"
+  run touch "$DICTATE_STATE" # empty = idle
+}
+
+dictate_undo() {
+  noted dictate_state || return 0
+  run rm -f "$DICTATE_STATE"
+  drop dictate_state
+  if noted dictate_dir; then # the folder too, if this made it and nothing else is in it now
+    ((DRY)) || rmdir "${DICTATE_STATE%/*}" 2>/dev/null || true
+    drop dictate_dir
+  fi
+}
+
 nightlight_undo() {
   noted nl_units || return 0
   local u
@@ -545,6 +567,7 @@ undo() {
   old_saver_off
   plugin_undo "$NOTIF" notif_dir
   nightlight_undo
+  dictate_undo
   plugin_undo "$CLOCK" clock_dir
   if noted plugin_dir; then
     run rm -rf "$SAVER"
@@ -606,5 +629,6 @@ menu_step
 plugin_step Notifications "$PACK/notifications" "$NOTIF" notif_dir
 plugin_step Clock "$PACK/clock" "$CLOCK" clock_dir
 nightlight_step # after the clock: the timer runs the script in its folder
+dictate_step
 apply_edit json "$SHELL_JSON" "$DEFAULT_JSON" # last: it names the taskbar and the plugins, now in place
 ((DRY)) || say "  The Phosphor-OS look is on. Undo: bash $(printf '%q' "$PACK/desktop.sh") --undo"

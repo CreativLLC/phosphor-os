@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Phosphor-OS DICTATE in any app: press Ctrl+Space, talk, press it again; the words are typed where the cursor is.
+# It records the default microphone, sends the take to the Phosphor-OS server's speech engine (the same one the
+# app uses, on this PC) and types the text with wtype.
+#
+#   phosphor-dictate toggle   start, or stop and type (Ctrl+Space outside the app; a click on the clock's mic)
+#   phosphor-dictate cancel   stop without typing
+#   phosphor-dictate reset    forget a take left over from before a crash or logout (runs at login)
+#
+# State for the bar's mic indicator (Dictation.qml): ~/.local/state/phosphor-os/dictate, one word:
+# idle | recording | transcribing. The take itself lives in $XDG_RUNTIME_DIR (memory, gone at logout).
+# Login: a cookie jar there too, made by logging in with the password in the app's .env (never printed).
+set -uo pipefail
+
+state_home=${XDG_STATE_HOME:-}
+[[ $state_home == /* ]] || state_home="$HOME/.local/state"
+STATE="$state_home/phosphor-os/dictate"
+RUN="${XDG_RUNTIME_DIR:-/tmp}/phosphor-dictate"
+WAV="$RUN/take.wav"
+PID="$RUN/rec.pid"
+JAR="$RUN/cookie"
+MAX_SECONDS=300 # the server takes up to 5 minutes
+
+mkdir -p "${STATE%/*}" && mkdir -p -m 700 "$RUN" || exit 1
+
+set_state() { printf '%s\n' "$1" >"$STATE"; }
+state() { cat "$STATE" 2>/dev/null || echo idle; }
+say() { notify-send -a DICTATE -u "${2:-normal}" "DICTATE" "$1" 2>/dev/null || echo "phosphor-dictate: $1" >&2; }
+recording() { [[ -s $PID ]] && kill -0 "$(cat "$PID")" 2>/dev/null; }
+
+# The app's folder: PHOSPHOR_OS_DIR, else where its server unit runs.
+app_dir() {
+  local d=${PHOSPHOR_OS_DIR:-}
+  [[ -n $d ]] || d=$(systemctl --user show phosphor-os-server -p WorkingDirectory --value 2>/dev/null)
+  [[ -n $d && -f $d/.env ]] && printf '%s' "$d"
+}
+env_value() { # KEY from the app's .env, quotes taken off
+  sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$2" | tail -n1 | sed -E 's/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/'
+}
+
+DIR=$(app_dir) || DIR=
+PORT=7337
+[[ -n $DIR ]] && { p=$(env_value PORT "$DIR/.env"); [[ $p =~ ^[0-9]+$ ]] && PORT=$p; }
+URL="http://127.0.0.1:$PORT"
+
+login() {
+  [[ -n $DIR ]] || return 1
+  local pw
+  pw=$(env_value PHOSPHOR_PASSWORD "$DIR/.env")
+  [[ -n $pw ]] || pw=$(env_value RETRO_PASSWORD "$DIR/.env")
+  [[ -n $pw ]] || return 1
+  (umask 077; printf '%s' "$pw" | curl -s -o /dev/null -c "$JAR" --data-urlencode 'password@-' "$URL/login")
+  grep -q rcs "$JAR" 2>/dev/null
+}
+
+# POST with the login cookie; logs in once when the server says 401. Prints the body.
+post() { # PATH [curl args...]
+  local path=$1 out code
+  shift
+  [[ -s $JAR ]] || login || return 2
+  for _ in 1 2; do
+    out=$(curl -s -b "$JAR" -w '\n%{http_code}' -X POST "$@" "$URL$path") || return 3
+    code=${out##*$'\n'}
+    [[ $code == 401 ]] || { printf '%s' "${out%$'\n'*}"; return 0; }
+    login || return 2
+  done
+  return 2
+}
+
+start() {
+  rm -f "$WAV"
+  timeout -s INT "$MAX_SECONDS" pw-record --rate 16000 --channels 1 --format s16 "$WAV" </dev/null >/dev/null 2>&1 &
+  echo $! >"$PID"
+  set_state recording
+  post /api/voice/warm >/dev/null 2>&1 & # load the model while you talk
+}
+
+stop_recorder() {
+  local p
+  p=$(cat "$PID" 2>/dev/null) || p=
+  if [[ -n $p ]]; then
+    kill -INT "$p" 2>/dev/null
+    for _ in $(seq 40); do kill -0 "$p" 2>/dev/null || break; sleep 0.05; done
+  fi
+  rm -f "$PID"
+}
+
+finish() {
+  stop_recorder
+  set_state transcribing
+  local body text err
+  if [[ ! -s $WAV ]] || (($(stat -c %s "$WAV") < 16000)); then # under half a second: nothing said
+    set_state idle
+    return
+  fi
+  body=$(post /api/transcribe -H 'Content-Type: audio/wav' --data-binary "@$WAV")
+  case $? in
+    2) set_state idle; say "Can't log in to Phosphor-OS. Is the app's server running?" critical; return ;;
+    3) set_state idle; say "Phosphor-OS is not answering on port $PORT." critical; return ;;
+  esac
+  rm -f "$WAV"
+  text=$(jq -r '.text // empty' <<<"$body" 2>/dev/null)
+  err=$(jq -r '.error // empty' <<<"$body" 2>/dev/null)
+  set_state idle
+  if [[ -n $err ]]; then say "$err" critical; return; fi
+  [[ -n $text ]] || return 0
+  # A finished sentence gets a space after it, so the next take does not run into it.
+  [[ $text =~ [.!?]$ ]] && text+=" "
+  sleep 0.15 # let go of Ctrl first: a held Ctrl would turn the typed letters into shortcuts
+  wtype -- "$text"
+}
+
+case ${1:-toggle} in
+  toggle)
+    if [[ $(state) == transcribing ]]; then exit 0; fi
+    # A take that hit the time limit has stopped by itself: the next press still types it.
+    if recording || [[ $(state) == recording ]]; then finish; else start; fi
+    ;;
+  cancel)
+    stop_recorder
+    rm -f "$WAV"
+    set_state idle
+    ;;
+  reset)
+    recording && stop_recorder
+    rm -f "$WAV" "$PID"
+    set_state idle
+    ;;
+  *)
+    echo "usage: phosphor-dictate toggle|cancel|reset" >&2
+    exit 2
+    ;;
+esac

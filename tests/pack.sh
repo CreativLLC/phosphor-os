@@ -293,6 +293,55 @@ check "polar night: on all day" jq -e '.allday=="night" and .scheduled=="on"' <<
 nl set schedule=off >/dev/null 2>&1
 check "schedule off: its state file goes" test ! -e "$h/.local/state/phosphor-os/nightlight-schedule"
 
+echo "== V: DICTATE in any app (phosphor-dictate; the mic, the server and typing are stand-ins)"
+mkhome V; h=$T/V
+DT=$CK/phosphor-dictate
+APP=$h/app; mkdir -p "$APP" "$T/vstubs"
+printf 'PHOSPHOR_PASSWORD="s3cret pw"\nPORT=7999\n' >"$APP/.env"
+# The mic: writes a second of silence, then runs until stopped (as pw-record does).
+printf '#!/bin/bash\nhead -c 40000 /dev/zero >"${@: -1}"\ntrap "exit 0" INT TERM\nwhile :; do sleep 0.05; done\n' >"$T/vstubs/pw-record"
+printf '#!/bin/bash\nshift; printf "%%s" "$*" >>"$HOME/typed"\n' >"$T/vstubs/wtype"
+# The server: login writes the cookie; transcribe answers 401 without it. FAKE_DOWN=1: nothing listens.
+cat >"$T/vstubs/curl" <<'STUB'
+#!/bin/bash
+echo "curl $*" >>"$STUBLOG"
+[[ -n ${FAKE_DOWN:-} ]] && exit 7
+jar_in='' jar_out='' url=''
+while (($#)); do case $1 in -b) jar_in=$2; shift ;; -c) jar_out=$2; shift ;; http*) url=$1 ;; esac; shift; done
+case $url in
+  */login) cat >/dev/null; [[ -n $jar_out ]] && echo "127.0.0.1 FALSE / FALSE 0 rcs 1.x" >"$jar_out" ;;
+  */api/voice/warm) printf '{"ok":true}\n202' ;;
+  */api/transcribe) if grep -q rcs "$jar_in" 2>/dev/null; then printf '{"text":"hello there.","ms":5,"seconds":1}\n200'; else printf '{"error":"login needed"}\n401'; fi ;;
+esac
+STUB
+chmod +x "$T/vstubs"/*
+dt() { tenv V env PATH="$T/vstubs:$T/stubs:$PATH" PHOSPHOR_OS_DIR="$APP" bash "$DT" "$@"; }
+dstate() { cat "$h/.local/state/phosphor-os/dictate" 2>/dev/null; }
+dt toggle
+check "press 1: recording, the mic runs" bash -c "[[ \$(cat '$h/.local/state/phosphor-os/dictate') == recording ]] && kill -0 \$(cat '$h/run/phosphor-dictate/rec.pid')"
+rec=$(cat "$h/run/phosphor-dictate/rec.pid")
+dt toggle
+check "press 2: the words typed, a space after the sentence" test "$(cat "$h/typed")" == "hello there. "
+check "press 2: back to idle, the mic stopped, the take deleted" bash -c "[[ \$(cat '$h/.local/state/phosphor-os/dictate') == idle ]] && ! kill -0 $rec 2>/dev/null && [[ ! -e '$h/run/phosphor-dictate/take.wav' ]]"
+check "logged in once, with the password from .env" grep -q '/login' "$h/stub.log"
+check "the password never on a command line" bash -c "! grep -q 's3cret' '$h/stub.log'"
+check "the cookie jar is private" test "$(stat -c %a "$h/run/phosphor-dictate/cookie")" == 600
+echo "stale" >"$h/run/phosphor-dictate/cookie"; rm -f "$h/typed" "$h/stub.log"
+dt toggle; dt toggle
+check "an old cookie: logs in again and still types" bash -c "[[ \$(cat '$h/typed') == 'hello there. ' ]] && grep -q '/login' '$h/stub.log'"
+rm -f "$h/typed"; dt toggle; dt cancel
+check "cancel: idle, nothing typed" bash -c "[[ \$(cat '$h/.local/state/phosphor-os/dictate') == idle && ! -e '$h/typed' ]]"
+rm -f "$h/stub.log"; dt toggle; FAKE_DOWN=1 dt toggle
+check "server down: says so, types nothing, back to idle" bash -c "grep -q 'notify-send.*not answering' '$h/stub.log' && [[ ! -e '$h/typed' && \$(cat '$h/.local/state/phosphor-os/dictate') == idle ]]"
+echo recording >"$h/.local/state/phosphor-os/dictate"; dt reset
+check "reset at login: a cut-off take leaves no mic dot" test "$(dstate)" == idle
+check "Hyprland: Ctrl+Space dictates, and in Phosphor-OS goes on to the app" bash -c "grep -q 'hl.bind(\"CTRL + SPACE\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'w.class == \"phosphor-os\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'phosphor-dictate\") .. \"\\? reset\\|dictate .. \" reset\"' '$R/os/hyprland/phosphor-os.lua'"
+check "the mic indicator is the pack's (both loaders)" bash -c "grep -q 'indicatorUrl(indicatorSlot.indicatorId)' '$CK/Indicators.qml' && grep -q 'indicators.indicatorUrl(' '$CK/BarWidget.qml' && grep -q 'phosphor-os/dictate' '$CK/Dictation.qml'"
+mkhome W; q W bash "$D"
+check "desktop.sh: the indicator's state file exists before the bar starts" test -e "$T/W/.local/state/phosphor-os/dictate"
+q W bash "$D" --undo
+check "undo: the state file goes" test ! -e "$T/W/.local/state/phosphor-os/dictate"
+
 # ------------------------------------------------------------------ an install made under the old name
 
 # oldinstall NAME PROJECT: what the old setup-linux.sh left (look via the old pack, Hyprland line, unit, menu entry)

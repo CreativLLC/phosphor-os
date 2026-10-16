@@ -6,7 +6,8 @@
 //   click = calendar, right click = next format, middle click = time zone; its format settings live in this
 //   widget's entry in shell.json.
 // - Hover the clock: all the indicator toggles pop up above it, each with what a click does. Move away: they go.
-//   The toggles are Omarchy's indicator files, loaded as they are, so their logic stays upstream.
+//   The toggles are Omarchy's indicator files, loaded as they are, so their logic stays upstream; dictation is the
+//   pack's Dictation.qml (Ctrl+Space in any app, phosphor-dictate).
 // The manifest says clonedFrom omarchy.indicators: that is what lets the toggles reach the DND, night light and
 // stay-awake services (the shell gives those only to the indicators). Layout entry in shell.json:
 // { "id": "phosphor-os.clock", "format": "dddd h:mm AP", ... }
@@ -211,7 +212,7 @@ BarWidget {
             anchors.verticalCenter: parent.verticalCenter
             width: item ? item.implicitWidth : 0
             height: item ? item.implicitHeight : 0
-            source: Util.fileUrl(indicators.indicatorDir + toggleRow.modelData + ".qml")
+            source: indicators.indicatorUrl(toggleRow.modelData)
             onLoaded: {
               item.moduleName = toggleRow.modelData
               item.settings = indicators.entrySettings(indicators.entryForId(toggleRow.modelData))

@@ -10,6 +10,8 @@
 --   Super + Alt + T  a plain terminal: the safety net, works even when Phosphor-OS does not
 --   Super + T        full size under the bar;  Super + Shift + T  floating on/off;  no window gaps
 --   Super + M        minimize (the taskbar button brings it back)
+--   Ctrl + Space     DICTATE in any app: talk, press again, the words are typed at the cursor
+--                    (in Phosphor-OS itself the key goes on to the app's own DICTATE)
 -- Omarchy's own keys stay: Super + Space (Omarchy menu), Super + Return (terminal), Super + F (real full
 -- screen), Super + Shift + Space (bar on/off), Super + W (close a window; the desktop ignores it).
 
@@ -35,8 +37,11 @@ local function launch(args)
   return cmd
 end
 
+local dictate = "bash " .. quote(dir .. "/os/omarchy/clock/phosphor-dictate")
+
 hl.on("hyprland.start", function()
   hl.exec_cmd(launch("--desktop"))
+  hl.exec_cmd(dictate .. " reset") -- a take cut off by a logout or crash leaves the mic dot on
 end)
 
 -- Every Phosphor-OS window: workspace 1, flat, fully opaque (Omarchy dims other windows a little).
@@ -63,7 +68,7 @@ hl.window_rule({
 hl.config({ general = { gaps_in = 0, gaps_out = 0 } })
 
 -- Ours win if a later Omarchy update binds the same keys.
-for _, keys in ipairs({ "SUPER + ALT + R", "SUPER + ALT + T", "SUPER + T", "SUPER + SHIFT + T", "SUPER + M", "SUPER + CTRL + ALT + D" }) do
+for _, keys in ipairs({ "SUPER + ALT + R", "SUPER + ALT + T", "SUPER + T", "SUPER + SHIFT + T", "SUPER + M", "SUPER + CTRL + ALT + D", "CTRL + SPACE" }) do
   pcall(hl.unbind, keys)
 end
 
@@ -81,6 +86,20 @@ hl.bind("SUPER + M", hl.dsp.window.move({ workspace = "special:minimized", follo
 -- The calendar (Omarchy's key): asks the clock itself, so it works with the pack's clock (os/omarchy/clock, where
 -- `shell toggle omarchy.clock` finds no omarchy.clock in the bar) and with Omarchy's own.
 hl.bind("SUPER + CTRL + ALT + D", hl.dsp.exec_cmd("omarchy-shell omarchy.clock toggle"), { description = "Calendar" })
+
+-- Ctrl + Space: DICTATE anywhere (os/omarchy/clock/phosphor-dictate). Phosphor-OS has its own DICTATE on the same
+-- key, with live text, so there the key is handed on to the app (down and up apart, like Omarchy's clipboard keys).
+hl.bind("CTRL + SPACE", function()
+  local w = hl.get_active_window()
+  if w and w.class == "phosphor-os" then -- CLASS is a regex for rules; a Lua pattern reads "-" as a repeat
+    hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "space", state = "down" }))
+    hl.timer(function()
+      hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "space", state = "up" }))
+    end, { timeout = 50, type = "oneshot" })
+  else
+    hl.dispatch(hl.dsp.exec_cmd(dictate .. " toggle"))
+  end
+end, { description = "Dictate (any app)" })
 
 -- Safety net: no Omarchy launcher, no uwsm, just the first terminal that is installed.
 hl.bind(
