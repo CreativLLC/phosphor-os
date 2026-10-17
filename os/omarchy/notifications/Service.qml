@@ -467,12 +467,18 @@ Item {
   // Try to focus an existing Hyprland window matching the notification's
   // sender. The helper handles case-insensitive class matching.
   // Phosphor-OS: an app with no window (Discord in the tray) is launched from its menu entry instead, which
-  // brings a running one back up. The entry is found by its Name= (the sender's app name), else by file name.
+  // brings a running one back up. The entry is found by its Name= (the sender's app name), else by its file name,
+  // else by Icon=.
   function focusApp(entry) {
     if (!entry || !entry.app) return
     focusAppProc.command = ["bash", "-c",
-      '"$1" "$2" && exit 0; f=$(grep -lisx "Name=$2" "$HOME"/.local/share/applications/*.desktop /usr/share/applications/*.desktop 2>/dev/null | head -n 1); ' +
-      'f=${f##*/}; a=${2,,}; f=${f%.desktop}; [[ -n $f ]] || f=${a// /-}; ' +
+      '"$1" "$2" && exit 0; d=("$HOME"/.local/share/applications/*.desktop /usr/share/applications/*.desktop); a=${2,,}; ' +
+      'f=$(grep -lisx "Name=$2" "${d[@]}" 2>/dev/null | head -n 1); ' +
+      // Else by file name ("Nextcloud" sends as Nextcloud; its entry is com.nextcloud.desktopclient.nextcloud.desktop,
+      // named "Nextcloud Desktop"), else by its icon name.
+      '[[ -n $f ]] || f=$(printf "%s\\n" "${d[@]}" | grep -i -E "(^|/|\\.)${a// /-}\\.desktop$" | head -n 1); ' +
+      '[[ -n $f ]] || f=$(grep -lisx "Icon=$2" "${d[@]}" 2>/dev/null | head -n 1); ' +
+      'f=${f##*/}; f=${f%.desktop}; [[ -n $f ]] || f=${a// /-}; ' +
       // Fully detached, output to /dev/null: the app outlives this Process, and Discord died with EPIPE on its
       // next console.log once the pipe it was started on closed.
       'setsid -f gtk-launch "$f" </dev/null >/dev/null 2>&1',
