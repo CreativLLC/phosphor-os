@@ -258,6 +258,32 @@ body.has-shell #btn-docs {
   }
 }
 
+/* Dragging: the folder a row would drop into (for the top: the list and the folder name). Dashed: refused. */
+.docs .dc-row.dc-drop,
+.dc-root.dc-drop {
+  background: rgb(var(--ph-rgb) / 0.18);
+  color: var(--ph-bright);
+  outline: 1px solid var(--ph);
+  outline-offset: -1px;
+}
+
+.docs .dc-row.dc-drop-no,
+.dc-root.dc-drop-no {
+  color: var(--ph-dim);
+  outline: 1px dashed var(--ph-dim);
+  outline-offset: -1px;
+}
+
+.dc-list.dc-drop {
+  outline: 1px solid var(--ph);
+  outline-offset: -2px;
+}
+
+.dc-list.dc-drop-no {
+  outline: 1px dashed var(--ph-dim);
+  outline-offset: -2px;
+}
+
 .docs .dc-row:active {
   background: var(--ph);
   color: var(--bg);

@@ -4,6 +4,7 @@ import type { DocEditor, LoadResult } from './docs-editor.ts';
 import type { DocConflict, DocEntry, DocFile, DocStat, DocsHit, DocsInfo, DocsList, DocsSearch, TrashItem } from '../../shared/docs.ts';
 import './docs.css';
 import './md.ts'; // its DOMPurify hook: links in the print copy open in a new tab
+import { type DropItem, dropProblem, dropTarget, isMd, movedPath, nameOf, parentOf, titleOf, titleRename } from './docsmove.ts';
 import { store } from './store.ts';
 import { button, confirmBox, el, shortPath, timeAgo, toast } from './ui.ts';
 
@@ -15,6 +16,8 @@ import { button, confirmBox, el, shortPath, timeAgo, toast } from './ui.ts';
 // Files live in the docs folder on the PC (server/docs.ts; PHOSPHOR_DOCS_DIR in .env). Saving is automatic
 // (after a pause in typing) and conflict-checked: if the file changed on disk meanwhile (Nextcloud synced an
 // edit from the phone, another program), both versions show and the owner keeps one. DELETE moves to TRASH.
+// A Markdown file named after its title line ("# Title") is renamed when the title changes; rows drag onto
+// folders to move them (rules: docsmove.ts).
 // Keys while open: Ctrl+S save now, Ctrl+F find and replace, Ctrl+P print, Esc closes the innermost panel
 // (in the editor it first leaves the editor; Esc again closes DOCS).
 // Speed: SOURCE is a plain textarea (smooth with 1 MB); DOC view writes Markdown and counts after typing pauses;
@@ -31,7 +34,8 @@ type Opts = {
 type Dir = { status: 'loading' } | { status: 'ok'; list: DocsList } | { status: 'error'; error: string };
 type View = 'doc' | 'source';
 type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error' | 'readonly';
-type Doc = Pick<DocFile, 'eol' | 'bom' | 'encoding' | 'readonly'> & { path: string; etag: string | null; saved: string; size: number; md: boolean; state: SaveState };
+// title: the title line the file name was last matched against (docsmove.ts titleRename).
+type Doc = Pick<DocFile, 'eol' | 'bom' | 'encoding' | 'readonly'> & { path: string; etag: string | null; saved: string; size: number; md: boolean; state: SaveState; title: string };
 type Template = { id: string; label: string; name: () => string; text: () => string };
 
 const VIEW_KEY = 'phosphor.docs.view';
@@ -40,6 +44,9 @@ const MAX_RECENT = 8;
 const NARROW = '(max-width: 700px)';
 const MAX_MATCHES = 5000;
 const BIG_FOR_DOC = 300_000; // chars: bigger files open in SOURCE (faster)
+const NAME_DELAY = 2000; // ms after a save settles before the file follows a changed title
+const OPEN_DELAY = 700; // ms hovering a closed folder while dragging before it opens
+const DRAG_TYPE = 'application/x-phosphor-doc'; // marks our own drags (not text or files from elsewhere)
 const STATE_LABEL: Record<SaveState, string> = { saved: 'SAVED', dirty: 'UNSAVED', saving: 'SAVING', conflict: 'CONFLICT', error: 'NOT SAVED', readonly: 'READ ONLY' };
 
 let opts: Opts = { insertIntoChat: () => {} };
@@ -64,6 +71,12 @@ let maxTimer: number | undefined;
 let countTimer: number | undefined;
 let searchTimer: number | undefined;
 let retryTimer: number | undefined;
+let nameTimer: number | undefined;
+// Dragging in the file list: the item picked up, the folder under it ('' = the top, null = none) and whether
+// it may go there.
+let drag: { item: DropItem; over: string | null; ok: boolean } | null = null;
+let openTimer: number | undefined;
+let leaveTimer: number | undefined;
 let lastCheck = 0;
 let pendingBack = 0;
 let oldTitle = '';
@@ -349,6 +362,12 @@ function build(): void {
     }
   });
   listEl.addEventListener('click', onListClick);
+  listEl.addEventListener('dragstart', onDragStart);
+  for (const t of [listEl, rootBox]) {
+    t.addEventListener('dragover', onDragOver);
+    t.addEventListener('dragleave', onDragLeave);
+    t.addEventListener('drop', (e) => void onDrop(e));
+  }
 }
 
 function setSide(show: boolean): void {
@@ -460,6 +479,7 @@ function renderList(): void {
   const keep = listEl.scrollTop;
   listEl.replaceChildren(frag);
   listEl.scrollTop = keep;
+  if (drag) markDrop(); // the list can reload mid-drag
 }
 
 function renderDir(into: DocumentFragment | HTMLElement, path: string, depth: number): void {
@@ -491,6 +511,7 @@ function row(e: DocEntry, depth: number): HTMLElement {
   r.classList.toggle('dc-other', e.kind === 'other');
   r.classList.toggle('sel', selected === e.path);
   r.classList.toggle('on', doc?.path === e.path);
+  r.draggable = fine(); // mouse only: on touch screens a long press must not pick a row up
   const glyph = isDir ? (expanded.has(e.path) ? '[-]' : '[+]') : e.kind === 'other' ? ' - ' : ' · ';
   r.append(el('span', 'dc-glyph', glyph), el('span', 'dc-nm', e.name));
   if (e.readonly) r.append(el('span', 'dc-ro', 'READ ONLY'));
@@ -555,6 +576,112 @@ function updateFoot(): void {
   renameBtn.disabled = !target || mode === 'trash';
   deleteBtn.disabled = !target || mode === 'trash';
   trashBtn.classList.toggle('on', mode === 'trash');
+}
+
+// ------------------------------------------------------------ drag and drop
+
+// Drag a row onto a folder row to move it there; onto the empty part of the list or the docs folder's name to
+// move it to the top. Hovering a closed folder opens it. Mouse only (phones: RENAME with a folder path).
+function onDragStart(e: DragEvent): void {
+  const r = (e.target as HTMLElement).closest<HTMLElement>('.dc-row');
+  if (mode !== 'tree' || !r || !e.dataTransfer) return;
+  const path = r.dataset.path!;
+  drag = { item: { path, dir: r.dataset.kind === 'dir', readonly: isRo(path) }, over: null, ok: false };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData(DRAG_TYPE, path);
+  e.dataTransfer.setData('text/plain', path);
+  // On the row itself: opening a folder while hovering redraws the list, and the end event stays with the row.
+  r.addEventListener('dragend', endDrag, { once: true });
+}
+
+function onDragOver(e: DragEvent): void {
+  if (!drag || !e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+  clearTimeout(leaveTimer);
+  const folder = folderAt(e.target);
+  const problem = folder === null ? null : dropProblem(drag.item, dropFolder(folder));
+  if (folder === null || problem === null) return setOver(null, false);
+  // A refused folder still takes the drop, so the note can say why.
+  e.preventDefault();
+  e.dataTransfer!.dropEffect = 'move';
+  setOver(folder, !problem);
+}
+
+// Leaving one row fires just before the next row's dragover, which cancels this: only really leaving clears it.
+function onDragLeave(): void {
+  clearTimeout(leaveTimer);
+  if (drag) leaveTimer = window.setTimeout(() => setOver(null, false), 100);
+}
+
+async function onDrop(e: DragEvent): Promise<void> {
+  if (!drag || !e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+  e.preventDefault();
+  const { item, over } = drag;
+  endDrag();
+  if (over === null) return;
+  const problem = dropProblem(item, dropFolder(over));
+  if (problem === null) return;
+  if (problem) return void toast(problem, 6000);
+  try {
+    selected = await moveTo(item.path, dropTarget(item.path, over));
+    toast(`Now: ${selected}`);
+  } catch (err) {
+    toast(errText(err), 6000);
+  }
+}
+
+function endDrag(): void {
+  clearTimeout(openTimer);
+  clearTimeout(leaveTimer);
+  drag = null;
+  markDrop();
+}
+
+// The folder a drop at t would go into: a folder row, or the top for the rest of the list. null: not here.
+function folderAt(t: EventTarget | null): string | null {
+  const n = t as HTMLElement;
+  const r = n.closest<HTMLElement>('.dc-row');
+  if (r) return r.dataset.kind === 'dir' ? r.dataset.path! : null;
+  return n.closest('.dc-note-row') ? null : '';
+}
+
+function dropFolder(path: string) {
+  const d = dirs.get(path);
+  const list = d?.status === 'ok' ? d.list : null;
+  return { path, readonly: (!!path && isRo(path)) || !!list?.readonly, names: list?.entries.map((e) => e.name) };
+}
+
+// Read-only in DOCS: a folder marked so, or anything in a read-only folder.
+function isRo(path: string): boolean {
+  const d = dirs.get(parentOf(path));
+  return !!findEntry(path)?.readonly || (d?.status === 'ok' && !!d.list.readonly);
+}
+
+function setOver(folder: string | null, ok: boolean): void {
+  if (!drag || (drag.over === folder && drag.ok === ok)) return;
+  if (drag.over !== folder) {
+    clearTimeout(openTimer);
+    const item = drag.item.path;
+    if (folder && !expanded.has(folder) && folder !== item && !folder.startsWith(`${item}/`)) {
+      openTimer = window.setTimeout(() => {
+        if (drag?.over !== folder) return;
+        expanded.add(folder);
+        renderList();
+      }, OPEN_DELAY);
+    }
+  }
+  drag.over = folder;
+  drag.ok = ok;
+  markDrop();
+}
+
+// The drop target's highlight: the folder row, or the whole list and the folder name for the top.
+function markDrop(): void {
+  const top = rootNameEl.parentElement!;
+  for (const n of [top, listEl, ...listEl.querySelectorAll('.dc-drop, .dc-drop-no')]) n.classList.remove('dc-drop', 'dc-drop-no');
+  if (!drag || drag.over === null) return;
+  const cls = drag.ok ? 'dc-drop' : 'dc-drop-no';
+  if (!drag.over) return void [top, listEl].forEach((n) => n.classList.add(cls));
+  listEl.querySelector(`.dc-row[data-path="${CSS.escape(drag.over)}"]`)?.classList.add(cls);
 }
 
 // ------------------------------------------------------------ search
@@ -719,7 +846,7 @@ async function openDoc(path: string, at?: { line: number; q: string }, quiet = f
 function loadIntoEditor(f: DocFile): void {
   closeFind(false);
   conflictEl.hidden = true;
-  doc = { path: f.path, etag: f.etag, saved: f.text, eol: f.eol, bom: f.bom, encoding: f.encoding, size: f.size, readonly: f.readonly, md: isMd(f.path), state: f.readonly ? 'readonly' : 'saved' };
+  doc = { path: f.path, etag: f.etag, saved: f.text, eol: f.eol, bom: f.bom, encoding: f.encoding, size: f.size, readonly: f.readonly, md: isMd(f.path), state: f.readonly ? 'readonly' : 'saved', title: titleOf(f.text) };
   ed.value = f.text;
   forgetRich();
   ed.readOnly = f.readonly;
@@ -804,6 +931,7 @@ function edited(): void {
   const d = doc;
   if (!d || d.readonly) return;
   editGen++;
+  clearTimeout(nameTimer);
   if (hitBox) hideHit();
   if (d.state !== 'conflict' && d.state !== 'dirty') setState('dirty');
   if (d.state === 'conflict') return;
@@ -877,6 +1005,10 @@ function save(): Promise<void> {
       d.size = r.size;
       if (doc === d) setState(fileText() === text ? 'saved' : 'dirty');
       if (doc === d && d.state === 'dirty') saveTimer = window.setTimeout(() => void save(), 1200);
+      if (doc === d && d.state === 'saved') {
+        clearTimeout(nameTimer);
+        nameTimer = window.setTimeout(() => void followTitle(d), NAME_DELAY);
+      }
     } catch (e) {
       if (doc !== d) return;
       if (e instanceof ApiError && e.status === 409 && e.body?.conflict) showConflict(d, e.body as unknown as DocConflict);
@@ -904,7 +1036,24 @@ async function leaveDoc(): Promise<boolean> {
     return false;
   }
   if (d.state === 'error') return confirmBox('NOT SAVED', `${nameOf(d.path)} could not be saved (${stateEl.title}). Leave it anyway? The last changes would be lost.`, 'LEAVE IT');
+  await followTitle(d); // a rename still waiting for its pause happens now
   return true;
+}
+
+// Title -> file name: once a save has settled, a Markdown file whose name follows its title line ("# Title")
+// moves to the new title's name in the same folder (the rule: docsmove.ts titleRename). A name already taken
+// there is never overwritten: the file keeps its name, a note says so, and it is not tried again for that title.
+async function followTitle(d: Doc): Promise<void> {
+  clearTimeout(nameTimer);
+  if (doc !== d || saving || d.readonly || d.state !== 'saved' || d.etag === null) return;
+  const to = titleRename(d.path, d.title, d.saved);
+  d.title = titleOf(d.saved);
+  if (!to) return;
+  try {
+    await moveTo(d.path, to);
+  } catch (e) {
+    toast(`Kept the name ${nameOf(d.path)}, not ${nameOf(to)}: ${errText(e)}`, 6000);
+  }
 }
 
 function showConflict(d: Doc, c: DocConflict): void {
@@ -1039,13 +1188,14 @@ async function checkDisk(force: boolean): Promise<void> {
   if (!isOpen || !d || d.etag === null || saving || d.state === 'conflict' || document.hidden) return;
   if (!force && Date.now() - lastCheck < 2000) return;
   lastCheck = Date.now();
+  const path = d.path;
   let s: DocStat | null = null;
   try {
-    s = await api<DocStat>('stat', { path: d.path });
+    s = await api<DocStat>('stat', { path });
   } catch (e) {
     if (!(e instanceof ApiError && e.status === 404)) return;
   }
-  if (doc !== d || saving || (d.state as SaveState) === 'conflict') return; // it may have changed while waiting
+  if (doc !== d || d.path !== path || saving || (d.state as SaveState) === 'conflict') return; // it may have changed (or moved) while waiting
   if (s && s.etag === d.etag) return;
   if (!d.readonly && fileText() !== d.saved) return void save();
   if (!s) {
@@ -1633,23 +1783,55 @@ async function renameBox(): Promise<void> {
   const to = await textBox('RENAME OR MOVE', 'NEW NAME', from, 'RENAME', 'Change the folder part to move it (new folders are made).', undefined, selectTo);
   if (!to || to === from) return;
   const dest = to.replace(/\\/g, '/').replace(/^\/+/, '');
-  const isOpenDoc = doc && (doc.path === from || doc.path.startsWith(`${from}/`));
-  if (isOpenDoc) await save();
   try {
-    const r = await api<{ path: string }>('move', undefined, { from, to: dest });
-    if (doc && isOpenDoc) {
-      doc.path = r.path + doc.path.slice(from.length);
-      doc.md = isMd(doc.path);
-      renderDoc();
-    }
-    renamePrefix(from, r.path);
-    selected = r.path;
-    revealPath(r.path);
-    refreshTree();
-    toast(`Now: ${r.path}`);
+    const path = await moveTo(from, dest);
+    selected = path;
+    toast(`Now: ${path}`);
   } catch (e) {
     toast(errText(e), 6000);
   }
+}
+
+// Move a file or folder on disk (RENAME, dragging, the title), then point everything that knows its path at the
+// new one. The move holds `saving`, so a save waits for it: typing meanwhile is saved into the moved file.
+async function moveTo(from: string, to: string): Promise<string> {
+  if (doc && movedPath(doc.path, from, to) !== doc.path) await save(); // the open file is on disk before it moves
+  while (saving) await saving;
+  const job = (async (): Promise<{ path: string } | Error> => {
+    try {
+      const r = await api<{ path: string }>('move', undefined, { from, to });
+      followMove(from, r.path);
+      return r;
+    } catch (e) {
+      return e instanceof Error ? e : new Error(String(e));
+    } finally {
+      saving = null;
+    }
+  })();
+  saving = job.then(() => {});
+  const res = await job;
+  if (res instanceof Error) throw res;
+  return res.path;
+}
+
+// After a move: the open document, the picked row, open folders and the recent list follow it.
+function followMove(from: string, to: string): void {
+  if (doc && movedPath(doc.path, from, to) !== doc.path) {
+    doc.path = movedPath(doc.path, from, to);
+    doc.md = isMd(doc.path);
+    renderDoc();
+  }
+  if (selected) selected = movedPath(selected, from, to);
+  for (const p of [...expanded]) {
+    const q = movedPath(p, from, to);
+    if (q !== p) {
+      expanded.delete(p);
+      expanded.add(q);
+    }
+  }
+  renamePrefix(from, to);
+  revealPath(to);
+  refreshTree();
 }
 
 async function deleteSelected(): Promise<void> {
@@ -1791,7 +1973,7 @@ function saveRecent(list: string[]): void {
 const pushRecent = (path: string) => saveRecent([path, ...recent().filter((p) => p !== path)]);
 const dropRecent = (path: string) => saveRecent(recent().filter((p) => p !== path));
 const dropRecentPrefix = (path: string) => saveRecent(recent().filter((p) => p !== path && !p.startsWith(`${path}/`)));
-const renamePrefix = (from: string, to: string) => saveRecent(recent().map((p) => (p === from || p.startsWith(`${from}/`) ? to + p.slice(from.length) : p)));
+const renamePrefix = (from: string, to: string) => saveRecent(recent().map((p) => movedPath(p, from, to)));
 
 function registerCommands(): void {
   opts.addCommands?.([
@@ -1821,17 +2003,6 @@ function syncRecentCommands(): void {
 }
 
 // ------------------------------------------------------------ helpers
-
-function nameOf(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1);
-}
-
-function parentOf(path: string): string {
-  const i = path.lastIndexOf('/');
-  return i < 0 ? '' : path.slice(0, i);
-}
-
-const isMd = (path: string) => /\.(md|markdown|mdown)$/i.test(path);
 
 function fmtSize(n: number): string {
   if (n < 1024) return `${n}B`;

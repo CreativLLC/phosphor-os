@@ -173,6 +173,12 @@ This file is the build record: what exists and how it works. Install and use: `R
   VERSION / KEEP BOTH. Find and replace, word and line count, templates (note, letter, list, blank), print or PDF
   (black on white), ASK CLAUDE (puts `@path` in the message box, never sends). DELETE moves to `<root>/.retro-trash/`
   (TRASH view puts things back). Keys: Ctrl+S, Ctrl+F, Ctrl+P, Esc. API: `/api/docs/*` (shared/docs.ts).
+  Title follows the name (2026-10-16): about 2 s after a save settles, a Markdown file whose name matched its old
+  first-line `# Title` (or still has a NEW name like "Note 2026-10-16" / "Untitled") is renamed to the new title
+  (cleaned for Windows, max 100 letters, same folder); a taken name is never overwritten (kept, with a note).
+  Drag and drop in the list (mouse only): a row onto a folder row moves it there, onto the empty list or the folder
+  name moves it to the top; a closed folder opens after 0.7 s of hovering. Refused: a folder into itself, read-only
+  items or folders, a name already there (any case). Rules: `web/src/docsmove.ts`, test `npx tsx tests/docs-move.ts`.
 - **STATION** (2026-10-12): homelab hub. STATION button (MENU on phones), launcher `STATION` / `OPEN <name>`. A wide
   drawer of your services (`data/station.json`: name, address, kind, SELF-SIGNED, SKIN; edited in the app):
   UP / SLOW (2 s+) / DOWN lamp, response time, last seen, sparkline of the last 40 checks; OPEN (desktop app: a
@@ -353,7 +359,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | SYS panel | `server/system.ts`, `shell/sysmon.cs`, `shell/volume.cs`, `web/src/system.ts`, `system.css` |
 | OS theme pack | `os/` (`os/tools/palettes.mjs` is the color source; `build-themes.mjs`, `wallpapers.mjs` regenerate) |
 | Themes | `web/src/themes.ts` (registry, how to add one), `web/src/themes/*.css` (LCARS: `lcars.css`), `boot-lcars.ts`, `fonts/antonio/` |
-| DOCS | `server/docs.ts`, `shared/docs.ts`, `web/src/docs.ts`, `docs.css`, `docs-editor.ts` (DOC view), `mdkeep.ts` (Markdown blocks), `tests/docs-roundtrip.ts` |
+| DOCS | `server/docs.ts`, `shared/docs.ts`, `web/src/docs.ts`, `docs.css`, `docs-editor.ts` (DOC view), `mdkeep.ts` (Markdown blocks), `docsmove.ts` (rename/drop rules), `tests/docs-roundtrip.ts`, `tests/docs-move.ts` |
 | Fun pack | `web/src/fun.ts` (start, launcher commands), `funsettings.ts`, `funsection.ts`, `fun.css`, `saver.ts/.css` (the OS screensaver page, own build `vite.saver.config.ts`), `shipvoice.ts`, `speech.ts`, `gamemode.ts`, `bootchecks.ts`, `server/bootcheck.ts` |
 | AUTO model | `shared/router.ts` (parse the pick, stickiness rule), `server/router.ts` (Haiku call), `Tab.send/route` in `server/tab.ts` (applies, tags, logs to `data/auto-router.jsonl`), `web/src/pickers.ts`, `scripts/auto-eval.ts` (router only, on recent chats), `tests/router.ts` |
 | SDK update | `server/sdkupdate.ts` (hourly npm check, bell notice, `GET/POST /api/update`, 04:00 run), `shared/sdkversion.ts` (range rules), `scripts/update-sdk.sh`, `web/src/sdkupdate.ts`, `sdkupdate.css` (UPDATE chip), `tests/sdkversion.ts` |
