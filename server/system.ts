@@ -7,6 +7,7 @@ import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { appFolder } from '../shared/names.mjs';
 import type { SystemDisk, SystemResponse, SystemVolume } from '../shared/protocol.ts';
+import { localSpeed } from './localmeter.ts';
 
 // SYS panel. GET /api/system -> SystemResponse, POST /api/system/volume { pct?, muted? } (shared/protocol.ts).
 // Called only for authed requests. Nothing is read while nobody looks: the first GET starts the readers and they
@@ -135,6 +136,7 @@ function snapshot(): SystemResponse {
     net: live.net,
     volume: live.volume,
     ...(note ? { note } : {}),
+    localSpeed: localSpeed(),
   };
 }
 

@@ -356,7 +356,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | Alerts (push) | `server/push.ts`, `web/src/alerts.ts`, `alerts.css`, `web/public/sw.js` (push, notificationclick) |
 | MCP + "/" menu | `server/mcp.ts`, `Tab.mcpServers/mcpAction/commands` in `server/tab.ts`, `web/src/mcp.ts`, `slash.ts`, `mcp.css` |
 | Launcher | `web/src/launcher.ts`, `launcher.css`, `shell/installed.mjs` (scan + launch by id), find in `server/files.ts` |
-| SYS panel | `server/system.ts`, `shell/sysmon.cs`, `shell/volume.cs`, `web/src/system.ts`, `system.css` |
+| SYS panel | `server/system.ts`, `server/localmeter.ts` (local model speed), `shell/sysmon.cs`, `shell/volume.cs`, `web/src/system.ts`, `system.css` |
 | OS theme pack | `os/` (`os/tools/palettes.mjs` is the color source; `build-themes.mjs`, `wallpapers.mjs` regenerate) |
 | Themes | `web/src/themes.ts` (registry, how to add one), `web/src/themes/*.css` (LCARS: `lcars.css`), `boot-lcars.ts`, `fonts/antonio/` |
 | DOCS | `server/docs.ts`, `shared/docs.ts`, `web/src/docs.ts`, `docs.css`, `docs-editor.ts` (DOC view), `mdkeep.ts` (Markdown blocks), `docsmove.ts` (rename/drop rules), `tests/docs-roundtrip.ts`, `tests/docs-move.ts` |

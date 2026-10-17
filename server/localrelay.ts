@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { config, localModel } from './config.ts';
+import { Meter, meterOn } from './localmeter.ts';
 
 // Claude Code asks for a thinking level on every request (output_config.effort). Qwen takes its level through the
 // chat template (reasoning_effort: low, medium, xhigh). This relay turns one into the other and passes the rest on
@@ -89,10 +90,12 @@ async function ensureUp(url: string, unit: string | undefined, f: Fetch, start: 
 export function startLocalRelay(): void {
   if (!localModel) return;
   const m = localModel;
+  meterOn();
   const server = createServer(async (req, res) => {
     const abort = new AbortController();
     res.on('close', () => abort.abort());
     let target = m.url;
+    let meter: Meter | undefined; // streamed answers only: the SYS panel's speed numbers (server/localmeter.ts)
     try {
       const chunks: Buffer[] = [];
       for await (const c of req) chunks.push(c as Buffer);
@@ -101,6 +104,7 @@ export function startLocalRelay(): void {
         try {
           const j = JSON.parse(body.toString('utf8'));
           const name = typeof j?.model === 'string' ? j.model : '';
+          if (name && j.stream === true && req.url?.split('?')[0] === '/v1/messages') meter = new Meter(name);
           if (name) {
             target = m.urls[name] || m.url;
             await makeRoom(m, name);
@@ -117,14 +121,38 @@ export function startLocalRelay(): void {
           /* not JSON: pass it on as it is */
         }
       }
-      if (abort.signal.aborted) return;
+      if (abort.signal.aborted) return meter?.end('cancelled');
       const headers: Record<string, string> = {};
       for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !['host', 'content-length', 'connection'].includes(k)) headers[k] = v;
+      meter?.forwarded();
       const r = await fetch(new URL(req.url ?? '/', target), { method: req.method, headers, body: body.length ? body : undefined, signal: abort.signal });
       res.writeHead(r.status, Object.fromEntries([...r.headers].filter(([k]) => !['content-length', 'content-encoding', 'transfer-encoding', 'connection'].includes(k))));
-      if (r.body) Readable.fromWeb(r.body as never).pipe(res);
-      else res.end();
+      const sse = r.ok && !!r.headers.get('content-type')?.includes('text/event-stream');
+      if (meter && !sse) {
+        if (r.ok) meter.drop(); // not streamed: nothing to time
+        else meter.end('error');
+      }
+      const mt = sse ? meter : undefined;
+      if (r.body) {
+        const answer = Readable.fromWeb(r.body as never);
+        answer.pipe(res);
+        // A cancelled or broken answer errors the stream: without this listener that error stopped the whole server.
+        answer.on('error', () => {
+          mt?.end(abort.signal.aborted ? 'cancelled' : 'error');
+          res.destroy();
+        });
+        // After pipe: each chunk goes to Claude Code first, then a copy to the meter.
+        if (mt) {
+          answer.on('data', (c: Uint8Array) => mt.feed(c));
+          answer.on('end', () => mt.end('ok'));
+          res.on('close', () => mt.end('cancelled'));
+        }
+      } else {
+        mt?.drop();
+        res.end();
+      }
     } catch (e) {
+      meter?.end(abort.signal.aborted ? 'cancelled' : 'error');
       if (abort.signal.aborted) return;
       if (!res.headersSent) res.writeHead(502, { 'content-type': 'application/json' });
       const own = Object.entries(m.urls).find(([, u]) => u === target)?.[0];

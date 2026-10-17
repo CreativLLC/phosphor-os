@@ -1,4 +1,4 @@
-import type { SystemResponse, SystemVolume } from '../../shared/protocol.ts';
+import type { LocalSpeed, LocalSpeedRun, SystemResponse, SystemVolume } from '../../shared/protocol.ts';
 import { el } from './ui.ts';
 import { segBar } from './usage.ts';
 
@@ -256,8 +256,9 @@ export function mountSystem(root: HTMLElement): void {
   const gpu = gauge('GPU', 'gpu');
   const vram = gauge('VRAM', 'vram');
   const gpuModel = el('div', 'sys-d sys-gpu-model');
+  const speed = localSpeedBlock();
   const loadSec = el('section', 'ms-sec sys-sec');
-  loadSec.append(loadH.root, cpu.root, coresRow, ram.root, gpu.root, vram.root, gpuModel);
+  loadSec.append(loadH.root, cpu.root, coresRow, ram.root, gpu.root, vram.root, gpuModel, speed.root);
 
   // Network
   const netH = heading('NETWORK');
@@ -327,6 +328,7 @@ export function mountSystem(root: HTMLElement): void {
     gpuModel.hidden = !d.gpu || !loaded.length;
     gpuModel.textContent = `LOADED: ${loaded.join(', ')}`;
     gpuModel.title = 'Local AI model in video memory';
+    speed.show(d.localSpeed);
     if (d.gpu) {
       const g = d.gpu;
       const gTitle = g.tempC === null && d.os === 'win32' ? tempTitle : g.hotspotC !== null ? `Edge ${temp(g.tempC)}, hot spot ${temp(g.hotspotC)}` : 'Temperature';
@@ -376,6 +378,65 @@ export function mountSystem(root: HTMLElement): void {
     note.textContent = d.note ?? '';
   }
   renders.add(() => active() && render());
+}
+
+// ---------------------------------------------------------------- local model speed
+
+const tps = (v: number | null) => (v === null ? '--' : v < 10 ? v.toFixed(1) : String(Math.round(v)));
+const toks = (v: number | null) => (v === null ? '--' : v >= 10_000 ? `${(v / 1000).toFixed(1)}K` : String(v));
+function secs(ms: number | null): string {
+  if (ms === null) return '--';
+  const s = ms / 1000;
+  if (s < 10) return `${s.toFixed(1)} s`;
+  if (s < 60) return `${Math.round(s)} s`;
+  return `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s`;
+}
+const PHASE: Record<NonNullable<LocalSpeedRun['phase']>, string> = { loading: 'LOADING MODEL', reading: 'READING PROMPT', thinking: 'THINKING', writing: 'WRITING' };
+const ENDED: Record<LocalSpeedRun['outcome'], string> = { running: '', ok: 'LAST', error: 'LAST FAILED', cancelled: 'LAST STOPPED' };
+const HELP =
+  'Local model speed, measured in this app, in tokens per second. write: the answer. read: the prompt ' +
+  '(~ = estimated from the time to the first token). Live counts are estimated from the stream; final counts come ' +
+  'from the model server. RECENT: middle value of the last requests (first = time to the first token).';
+
+// Under LOADED, only when a local model is set up: live while a request runs, the last one's numbers (dim) after.
+function localSpeedBlock() {
+  const root = el('div', 'sys-llm');
+  const l1 = el('div', 'sys-d sys-llm-1');
+  const l2 = el('div', 'sys-d');
+  const l3 = el('div', 'sys-d');
+  root.append(l1, l2, l3);
+  const line = (e: HTMLElement, text: string) => {
+    e.hidden = !text;
+    e.textContent = text;
+  };
+  // "~640 read" beside a write speed, "~640 tok/s read" alone.
+  const read = (r: { readTps: number | null; readExact?: boolean }, alone = false) => (r.readTps === null ? '' : `${r.readExact ? '' : '~'}${tps(r.readTps)}${alone ? ' tok/s' : ''} read`);
+  return {
+    root,
+    show(s: LocalSpeed | undefined) {
+      root.hidden = !s;
+      if (!s) return;
+      const run = s.live ?? s.last;
+      root.classList.toggle('live', !!s.live);
+      if (!run) {
+        line(l1, 'LOCAL MODEL: NO REQUESTS YET');
+        line(l2, '');
+      } else if (s.live) {
+        const ph = run.phase ?? 'reading';
+        const head = ph === 'thinking' || ph === 'writing' ? `${PHASE[ph]} ${tps(run.nowTps)} tok/s · ${toks(run.outputTokens)} tok` : ph === 'reading' && run.inputTokens !== null ? `${PHASE[ph]} · ${toks(run.inputTokens)} tok` : PHASE[ph];
+        line(l1, head);
+        line(l2, `${run.model} · ${secs(run.totalMs)}`);
+      } else {
+        const parts = [run.writeTps === null ? '' : `${tps(run.writeTps)} tok/s write`, read(run, run.writeTps === null)].filter(Boolean);
+        line(l1, run.outcome === 'ok' ? `LAST ${parts.join(' · ') || 'no speed (short answer)'}` : `${ENDED[run.outcome]} after ${secs(run.totalMs)}`);
+        const detail = [run.firstTokenMs === null ? '' : `${secs(run.firstTokenMs)} first token`, run.outputTokens === null ? '' : `${toks(run.outputTokens)} tok`, run.outcome === 'ok' ? secs(run.totalMs) : ''];
+        line(l2, detail.filter(Boolean).join(' · '));
+      }
+      const r = s.recent;
+      line(l3, r && r.count > 1 ? `RECENT ${[r.writeTps === null ? '' : `${tps(r.writeTps)} tok/s write`, r.firstTokenMs === null ? '' : `${secs(r.firstTokenMs)} first`].filter(Boolean).join(' · ')}` : '');
+      root.title = [run ? `Model: ${run.model}` : '', run?.inputTokens != null ? `Prompt: ${run.inputTokens} tokens read${run.cachedTokens ? `, ${run.cachedTokens} from cache` : ''}` : '', r && r.count > 1 ? `RECENT = middle of the last ${r.count}${r.readTps === null ? '' : `, ${read(r, true)}`}` : '', HELP].filter(Boolean).join('\n');
+    },
+  };
 }
 
 // ---------------------------------------------------------------- volume

@@ -246,3 +246,17 @@
 .sys-gpu-model {
   margin: -2px 0 6px calc(4.5ch + 8px);
 }
+
+/* Local model speed: live while a request runs, dim when idle. */
+.sys-llm {
+  margin: -2px 0 6px calc(4.5ch + 8px);
+  opacity: 0.7;
+}
+
+.sys-llm.live {
+  opacity: 1;
+}
+
+.sys-llm.live .sys-llm-1 {
+  color: var(--ph-bright);
+}

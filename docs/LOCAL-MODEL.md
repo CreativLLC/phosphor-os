@@ -117,6 +117,18 @@ Picker entries from this installer live in `PHOSPHOR_LOCAL_MORE_MODELS`, so re-r
 them. Strata's THINK levels: low, medium, high (XHIGH and MAX count as high). No pictures (Strata's AMD image
 encoder runs on the CPU; turned off here).
 
+## Speed in the SYS panel
+
+With a local model set up, SYS shows its speed under LOADED (`server/localmeter.ts`, measured in the relay on a copy
+of each streamed answer; only numbers and the model name are kept). While a request runs: LOADING MODEL, READING
+PROMPT, THINKING or WRITING, the live speed over the last 3 s, tokens so far (estimated from the stream, about 4
+characters a token) and time since the request came in. After it (dim): LAST `write` = answer tokens / time from the
+first to the last piece, `read` = prompt tokens read (cache left out) / time to the first token (`~`: estimated this
+way; without `~` the model server sent its own number), `first token` = time from sending to the first piece of
+thinking or text (a model switch before that is not counted), then the server's token count and the total time.
+RECENT is the middle value of the last 5 finished requests, so one odd request does not move it. LAST STOPPED /
+FAILED: the answer was cancelled or broke. Tests: `npx tsx tests/localmeter.ts`.
+
 ## Traps
 
 - Claude Code assumes a 200k window; `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set to the local context so it compacts in time.

@@ -241,7 +241,30 @@ export type SystemResponse = {
   net: { name: string; rx: number; tx: number } | null; // the busiest real network adapter
   volume: SystemVolume | null; // null: no volume control here
   note?: string; // why parts are missing
+  localSpeed?: LocalSpeed; // only when a local model is set up
 };
+// Local model speed (server/localmeter.ts), measured in the relay. Times in ms, speeds in tokens per second, null = not
+// known. readTps: input tokens / time to first token (approximate) unless readExact (the model server's own number).
+// outputTokens: the server's count when outputExact, else estimated from the stream. nowTps: live, last few seconds.
+// phase only while running ('loading': waiting for the model to switch or start).
+export type LocalSpeedRun = {
+  model: string;
+  outcome: 'running' | 'ok' | 'error' | 'cancelled';
+  phase?: 'loading' | 'reading' | 'thinking' | 'writing';
+  inputTokens: number | null;
+  cachedTokens: number | null;
+  outputTokens: number | null;
+  outputExact: boolean;
+  firstTokenMs: number | null;
+  readTps: number | null;
+  readExact: boolean;
+  writeTps: number | null;
+  nowTps: number | null;
+  totalMs: number;
+  endedAt: number | null;
+};
+// recent: middle values of the last `count` (up to 5) finished requests.
+export type LocalSpeed = { live: LocalSpeedRun | null; last: LocalSpeedRun | null; recent: { count: number; writeTps: number | null; readTps: number | null; firstTokenMs: number | null } | null };
 // ALERTS (server/push.ts, web/src/alerts.ts, web/public/sw.js): Web Push when a turn ends (DONE) or Claude waits
 // for you (NEEDS YOU). GET /api/push -> PushStatusResponse (the VAPID public key only; the private key stays on the PC).
 // POST /api/push/subscribe { subscription: PushSubscriptionJSON, id?, oldEndpoint?, prefs? } -> { id }
