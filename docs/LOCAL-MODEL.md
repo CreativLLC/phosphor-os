@@ -86,7 +86,7 @@ files, size, port, context); the files can live on another drive (`STRATA_DATA_D
 | Part | Choice | Why |
 |---|---|---|
 | Engine | Strata, pinned release, compiled for the card (HIP on AMD) | the only engine built around this model's small experts |
-| Model | ISTA-DASLab GSQ-RCO `IQ2_XS` (39 GB for RAM plus VRAM, plus a 29 GB table read from the SSD) | Strata's pick for general use when RAM is short; a 32 GB PC with a 20-24 GB card runs it in Strata's low-RAM mode |
+| Model | ISTA-DASLab's Coder (`IQ1_M` by name, experts stored like IQ3_S; 256 of the 512 experts per layer kept, chosen for code and tools; 23 GB of experts, plus a 29 GB table read from the SSD) | Strata's pick for a 32 GB PC; weaker outside code. `STRATA_FAMILY=qwen` installs a size with every expert (`IQ2_XS`: 35.5 GB of experts) |
 | Server | its own, port 8082, `phosphor-strata.service` (user), not started at login | not a llama.cpp model, so not in the router |
 | VRAM reserve | 3072 MiB | Strata's docs: an AMD card that drives the desktop lost the compositor with less |
 | Idle | unloads after 15 minutes (`idle_unload_s`), RAM and GPU go back | it holds tens of GB |
@@ -101,13 +101,17 @@ config), for callers that do not go through the relay. Callers that talk to the 
 are not covered the other way: while Strata holds the GPU, such a request would load a second model. Tests:
 `npx tsx tests/localrelay.ts`.
 
-Measured on one PC (20 GB AMD card, 31 GB RAM, model files on an NVMe SSD): a start with the files in the OS file
-cache took 15 s; a 509-token answer came at 44 tok/s; a tool call came back right. Reading the prompt is the slow
-part: 8,100 tokens took 135-207 s, because only 7 of the 21.5 GB of experts meant for RAM fit, so each prompt reads
-the rest from the SSD. Strata keeps the reading of earlier turns (at each turn's end, every 16K tokens and the end of
-the system prompt), so a chat's later turns read only what is new; the first message of a new chat (Claude Code's
-prompt and tool list, about 15-20K tokens) waits minutes (untested in the picker). More free RAM and a hipBLASLt
-tuning table (Strata's docs/AMD_HIP.md) make it faster (not tried here).
+Measured on one PC (20 GB AMD card, 31 GB RAM, model files on an NVMe SSD), both through Claude Code:
+
+| Size | First prompt (Claude Code's, 16-22K tokens) | Writing | RAM tier that fit |
+|---|---|---|---|
+| Coder | 16.6K tokens in 25 s; later turns 2 s | 52-62 tok/s; a 4-turn bug fix (read, edit, run) took 36 s | 11.2 of 12.8 GB |
+| `IQ2_XS` | 22K tokens in 80 s | 1-3 tok/s; the engine stopped once (`verify: timed out`, #267) and Strata restarted it | 7 of 21.5 GB |
+
+With `IQ2_XS` most experts a code prompt needs are read from the SSD for every token; the Coder's fit in RAM and
+VRAM. A short plain-English answer from `IQ2_XS` ran at 44 tok/s, so a quick chat test does not show this. Strata keeps
+the reading of earlier turns (at each turn's end, every 16K tokens and the end of the system prompt), so a chat's later
+turns read only what is new.
 
 Picker entries from this installer live in `PHOSPHOR_LOCAL_MORE_MODELS`, so re-running `setup-local-model.sh` keeps
 them. Strata's THINK levels: low, medium, high (XHIGH and MAX count as high). No pictures (Strata's AMD image

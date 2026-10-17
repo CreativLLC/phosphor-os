@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Strata (github.com/Niko1221/Strata) for Phosphor-OS: Qwen3.8-Flash-Next, a 125B mixture-of-experts model (about 6B
-# active per token), on this PC's GPU. Strata keeps the experts it uses most on the card, the rest in RAM, and reads
+# active per token), on this PC's GPU. Default: the Coder version (half the experts, kept for code and tools), the one
+# Strata names for a PC with 32 GB of RAM. Strata keeps the experts it uses most on the card, the rest in RAM, and reads
 # what does not fit from the SSD (its "low-RAM mode"). It shows up in the model picker as its own entry.
 # It runs on its own server (port 8082), not in the llama.cpp router. The relay (server/localrelay.ts) starts its
 # service when the entry is picked, has the router unload its model first, and asks Strata to unload before a router
@@ -12,8 +13,9 @@
 #
 # Settings (environment variables):
 #   STRATA_DIR       Strata's folder: engine, Python environment, config (default ~/strata, about 1-2 GB)
-#   STRATA_DATA_DIR  the model files, 70-80 GB (default ~/strata-data; a fast SSD helps)
-#   STRATA_MODEL     the size, see Strata's docs/MODELS.md (default IQ2_XS)
+#   STRATA_DATA_DIR  the model files, about 65 GB for the Coder (default ~/strata-data; a fast SSD helps)
+#   STRATA_FAMILY    coder (default) or qwen (every expert; needs more RAM, see Strata's docs/MODELS.md)
+#   STRATA_MODEL     the size: IQ1_M for the Coder (its only one), Q2_0, IQ2_XS, IQ3_XXS or IQ3_S for qwen
 #   STRATA_PORT      (default 8082)    STRATA_CONTEXT (default 65536)    STRATA_VERSION (default v0.1.44.1)
 #   STRATA_MEMORY_MAX  RAM cap for the service, so a full RAM ends Strata instead of the desktop (default 24G)
 # Needs: an AMD card Strata supports (RX 7900 XT/XTX and others, see its docs/AMD_HIP.md), git, a C++ compiler and
@@ -28,15 +30,19 @@ ENV_FILE="$PROJECT/.env"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 STRATA_DIR="${STRATA_DIR:-$HOME/strata}"
 DATA_DIR="${STRATA_DATA_DIR:-$HOME/strata-data}"
-MODEL="${STRATA_MODEL:-IQ2_XS}"
+FAMILY="${STRATA_FAMILY:-coder}"
+case "$FAMILY" in
+  coder) MODEL="${STRATA_MODEL:-IQ1_M}" NAME=strata-flash-next-coder LABEL="Qwen3.8 Flash-Next Coder (Strata, local)" ;;
+  qwen) MODEL="${STRATA_MODEL:-IQ2_XS}" NAME=strata-flash-next LABEL="Qwen3.8 Flash-Next 125B (Strata, local)" ;;
+  *) printf 'STOP: STRATA_FAMILY is coder or qwen, not %s\n' "$FAMILY" >&2; exit 1 ;;
+esac
+# NAME is what a request calls the model (Strata answers to any name), LABEL the picker text.
 PORT="${STRATA_PORT:-8082}"
 CONTEXT="${STRATA_CONTEXT:-65536}"
 VERSION="${STRATA_VERSION:-v0.1.44.1}"
 MEMORY_MAX="${STRATA_MEMORY_MAX:-24G}"
 UNIT=phosphor-strata.service
 UNIT_FILE="$CONFIG_HOME/systemd/user/$UNIT"
-NAME=strata-flash-next # what a request calls the model; Strata answers to any name
-LABEL="Qwen3.8 Flash-Next 125B (Strata, local)"
 ENV_KEYS='PHOSPHOR_LOCAL_MORE_MODELS PHOSPHOR_LOCAL_URLS PHOSPHOR_LOCAL_UNITS PHOSPHOR_LOCAL_CONTEXTS'
 
 DRY=0
@@ -84,14 +90,15 @@ if [[ ! -d "$STRATA_DIR/.git" ]]; then
   run git clone -q --depth 1 --branch "$VERSION" https://github.com/Niko1221/Strata.git "$STRATA_DIR"
 fi
 
-TAG="${MODEL,,}" # Strata names its files in lower case: run-iq2_xs.sh, strata-iq2_xs.json
+# Strata names its files by family and size in lower case: run-coder-iq1_m.sh, strata-iq2_xs.json (qwen has no prefix)
+TAG="$([[ $FAMILY == qwen ]] || printf '%s-' "$FAMILY")${MODEL,,}"
 RUN_SCRIPT="$STRATA_DIR/run-$TAG.sh"
 CONF="$STRATA_DIR/strata-$TAG.json"
 if [[ ! -x "$RUN_SCRIPT" ]]; then
   say "Strata's own setup: compiles the engine for this GPU and downloads $MODEL to $DATA_DIR (long; resumable)"
   run mkdir -p "$DATA_DIR"
   # In its own memory-capped scope: if the setup runs out of memory, it ends, not the desktop.
-  run systemd-run --user --scope -p MemoryMax=8G -q -- "$STRATA_DIR/setup.sh" --setup --backend hip --family qwen \
+  run systemd-run --user --scope -p MemoryMax=8G -q -- "$STRATA_DIR/setup.sh" --setup --backend hip --family "$FAMILY" \
     --model "$MODEL" --context "$CONTEXT" --vision no --port "$PORT" --no-browser --data-dir "$DATA_DIR" \
     --vram-reserve-mib 3072 --no-start --yes
 fi
