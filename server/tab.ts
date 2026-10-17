@@ -35,7 +35,7 @@ const localEnv = (m: NonNullable<typeof localModel>, name: string) => ({
   ANTHROPIC_DEFAULT_OPUS_MODEL: name,
   ANTHROPIC_DEFAULT_SONNET_MODEL: name,
   ANTHROPIC_DEFAULT_HAIKU_MODEL: name,
-  CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(m.context), // the local window is smaller than the 200k Claude Code assumes
+  CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(m.contexts[name] ?? m.context), // the local window is smaller than the 200k Claude Code assumes
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
 });
 

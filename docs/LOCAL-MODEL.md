@@ -66,13 +66,52 @@ Changing the level needs no restart. Tested live: the Qwen3.6 answer to the same
 
 ## On and off
 
-`bash scripts/local-model.sh on|off|status`. Off stops the service and frees the GPU at once (19 GB -> 1.5 GB).
+`bash scripts/local-model.sh on|off|status|unload`. Off stops the service and frees the GPU at once (19 GB -> 1.5 GB).
+Unload keeps the router running and gives back every model it holds.
 On starts the router only; a model loads on the first request that names it. Idle: each model's child sleeps after
 15 minutes (`sleep-idle-seconds` in the preset): GPU memory drops to about 1.9 GB, the model shows as `sleeping`
 in `/v1/models`, and the next request wakes it (about 17 s measured for the 35B). The relay answers "not reachable" while the service is off.
 
 Gemma uses the chat template inside its own file (the Qwen template is set per Qwen section). The THINK levels
 are Qwen's: Gemma ignores them (it thinks on its own; tested: a short answer came back with a thinking block).
+
+## Strata: a 125B model beside the router (optional)
+
+[Strata](https://github.com/Niko1221/Strata) runs one model family, Qwen3.8-Flash-Next (125B mixture of experts,
+about 6B active per token), on a card far smaller than the model: it keeps the experts used most on the GPU, the
+rest in RAM, and reads what does not fit from the SSD. `bash scripts/setup-strata.sh` (`--dry-run`, `--undo`)
+installs it and adds one picker entry. Settings are environment variables at the top of the script (folder, model
+files, size, port, context); the files can live on another drive (`STRATA_DATA_DIR`).
+
+| Part | Choice | Why |
+|---|---|---|
+| Engine | Strata, pinned release, compiled for the card (HIP on AMD) | the only engine built around this model's small experts |
+| Model | ISTA-DASLab GSQ-RCO `IQ2_XS` (39 GB for RAM plus VRAM, plus a 29 GB table read from the SSD) | Strata's pick for general use when RAM is short; a 32 GB PC with a 20-24 GB card runs it in Strata's low-RAM mode |
+| Server | its own, port 8082, `phosphor-strata.service` (user), not started at login | not a llama.cpp model, so not in the router |
+| VRAM reserve | 3072 MiB | Strata's docs: an AMD card that drives the desktop lost the compositor with less |
+| Idle | unloads after 15 minutes (`idle_unload_s`), RAM and GPU go back | it holds tens of GB |
+| Context | 65536 | the window Claude Code compacts to (`PHOSPHOR_LOCAL_CONTEXTS`) |
+
+One model on the GPU at a time: the relay sends a request for the Strata entry to Strata's server
+(`PHOSPHOR_LOCAL_URLS`), and before that has the router unload its models and starts the service when it does not
+answer (`PHOSPHOR_LOCAL_UNITS`; the first start reads tens of GB and takes 1-3 minutes, the activity line says
+"Loading local model"). Before a router model runs, the relay asks Strata to unload (`POST /unload?wait=300`, a
+running answer finishes first). Strata also runs `local-model.sh unload` before it loads (`before_load` in its
+config), for callers that do not go through the relay. Callers that talk to the router directly (Home Assistant)
+are not covered the other way: while Strata holds the GPU, such a request would load a second model. Tests:
+`npx tsx tests/localrelay.ts`.
+
+Measured on one PC (20 GB AMD card, 31 GB RAM, model files on an NVMe SSD): a start with the files in the OS file
+cache took 15 s; a 509-token answer came at 44 tok/s; a tool call came back right. Reading the prompt is the slow
+part: 8,100 tokens took 135-207 s, because only 7 of the 21.5 GB of experts meant for RAM fit, so each prompt reads
+the rest from the SSD. Strata keeps the reading of earlier turns (at each turn's end, every 16K tokens and the end of
+the system prompt), so a chat's later turns read only what is new; the first message of a new chat (Claude Code's
+prompt and tool list, about 15-20K tokens) waits minutes (untested in the picker). More free RAM and a hipBLASLt
+tuning table (Strata's docs/AMD_HIP.md) make it faster (not tried here).
+
+Picker entries from this installer live in `PHOSPHOR_LOCAL_MORE_MODELS`, so re-running `setup-local-model.sh` keeps
+them. Strata's THINK levels: low, medium, high (XHIGH and MAX count as high). No pictures (Strata's AMD image
+encoder runs on the CPU; turned off here).
 
 ## Traps
 

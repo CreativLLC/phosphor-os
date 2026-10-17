@@ -35,7 +35,13 @@ export const config = {
 // loads whichever model a request names. PHOSPHOR_LOCAL_MODELS="name=label,name=label"; the first is the picker value
 // "local" (saved tabs keep working), the others "local:<name>". Without it, the single PHOSPHOR_LOCAL_MODEL/_LABEL pair.
 const localUrl = process.env.PHOSPHOR_LOCAL_URL;
-const localList = (process.env.PHOSPHOR_LOCAL_MODELS || (process.env.PHOSPHOR_LOCAL_MODEL ? `${process.env.PHOSPHOR_LOCAL_MODEL}=${process.env.PHOSPHOR_LOCAL_LABEL ?? ''}` : ''))
+// PHOSPHOR_LOCAL_MORE_MODELS: entries another installer adds (scripts/setup-strata.sh), so re-running
+// setup-local-model.sh, which rewrites PHOSPHOR_LOCAL_MODELS, keeps them.
+const localList = [
+  process.env.PHOSPHOR_LOCAL_MODELS || (process.env.PHOSPHOR_LOCAL_MODEL ? `${process.env.PHOSPHOR_LOCAL_MODEL}=${process.env.PHOSPHOR_LOCAL_LABEL ?? ''}` : ''),
+  process.env.PHOSPHOR_LOCAL_MORE_MODELS ?? '',
+]
+  .join(',')
   .split(',')
   .map((x) => x.trim())
   .filter(Boolean)
@@ -43,9 +49,28 @@ const localList = (process.env.PHOSPHOR_LOCAL_MODELS || (process.env.PHOSPHOR_LO
     const [name, ...label] = x.split('=');
     return { value: i === 0 ? 'local' : `local:${name.trim()}`, name: name.trim(), label: label.join('=').trim() || `${name.trim()} (local)` };
   });
+// "name=value,name=value" -> { name: value }.
+const nameMap = (v?: string): Record<string, string> =>
+  Object.fromEntries(
+    (v ?? '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter((x) => x.includes('='))
+      .map((x) => [x.slice(0, x.indexOf('=')).trim(), x.slice(x.indexOf('=') + 1).trim()]),
+  );
+// A model can live on its own server instead of the router (scripts/setup-strata.sh): PHOSPHOR_LOCAL_URLS names that
+// server, PHOSPHOR_LOCAL_UNITS the systemd user unit that starts it, PHOSPHOR_LOCAL_CONTEXTS its context window.
 export const localModel =
   localUrl && localList.length
-    ? { url: localUrl, models: localList, key: process.env.PHOSPHOR_LOCAL_KEY || 'local', context: Number(process.env.PHOSPHOR_LOCAL_CONTEXT) || 32768 }
+    ? {
+        url: localUrl,
+        models: localList,
+        key: process.env.PHOSPHOR_LOCAL_KEY || 'local',
+        context: Number(process.env.PHOSPHOR_LOCAL_CONTEXT) || 32768,
+        urls: nameMap(process.env.PHOSPHOR_LOCAL_URLS),
+        units: nameMap(process.env.PHOSPHOR_LOCAL_UNITS),
+        contexts: Object.fromEntries(Object.entries(nameMap(process.env.PHOSPHOR_LOCAL_CONTEXTS)).map(([k, v]) => [k, Number(v) || 32768])),
+      }
     : undefined;
 // The configured local model a picker value stands for ("local", "local:<name>", also "local:<first name>"), if any.
 export const localChoice = (value?: string) => localModel?.models.find((m) => m.value === value) ?? localModel?.models.find((m) => `local:${m.name}` === value);
