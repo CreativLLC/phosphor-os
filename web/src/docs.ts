@@ -857,6 +857,10 @@ function loadIntoEditor(f: DocFile): void {
   renderDoc();
   setSide(false);
   if (isOpen && fine()) focusEditor();
+  // A file still named "Note 2026-10-16" with a title already in it takes that title's name (docsmove.ts).
+  clearTimeout(nameTimer);
+  const d = doc;
+  nameTimer = window.setTimeout(() => void followTitle(d), NAME_DELAY);
 }
 
 // Header, panes, counts and preview for the open document.

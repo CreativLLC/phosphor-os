@@ -58,6 +58,8 @@ eq('rename: keeps .markdown', titleRename('Trip.markdown', 'Trip', '# Rome\n'), 
 eq('rename: named on purpose stays', titleRename('README.md', 'Something', '# Something else\n'), null);
 eq('rename: old title not in sync stays', titleRename('Rome notes.md', 'Trip', '# Rome\n'), null);
 eq('rename: title unchanged', titleRename('Trip.md', 'Trip', '# Trip\n'), null);
+eq('rename: a NEW name takes a title that was there before', titleRename('LLM work/Note 2026-10-16.md', '1. Test prompt for LLMs', '# 1. Test prompt for LLMs\n'), 'LLM work/1. Test prompt for LLMs.md');
+eq('rename: a NEW name already matching stays', titleRename('Note 2026-10-16.md', 'Note 2026-10-16', '# Note 2026-10-16\n'), null);
 eq('rename: new note, title still the template one', titleRename('Note 2026-10-16.md', 'Note', '# Note\n\nmilk\n'), null);
 eq('rename: title removed = no rename', titleRename('Trip.md', 'Trip', 'Trip\n'), null);
 eq('rename: unusable title = no rename', titleRename('Trip.md', 'Trip', '# ???\n'), null);

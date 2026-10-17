@@ -6,6 +6,8 @@ const MAX_NAME = 100;
 const DEVICE = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$|clock\$)(\..*)?$/i;
 // The names NEW gives a document before the owner names it (TEMPLATES in docs.ts), "Note 2026-10-12 2" too.
 const DEFAULT_NAME = /^(?:Untitled|(?:Note|Letter|List) \d{4}-\d{2}-\d{2})(?: \d+)?$/;
+// The title lines NEW puts in ("# Note", "# List"): not a name the owner chose, so they rename nothing.
+const TEMPLATE_TITLE = /^(?:Untitled|Note|Letter|List)$/i;
 
 export const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 export const parentOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
@@ -34,10 +36,10 @@ export function nameFromTitle(title: string): string {
 
 export const isDefaultName = (base: string) => DEFAULT_NAME.test(base);
 
-// Title -> file name: the path the document should move to after a save, or null to leave it. Only when the title
-// changed since oldTitle (the title at the last check), and only while the name follows the title: the file is
-// named after oldTitle (cleaned the same way), or it still has the name NEW gave it. A file named on purpose
-// (README.md with "# Something") keeps its name.
+// Title -> file name: the path the document should move to, or null to leave it. A file that still has the name
+// NEW gave it takes its title whenever they differ (also a title typed before this rule ran). Otherwise only when
+// the title changed since oldTitle (the title at the last check) and the file is named after oldTitle (cleaned the
+// same way). A file named on purpose (README.md with "# Something") keeps its name.
 export function titleRename(path: string, oldTitle: string, text: string): string | null {
   if (!isMd(path)) return null;
   const name = nameOf(path);
@@ -45,8 +47,8 @@ export function titleRename(path: string, oldTitle: string, text: string): strin
   const base = name.slice(0, dot);
   const next = nameFromTitle(titleOf(text));
   const old = nameFromTitle(oldTitle);
-  if (!next || next === base || next === old) return null;
-  if (old !== base && !isDefaultName(base)) return null;
+  if (!next || next === base) return null;
+  if (isDefaultName(base) ? TEMPLATE_TITLE.test(next) : next === old || old !== base) return null;
   const dir = parentOf(path);
   return `${dir ? `${dir}/` : ''}${next}${name.slice(dot)}`;
 }
