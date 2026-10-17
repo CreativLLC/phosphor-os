@@ -136,7 +136,8 @@ const server = createServer(async (req, res) => {
   }
 
   try {
-    if (url.pathname === '/api/history') return sendJson(res, await tabs.history());
+    if (url.pathname === '/api/history') return sendJson(res, await tabs.history(url.searchParams.has('all')));
+    if (url.pathname === '/api/history/search') return sendJson(res, await tabs.searchHistory(url.searchParams.get('q') ?? '', url.searchParams.has('all')));
     if (url.pathname === '/api/folders') return sendJson(res, tabs.folders());
     if (url.pathname === '/api/models') return sendJson(res, await tabs.models());
     if (url.pathname === '/api/password' && req.method === 'POST') {

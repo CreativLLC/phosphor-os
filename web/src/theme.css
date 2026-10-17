@@ -588,6 +588,19 @@ select option {
   letter-spacing: 0.5px;
 }
 
+/* A line of the chat's own text where the search words are, words marked. */
+.h-snip {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.h-snip mark {
+  background: rgb(var(--ph-rgb) / 0.25);
+  color: var(--ph-bright);
+}
+
 /* ---------- Dialog (new tab folder picker) ---------- */
 
 dialog {

@@ -186,6 +186,11 @@ body {
   align-items: center;
 }
 
+.h-tools {
+  display: flex;
+  gap: 6px;
+}
+
 .history-list {
   flex: 1;
   overflow-y: auto;

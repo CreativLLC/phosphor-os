@@ -143,6 +143,8 @@ export type ClientEvent =
 // GET /api/history
 export type HistoryEntry = { sessionId: string; title: string; cwd: string; lastModified: number; openTab?: string };
 export type HistoryResponse = { sessions: HistoryEntry[] };
+// GET /api/history/search?q=words[&all=1]: chats whose own text (yours and Claude's) has every word.
+export type HistorySearchResponse = { hits: { sessionId: string; snippet: string }[] };
 
 // GET /api/models: what this account can use (from the SDK), with the thinking levels each allows.
 // Model picker value for the first optional local model (scripts/setup-local-model.sh); the others are "local:<name>".

@@ -24,6 +24,7 @@ import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
 import { DATA_DIR, localChoice, localModel } from './config.ts';
 import { LOCAL_RELAY_PORT, localLoaded } from './localrelay.ts';
 import { routeMessage } from './router.ts';
+import { ATTACH_HEADER, cleanUserText } from './transcripts.ts';
 import { getUpload, UPLOADS_DIR, type StoredUpload } from './uploads.ts';
 
 // Claude Code started against the local llama.cpp server. Every model name it might use (title, helper agents) maps to it.
@@ -99,7 +100,7 @@ export class Tab {
   private autoTitle: boolean;
   private undoNote?: string; // told to Claude with the next message after an UNDO
   private titleFromPrompt = false; // title is the first words typed; swap in Claude's chat title when it exists
-  private renamedTo?: string; // the owner's name for the chat, waiting until the chat has a session file
+  private savedTitle?: string; // the name last written to the chat's session file (what HISTORY shows)
   // The plan's limit as last reported (rate_limit_event): refused or not, and when it resets (ms).
   private limit: { refused: boolean; resetsAt?: number; type: string } = { refused: false, type: '' };
 
@@ -417,21 +418,42 @@ export class Tab {
     this.titleFromPrompt = false;
     this.patch('meta');
     this.onPersist?.();
-    this.renamedTo = this.state.meta.title;
     this.saveSessionTitle();
   }
 
-  // Write the owner's name into Claude Code's session file, so HISTORY shows it after the tab closes.
+  // Write the tab's name into Claude Code's session file, so HISTORY shows the same name after the tab closes.
+  // Once per change. A new chat has no session yet: init calls this again when the id arrives. A first-words
+  // name waits for Claude's own title (once ours is saved, the SDK gives back ours instead), or for the tab to
+  // close. Until then HISTORY takes the open tab's name.
+  // No folder given: a chat started elsewhere (the terminal) is saved under that folder, the SDK finds it.
   private saveSessionTitle(): void {
     const sid = this.state.meta.sessionId;
-    const title = this.renamedTo;
-    if (!sid || !title) return;
-    this.renamedTo = undefined;
-    renameSession(sid, title, { dir: this.state.info.cwd }).catch((e) => console.warn(`Could not save the chat name "${title}":`, e));
+    const title = this.state.meta.title;
+    if (!sid || this.autoTitle || this.titleFromPrompt || title === this.savedTitle) return;
+    this.savedTitle = title;
+    renameSession(sid, title).catch((e) => {
+      if (this.savedTitle === title) this.savedTitle = undefined;
+      console.warn(`Could not save the chat name "${title}":`, e);
+    });
+  }
+
+  // A tab from before a restart, or an old chat just opened: save its name once if the session file says
+  // something else (auto titles were not saved before; a chat without a title shows its last prompt).
+  async syncSessionTitle(): Promise<void> {
+    const sid = this.state.meta.sessionId;
+    if (!sid || this.autoTitle) return;
+    const info = await getSessionInfo(sid).catch(() => undefined);
+    if (!info) return; // no session file (yet)
+    if (info.customTitle === this.state.meta.title) this.savedTitle = info.customTitle;
+    else this.saveSessionTitle();
   }
 
   close(restarting = false): void {
-    if (!restarting) this.gone = true;
+    if (!restarting) {
+      this.gone = true;
+      this.titleFromPrompt = false; // no more waiting for Claude's title: save the first-words name
+      this.saveSessionTitle();
+    }
     if (this.run) {
       this.run.closed = true;
       this.run.wake?.();
@@ -719,6 +741,7 @@ export class Tab {
     this.state.meta.title = title.length > 40 ? title.slice(0, 39) + '…' : title;
     this.patch('meta');
     this.onPersist?.();
+    this.saveSessionTitle();
   }
 
   private agent(taskId: string): Agent | undefined {
@@ -880,16 +903,6 @@ function friendlyTool(name: string): string {
   return name === 'SubagentHandback' ? 'Reporting back' : name;
 }
 
-// Remove harness wrappers from saved user text; keep what the person typed.
-function cleanUserText(text: string): string {
-  return text
-    .replace(/<(system-reminder|task-notification|local-command-stdout|local-command-stderr|command-message|command-args)>[\s\S]*?<\/\1>/g, '')
-    .replace(/<command-name>([\s\S]*?)<\/command-name>/g, '$1')
-    .replace(/<\/?pasted_content[^>]*>/g, '')
-    .replace(/^\[Note from the (?:Phosphor-OS|Retro Claude) app:[\s\S]*?\]\s*/, '') // Retro Claude: chats from before the rename
-    .trim();
-}
-
 function shortTitle(text: string): string {
   const line = text.trim().split('\n')[0].replace(/\s+/g, ' ');
   return line.length > 32 ? line.slice(0, 31) + '…' : line;
@@ -916,7 +929,6 @@ function toolBody(name: string, input: Record<string, unknown>): string | undefi
 
 // Rebuild the chat, the last mission and rough stats (turns, tool calls, files changed) from a saved transcript.
 const INLINE_MAX = 3.5 * 1024 * 1024; // the API takes images up to about 5 MB once base64 encoded
-const ATTACH_HEADER = 'Attached files (saved on this PC; images are also shown inline):';
 
 // The message Claude gets: images inline, then the text, then the saved path of every attachment.
 function userContent(text: string, files: StoredUpload[]): SDKUserMessage['message']['content'] {

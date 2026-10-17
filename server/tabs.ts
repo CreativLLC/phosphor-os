@@ -1,9 +1,10 @@
 import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { EFFORTS, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, localChoice, localModel } from './config.ts';
 import { Tab, type TabInit } from './tab.ts';
+import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
 const SHOWN_MODELS = ['opus', 'sonnet', 'haiku'];
 
@@ -41,6 +42,7 @@ export class Tabs {
     }
     if (this.tabs.size === 0) this.make({ cwd: config.cwd, auto: true });
     await Promise.all([...this.tabs.values()].map((t) => t.prefillInfo()));
+    for (const t of this.tabs.values()) void t.syncSessionTitle();
     this.save();
   }
 
@@ -80,6 +82,7 @@ export class Tabs {
     } catch (e) {
       this.emit({ t: 'toast', text: `Could not read that chat: ${e instanceof Error ? e.message : e}` });
     }
+    void tab.syncSessionTitle();
     this.save();
     this.emit({ t: 'tab', tab: tab.state, req });
     void tab.prefillInfo();
@@ -94,20 +97,49 @@ export class Tabs {
     this.emit({ t: 'tab_closed', tab: id });
   }
 
-  async history(): Promise<HistoryResponse> {
-    const open = new Map([...this.tabs.values()].map((t) => [t.state.meta.sessionId, t.id]));
-    const sessions = await listSessions({ limit: 100 });
-    return {
-      sessions: sessions
+  async history(all = false): Promise<HistoryResponse> {
+    return { sessions: (await this.historyList(all)).map(({ path: _p, ...s }) => s) };
+  }
+
+  // Chats whose own text has every word, newest first, each with a short piece of text around the first hit.
+  async searchHistory(q: string, all = false): Promise<HistorySearchResponse> {
+    const words = queryWords(q);
+    const hits: HistorySearchResponse['hits'] = [];
+    if (!words.length) return { hits };
+    // One file at a time: a first search reads every chat, some are tens of MB.
+    for (const s of await this.historyList(all)) {
+      const text = s.path ? await textOf(s.path).catch(() => '') : '';
+      const at = matchAt(text, words);
+      if (at >= 0) hits.push({ sessionId: s.sessionId, snippet: snippet(text, at) });
+    }
+    return { hits };
+  }
+
+  // HISTORY lists Phosphor-OS chats: started in this app, or open in a tab now. With `all`, every Claude Code
+  // chat on this PC (terminal, VS Code, desktop app). An open tab's name wins: the session file may lag behind.
+  // 500: enough that this app's chats still fill the list once the others are left out.
+  private async historyList(all: boolean): Promise<(HistoryEntry & { path?: string })[]> {
+    const open = new Map([...this.tabs.values()].map((t) => [t.state.meta.sessionId, t]));
+    const paths = transcriptPaths();
+    const sessions = await listSessions({ limit: 500 });
+    const rows = await Promise.all(
+      sessions
         .filter((s) => s.cwd)
-        .map((s) => ({
-          sessionId: s.sessionId,
-          title: s.customTitle || s.summary || s.firstPrompt || '(untitled)',
-          cwd: s.cwd!,
-          lastModified: s.lastModified,
-          openTab: open.get(s.sessionId),
-        })),
-    };
+        .map(async (s) => {
+          const tab = open.get(s.sessionId);
+          const path = paths.get(s.sessionId);
+          if (!all && !tab && !(path && (await entrypointOf(path)) === APP_ENTRYPOINT)) return null;
+          return {
+            sessionId: s.sessionId,
+            title: tab?.state.meta.title ?? (s.customTitle || s.summary || s.firstPrompt || '(untitled)'),
+            cwd: s.cwd!,
+            lastModified: s.lastModified,
+            openTab: tab?.id,
+            path,
+          };
+        }),
+    );
+    return rows.filter((r) => r !== null);
   }
 
   // Models this account can use. Asked once from a short-lived Claude process (no prompt is sent).
@@ -116,7 +148,7 @@ export class Tabs {
       const idle = (async function* (): AsyncGenerator<never> {
         await new Promise(() => {});
       })();
-      const q = query({ prompt: idle, options: { cwd: config.cwd } });
+      const q = query({ prompt: idle, options: { cwd: config.cwd, persistSession: false } }); // leaves no chat in HISTORY
       try {
         const timeout = new Promise<never>((_, no) => setTimeout(() => no(new Error('model list timed out')), 30000));
         const list = await Promise.race([q.supportedModels(), timeout]);
