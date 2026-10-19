@@ -14,6 +14,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
 import qs.Commons
+import qs.Ui
 
 import "components"
 import "NotificationLogic.js" as NotificationLogic
@@ -104,7 +105,7 @@ Item {
   property int waitingCount: 0
   property int shownCount: 0 // rows on screen as pop-ups (not tucked)
   property bool trayOpen: false // the counter was clicked: every waiting card shows, none slides away
-  readonly property int trayLimit: 8 // cards the open tray shows at most (the screen is only so tall)
+  readonly property int trayLimit: 100 // cards the open tray shows at most; past the screen's height it scrolls
 
   function isWaitingRow(row) {
     return !!row && row.originalId >= 0 && !service.replayedPopups[NotificationLogic.popupFileName(row)]
@@ -140,7 +141,7 @@ Item {
 
   // How many notifications the history directory keeps, and therefore how
   // many `showHistory` can replay.
-  readonly property int historyLimit: 10
+  readonly property int historyLimit: 50 // Phosphor-OS: Omarchy keeps 10
 
   readonly property int lowPopupDuration: 5000
   readonly property int normalPopupDuration: 8000
@@ -1072,19 +1073,81 @@ Item {
 
       // Keep the surface click-through except over the toast column, so the
       // rest of the (invisible) full-screen overlay never eats input.
-      mask: Region { item: popupColumn }
+      mask: Region { item: popupScroll }
 
-      ColumnLayout {
-        id: popupColumn
-        anchors.right: parent.right
-        // Phosphor-OS: with the bar at the bottom, the cards stack bottom right just above it (by the counter).
+      // Phosphor-OS: the cards scroll (mouse wheel or drag) once they are taller than the screen, so every waiting
+      // one can be reached; the newest is at the top. With the bar at the bottom they stack bottom right, by the counter.
+      Flickable {
+        id: popupScroll
         readonly property bool atBottom: service.barPosition === "bottom"
+        readonly property int room: popupWindow.height - service.barClearance - popupWindow.popupPlacement.margins.top
+        anchors.right: parent.right
         anchors.top: atBottom ? undefined : parent.top
         anchors.bottom: atBottom ? parent.bottom : undefined
         anchors.topMargin: popupWindow.popupPlacement.margins.top
         anchors.bottomMargin: service.barClearance
         anchors.rightMargin: popupWindow.popupPlacement.margins.right
+        width: popupColumn.implicitWidth
+        height: Math.min(popupColumn.implicitHeight, room)
+        contentWidth: width
+        contentHeight: popupColumn.implicitHeight
+        interactive: contentHeight > height
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+
+      ColumnLayout {
+        id: popupColumn
+        width: popupScroll.width
         spacing: Style.space(8)
+
+        // Phosphor-OS: the open tray's header: how many wait, the history, and dismiss all.
+        BorderSurface {
+          visible: service.trayOpen
+          Layout.alignment: Qt.AlignRight
+          Layout.preferredWidth: trayHead.implicitWidth + Style.space(24)
+          implicitHeight: trayHead.implicitHeight + Style.space(14)
+          radius: service.cornerRadius
+          color: Color.notifications.background
+          borderSpec: Border.surfaceSpec("notifications", "border", Color.notifications.border, Math.max(1, Style.space(2)))
+
+          Row {
+            id: trayHead
+            anchors.centerIn: parent
+            spacing: Style.space(14)
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: service.waitingCount + " WAITING"
+              color: Color.notifications.text
+              opacity: 0.7
+              font.family: service.shell && service.shell.bar ? service.shell.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.title
+            }
+            Repeater {
+              model: [
+                { label: "HISTORY", act: function() { service.setTrayOpen(false); service.showRecentHistory() } },
+                { label: "DISMISS ALL", act: function() { service.clearPopups() } }
+              ]
+              delegate: Text {
+                required property var modelData
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: "[" + modelData.label + "]"
+                color: Color.notifications.text
+                font.family: service.shell && service.shell.bar ? service.shell.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.title
+                font.underline: headMouse.containsMouse
+                MouseArea {
+                  id: headMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: modelData.act()
+                }
+              }
+            }
+          }
+        }
 
         Repeater {
           model: popupModel
@@ -1163,6 +1226,7 @@ Item {
             }
           }
         }
+      }
       }
     }
   }
