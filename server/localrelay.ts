@@ -36,6 +36,8 @@ async function room(m: Local, name: string, f: Fetch, start: (unit: string) => P
     return;
   }
   await unloadRouter(m, f);
+  // Another model on its own server (a second Strata size) gives its GPU and RAM back too.
+  for (const url of new Set(Object.values(m.urls))) if (url !== own) await unloadOwn(url, f);
   await ensureUp(own, m.units[name], f, start);
 }
 

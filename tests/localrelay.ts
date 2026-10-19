@@ -103,5 +103,23 @@ function world(o: { router: Record<string, string>; ownUp: boolean; ownLoaded: b
   check('switches do not overlap', order.indexOf('end /health') <= firstQwenHealth, order.join(' | '));
 }
 
+// Two models on their own servers: picking one unloads the other first.
+{
+  const OWN2 = 'http://own2.test';
+  const m2 = { ...m, urls: { big: OWN, big2: OWN2 }, units: { big: 'own.service', big2: 'own2.service' } };
+  const calls: string[] = [];
+  const f = (async (input: URL | string, init?: RequestInit) => {
+    const u = new URL(String(input));
+    calls.push(`${init?.method ?? 'GET'} ${u.origin}${u.pathname}${u.search}`);
+    const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    if (u.origin === ROUTER) return ok({ data: [] });
+    if (u.pathname === '/health') return ok({ loaded: u.origin === OWN });
+    return ok({ unloaded: true });
+  }) as typeof fetch;
+  await makeRoom(m2, 'big2', f, async () => {});
+  check('own model: the other own server unloaded', calls.includes(`POST ${OWN}/unload?wait=300`), calls.join(' | '));
+  check('own model: its own server not unloaded', !calls.includes(`POST ${OWN2}/unload?wait=300`), calls.join(' | '));
+}
+
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

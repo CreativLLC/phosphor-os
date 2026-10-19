@@ -80,14 +80,16 @@ are Qwen's: Gemma ignores them (it thinks on its own; tested: a short answer cam
 [Strata](https://github.com/Niko1221/Strata) runs one model family, Qwen3.8-Flash-Next (125B mixture of experts,
 about 6B active per token), on a card far smaller than the model: it keeps the experts used most on the GPU, the
 rest in RAM, and reads what does not fit from the SSD. `bash scripts/setup-strata.sh` (`--dry-run`, `--undo`)
-installs it and adds one picker entry. Settings are environment variables at the top of the script (folder, model
-files, size, port, context); the files can live on another drive (`STRATA_DATA_DIR`).
+installs one size and adds its picker entry; run it again with another size for a second entry (e.g.
+`STRATA_FAMILY=qwen STRATA_MODEL=IQ3_XXS`). Settings are environment variables at the top of the script (folder,
+model files, size, port, context); the files can live on another drive (`STRATA_DATA_DIR`). Sizes share the engine
+and a 29 GB file.
 
 | Part | Choice | Why |
 |---|---|---|
 | Engine | Strata, pinned release, compiled for the card (HIP on AMD) | the only engine built around this model's small experts |
-| Model | ISTA-DASLab's Coder (`IQ1_M` by name, experts stored like IQ3_S; 256 of the 512 experts per layer kept, chosen for code and tools; 23 GB of experts, plus a 29 GB table read from the SSD) | Strata's pick for a 32 GB PC; weaker outside code. `STRATA_FAMILY=qwen` installs a size with every expert (`IQ2_XS`: 35.5 GB of experts) |
-| Server | its own, port 8082, `phosphor-strata.service` (user), not started at login | not a llama.cpp model, so not in the router |
+| Model | ISTA-DASLab's Coder (`IQ1_M` by name, experts stored like IQ3_S; 256 of the 512 experts per layer kept, chosen for code and tools; 23 GB of experts, plus a 29 GB table read from the SSD) | Strata's pick for a 32 GB PC; weaker outside code. `STRATA_FAMILY=qwen` installs a size with every expert (`IQ2_XS`: 35.5 GB of experts, `IQ3_XXS`: 43 GB; see the RAM note below) |
+| Server | its own per size: the Coder on port 8082, a qwen size on 8083; `phosphor-strata-<size>.service` (user), not started at login | not a llama.cpp model, so not in the router |
 | VRAM reserve | 3072 MiB | Strata's docs: an AMD card that drives the desktop lost the compositor with less |
 | Idle | unloads after 15 minutes (`idle_unload_s`), RAM and GPU go back | it holds tens of GB |
 | Context | 65536 | the window Claude Code compacts to (`PHOSPHOR_LOCAL_CONTEXTS`) |
@@ -95,9 +97,9 @@ files, size, port, context); the files can live on another drive (`STRATA_DATA_D
 One model on the GPU at a time: the relay sends a request for the Strata entry to Strata's server
 (`PHOSPHOR_LOCAL_URLS`), and before that has the router unload its models and starts the service when it does not
 answer (`PHOSPHOR_LOCAL_UNITS`; the first start reads tens of GB and takes 1-3 minutes, the activity line says
-"Loading local model"). Before a router model runs, the relay asks Strata to unload (`POST /unload?wait=300`, a
-running answer finishes first). Strata also runs `local-model.sh unload` before it loads (`before_load` in its
-config), for callers that do not go through the relay. Callers that talk to the router directly (Home Assistant)
+"Loading local model"). Another Strata size unloads first too. Before a router model runs, the relay asks Strata to unload (`POST /unload?wait=300`, a
+running answer finishes first). Strata also runs `local-model.sh unload --keep <its own URL>` before it loads
+(`before_load` in its config), for callers that do not go through the relay: the router and the other sizes unload. Callers that talk to the router directly (Home Assistant)
 are not covered the other way: while Strata holds the GPU, such a request would load a second model. Tests:
 `npx tsx tests/localrelay.ts`.
 
@@ -113,8 +115,13 @@ VRAM. A short plain-English answer from `IQ2_XS` ran at 44 tok/s, so a quick cha
 the reading of earlier turns (at each turn's end, every 16K tokens and the end of the system prompt), so a chat's later
 turns read only what is new.
 
-Picker entries from this installer live in `PHOSPHOR_LOCAL_MORE_MODELS`, so re-running `setup-local-model.sh` keeps
-them. Strata's THINK levels: low, medium, high (XHIGH and MAX count as high). No pictures (Strata's AMD image
+RAM: a size runs fast when the part of its experts the card does not hold fits in RAM (the start log's
+`FileExpertSource` line says how much did); Strata's own table: 48 GB of RAM for `Q2_0` and `IQ2_XS`, 64 GB for every
+size. Quality, Strata's measurement (same top token as Q8_0): `IQ3_S` 87.7%, `IQ3_XXS` 84.5%, `Q2_0` 80.6%.
+
+Picker entries from this installer live in `PHOSPHOR_LOCAL_MORE_MODELS` (labels without commas: the lists split on
+them), so re-running `setup-local-model.sh` keeps them. An install from before per-size units
+(`phosphor-strata.service`) moves to the new unit when the installer runs again for that size. Strata's THINK levels: low, medium, high (XHIGH and MAX count as high). No pictures (Strata's AMD image
 encoder runs on the CPU; turned off here).
 
 ## Speed in the SYS panel
