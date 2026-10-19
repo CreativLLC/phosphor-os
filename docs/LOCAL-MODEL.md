@@ -103,11 +103,12 @@ running answer finishes first). Strata also runs `local-model.sh unload --keep <
 are not covered the other way: while Strata holds the GPU, such a request would load a second model. Tests:
 `npx tsx tests/localrelay.ts`.
 
-Measured on one PC (20 GB AMD card, 31 GB RAM, model files on an NVMe SSD), both through Claude Code:
+Measured on one PC (20 GB AMD card, 31 GB RAM unless noted, model files on an NVMe SSD), all through Claude Code:
 
 | Size | First prompt (Claude Code's, 16-22K tokens) | Writing | RAM tier that fit |
 |---|---|---|---|
 | Coder | 16.6K tokens in 25 s; later turns 2 s | 52-62 tok/s; a 4-turn bug fix (read, edit, run) took 36 s | 11.2 of 12.8 GB |
+| `IQ3_XXS` (48 GB RAM) | 17K tokens in about 28 s; later turns 1-2 s | 53-65 tok/s (828 tokens of code at 59 tok/s); the same bug fix took 40 s | 31.4 GB, all of it |
 | `IQ2_XS` | 22K tokens in 80 s | 1-3 tok/s; the engine stopped once (`verify: timed out`, #267) and Strata restarted it | 7 of 21.5 GB |
 
 With `IQ2_XS` most experts a code prompt needs are read from the SSD for every token; the Coder's fit in RAM and
