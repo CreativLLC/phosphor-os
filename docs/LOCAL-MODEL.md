@@ -92,7 +92,8 @@ and a 29 GB file.
 | Server | its own per size: the Coder on port 8082, a qwen size on 8083; `phosphor-strata-<size>.service` (user), not started at login | not a llama.cpp model, so not in the router |
 | VRAM reserve | 3072 MiB | Strata's docs: an AMD card that drives the desktop lost the compositor with less |
 | Idle | unloads after 15 minutes (`idle_unload_s`), RAM and GPU go back | it holds tens of GB |
-| Context | 65536 | the window Claude Code compacts to (`PHOSPHOR_LOCAL_CONTEXTS`) |
+| Context | 131072 (`STRATA_CONTEXT`) | the window Claude Code compacts to (`PHOSPHOR_LOCAL_CONTEXTS`). Past 32K the older KV cache lives in RAM (`--kv-resident 32768`, about 13.7 KB a token, 1.7 GB at 128K), not on the card. A 57K-token prompt read in 74 s (Coder) and 90 s (`IQ3_XXS`) |
+| Output cap | `fit_max_tokens` | Claude Code asks for 32000 output tokens on every request; Strata refused (400) once prompt + 32000 passed the context. With the switch it shortens the output to the room left |
 
 One model on the GPU at a time: the relay sends a request for the Strata entry to Strata's server
 (`PHOSPHOR_LOCAL_URLS`), and before that has the router unload its models and starts the service when it does not

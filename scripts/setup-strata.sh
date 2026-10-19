@@ -20,7 +20,7 @@
 #   STRATA_FAMILY    coder (default) or qwen (every expert; needs more RAM, see Strata's docs/MODELS.md)
 #   STRATA_MODEL     the size: IQ1_M for the Coder (its only one), Q2_0, IQ2_XS (default), IQ3_XXS or IQ3_S for qwen
 #   STRATA_PORT      (default 8082 for the Coder, 8083 for qwen; two qwen sizes need different ports)
-#   STRATA_CONTEXT   (default 65536)    STRATA_VERSION (default v0.1.44.1)
+#   STRATA_CONTEXT   (default 131072; the context needs 13.7 KB of RAM per token)    STRATA_VERSION (default v0.1.44.1)
 #   STRATA_MEMORY_MAX  RAM cap for the service, so a full RAM ends Strata instead of the desktop
 #                    (default 24G for the Coder, 40G for qwen)
 # Needs: an AMD card Strata supports (RX 7900 XT/XTX and others, see its docs/AMD_HIP.md), git, a C++ compiler and
@@ -50,7 +50,7 @@ case "$FAMILY" in
     ;;
   *) printf 'STOP: STRATA_FAMILY is coder or qwen, not %s\n' "$FAMILY" >&2; exit 1 ;;
 esac
-CONTEXT="${STRATA_CONTEXT:-65536}"
+CONTEXT="${STRATA_CONTEXT:-131072}"
 VERSION="${STRATA_VERSION:-v0.1.44.1}"
 # Strata names its files by family and size in lower case: run-coder-iq1_m.sh, strata-iq3_xxs.json (qwen has no prefix);
 # its model folder keeps the size's case (models/coder-IQ1_M, models/IQ3_XXS).
@@ -142,16 +142,27 @@ fi
 
 say "Strata config: unload after 15 min idle, empty the router and other Strata sizes before it loads, keep 6 GiB of RAM free"
 if ((DRY)); then
-  say "  [dry-run] set idle_unload_s=900, before_load=local-model.sh unload --keep, STRATA_RESIDENT_HEADROOM_GIB=6 in $CONF"
+  say "  [dry-run] set idle_unload_s=900, fit_max_tokens, max-context $CONTEXT with --kv-resident 32768, before_load=local-model.sh unload --keep, STRATA_RESIDENT_HEADROOM_GIB=6 in $CONF"
 else
   [[ -f "$CONF" ]] || die "$CONF is missing: Strata's setup did not finish"
-  python3 -I - "$CONF" "$PROJECT/scripts/local-model.sh" "http://127.0.0.1:$PORT" <<'EOF'
+  python3 -I - "$CONF" "$PROJECT/scripts/local-model.sh" "http://127.0.0.1:$PORT" "$CONTEXT" <<'EOF'
 import json, sys
-path, script, own = sys.argv[1:]
+path, script, own, context = sys.argv[1:]
 cfg = json.load(open(path))
+# The context window. Past 32K Strata keeps the older part of the KV cache in RAM (about 13.7 KB per token, 1.7 GB at
+# 128K) and only the last 32K in VRAM, so a longer context costs RAM, not the experts' room on the card.
+args = cfg["args"]
+for flag, value in (("--max-context", context), ("--kv-resident", "32768")):
+    if flag in args:
+        args[args.index(flag) + 1] = value
+    else:
+        args += [flag, value]
 cfg["idle_unload_s"] = 900
 cfg["before_load"] = ["bash", script, "unload", "--keep", own]
 cfg["before_load_ignore_failure"] = True
+# Claude Code asks for up to 32000 output tokens on every request: without this Strata refuses (400) once the prompt
+# plus 32000 passes the context. With it, Strata shortens the output to the room left (its #545).
+cfg["fit_max_tokens"] = True
 # Strata's setup tip for a PC with 31 GB of RAM: 6 GiB free instead of 4 kept the speed and left the desktop more.
 cfg.setdefault("env", {})["STRATA_RESIDENT_HEADROOM_GIB"] = "6"
 json.dump(cfg, open(path, "w"), indent=2)
