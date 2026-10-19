@@ -26,7 +26,10 @@ Item {
   readonly property string minimizedName: "special:minimized"
   // The workspace on this bar's monitor right now (-1 when unknown: then every window shows).
   readonly property var monitor: QsWindow.window && QsWindow.window.screen ? Hyprland.monitorFor(QsWindow.window.screen) : null
-  readonly property int workspaceId: monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
+  // The monitor's workspace can be unknown for a while after a bar restart: then the focused one, so a click on a
+  // minimized button still brings it back (with -1 restore() did nothing, and said nothing).
+  readonly property int workspaceId: monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id
+    : Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1
 
   function classOf(t) {
     var ipc = t.lastIpcObject || {}
