@@ -22,7 +22,8 @@ export type RouteTag = { model: string; effort: string; reason: string };
 export type Item =
   // auto: sent by AUTO-CONTINUE. route: the AUTO model choice made for this message.
   | { id: string; kind: 'user'; text: string; attachments?: Attachment[]; auto?: boolean; route?: RouteTag }
-  | { id: string; kind: 'claude'; text: string }
+  // who: the speaker's name when it is not Claude (a local model's label, e.g. "Qwen3.6 35B MoE").
+  | { id: string; kind: 'claude'; text: string; who?: string }
   // body: longer text shown when the line is expanded (full command, diff).
   | { id: string; kind: 'tool'; name: string; detail: string; body?: string; error?: boolean }
   | { id: string; kind: 'note'; text: string }

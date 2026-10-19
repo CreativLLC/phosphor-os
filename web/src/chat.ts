@@ -282,7 +282,7 @@ function render(item: Item): HTMLElement {
     case 'claude': {
       const body = el('div', 'body md');
       setMarkdown(body, item.text);
-      box.append(el('div', 'who', '> CLAUDE'), body);
+      box.append(el('div', 'who', `> ${item.who?.toUpperCase() ?? 'CLAUDE'}`), body);
       break;
     }
     case 'tool': {

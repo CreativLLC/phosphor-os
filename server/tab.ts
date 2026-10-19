@@ -77,6 +77,15 @@ export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: st
 const emptyStats = (): Stats => ({ toolCalls: 0, filesChanged: [], turns: 0, turnStartedAt: null, lastTurnMs: 0, contextTokens: 0, contextWindow: 0 });
 
 // One chat tab = one Claude Code session.
+
+// Who wrote a reply, for the label over it: a local model's own name from the picker ("Qwen3.6 35B MoE"), or
+// undefined for Claude (and for messages Claude Code makes itself, "<synthetic>"). Old chats keep their names.
+function speakerFor(model: string | undefined): string | undefined {
+  if (!model || model.startsWith('claude') || model === '<synthetic>' || ['opus', 'sonnet', 'haiku'].includes(model)) return undefined;
+  const local = localModel?.models.find((m) => m.name === model);
+  return (local?.label ?? model).replace(/\s*\(local\)\s*$/i, '');
+}
+
 export class Tab {
   state: TabState;
   onPersist?: () => void; // title or session id changed
@@ -84,6 +93,7 @@ export class Tab {
   private run?: Run;
   private waiters = new Map<string, Waiter>();
   private textId?: string;
+  private textWho?: string; // the speaker of the message being streamed (speakerFor)
   // Messages you sent that Claude has not finished answering. Busy = any left, or Claude working on
   // its own (e.g. a background agent reported back). One reply ending doesn't mean all are done.
   private waitingFor = new Set<string>();
@@ -572,10 +582,11 @@ export class Tab {
         const ev = m.event;
         if (ev.type === 'message_start') {
           this.textId = undefined;
+          this.textWho = speakerFor(ev.message.model);
           this.streamedMsgs.add(ev.message.id);
         } else if (ev.type === 'content_block_start' && ev.content_block.type === 'text') {
           this.textId = randomUUID();
-          this.add({ id: this.textId, kind: 'claude', text: '' });
+          this.add({ id: this.textId, kind: 'claude', text: '', ...(this.textWho ? { who: this.textWho } : {}) });
           this.setActivity('Writing a reply');
         } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta' && this.textId) {
           const item = this.state.items.find((i) => i.id === this.textId);
@@ -607,7 +618,8 @@ export class Tab {
         }
         for (const block of m.message.content) {
           if (block.type === 'text' && !sub && !this.streamedMsgs.has(m.message.id) && block.text.trim()) {
-            this.add({ id: randomUUID(), kind: 'claude', text: block.text });
+            const who = speakerFor(m.message.model);
+            this.add({ id: randomUUID(), kind: 'claude', text: block.text, ...(who ? { who } : {}) });
           }
           if (block.type === 'tool_use') this.onToolUse(block.id, block.name, (block.input ?? {}) as Record<string, unknown>, sub);
         }
@@ -968,7 +980,7 @@ function historyToItems(msgs: SessionMessage[]): { items: Item[]; mission: Missi
   const stats = { turns: 0, toolCalls: 0, filesChanged: [] as string[] };
   for (const m of msgs) {
     if (m.parent_tool_use_id) continue;
-    const msg = m.message as { content?: unknown } | undefined;
+    const msg = m.message as { content?: unknown; model?: string } | undefined;
     const content = msg?.content;
     const blocks: Record<string, unknown>[] = typeof content === 'string' ? [{ type: 'text', text: content }] : Array.isArray(content) ? content : [];
     const images: Attachment[] = []; // inline images with no saved copy listed (e.g. pasted in the terminal)
@@ -985,7 +997,8 @@ function historyToItems(msgs: SessionMessage[]): { items: Item[]; mission: Missi
           items.push(userItem);
         } else {
           const text = b.text.trim();
-          if (text) items.push({ id: randomUUID(), kind: 'claude', text });
+          const who = speakerFor(msg?.model);
+          if (text) items.push({ id: randomUUID(), kind: 'claude', text, ...(who ? { who } : {}) });
         }
       } else if (b.type === 'image' && m.type === 'user') {
         const src = (b.source ?? {}) as { media_type?: string };
