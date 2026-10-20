@@ -9,6 +9,7 @@ import { calendarRange, startCalendar, today } from './calendar.ts';
 import { WEB_DIST, config } from './config.ts';
 import { handleDocs } from './docs.ts';
 import { handleFiles } from './files.ts';
+import { serveImage } from './imagegen.ts';
 import { startLocalRelay } from './localrelay.ts';
 import { handleMcp } from './mcp.ts';
 import { handlePasskeys } from './passkeys.ts';
@@ -160,6 +161,8 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/upload') return await receiveUpload(req, res, url);
     const upload = url.pathname.match(/^\/api\/upload\/([0-9a-f-]{36})$/);
     if (upload) return serveUpload(res, upload[1]);
+    const image = url.pathname.match(/^\/api\/images\/([^/]+)$/);
+    if (image) return serveImage(res, decodeURIComponent(image[1]));
     if (url.pathname.startsWith('/api/files/')) return await handleFiles(req, res, url, tabs);
     if (url.pathname === '/api/mcp' || url.pathname === '/api/commands') return await handleMcp(req, res, url, tabs);
     if (url.pathname === '/api/transcribe' || url.pathname === '/api/voice' || url.pathname.startsWith('/api/voice/')) return await handleVoice(req, res, url);

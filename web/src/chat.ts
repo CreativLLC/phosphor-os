@@ -1,4 +1,4 @@
-import { MODES, type Attachment, type Item, type Mode } from '../../shared/protocol.ts';
+import { IMAGE_MODEL, MODES, type Attachment, type ImageItem, type Item, type Mode } from '../../shared/protocol.ts';
 import { takeAttachments } from './attach.ts';
 import { runAppCommand } from './slash.ts';
 import { askUndo } from './undo.ts';
@@ -6,7 +6,8 @@ import { isDictating, stopDictation } from './voice.ts';
 import { setMarkdown } from './md.ts';
 import { send } from './net.ts';
 import { store, watchActive } from './store.ts';
-import { button, el } from './ui.ts';
+import { shellApi } from './shellapi.ts';
+import { button, el, toast } from './ui.ts';
 
 const MODE_LABELS: Record<string, string> = {
   default: 'ASK FIRST',
@@ -99,6 +100,7 @@ export function mountChat(logEl: HTMLElement, composer: HTMLElement): void {
     stopBtn.hidden = !tab?.meta.busy;
     composer.classList.toggle('busy', !!tab?.meta.busy);
     mode.value = PICKER_MODES.includes(tab?.info.permissionMode ?? '') ? tab!.info.permissionMode : 'auto';
+    input.placeholder = tab?.info.model === IMAGE_MODEL && !tab.info.auto ? 'Describe a picture… (--wide --tall --best --seed N)' : 'Message Claude…';
     mode.classList.toggle('bypass', mode.value === 'bypassPermissions');
     if (tab?.meta.id !== shownTab) {
       shownTab = tab?.meta.id ?? null;
@@ -270,9 +272,11 @@ function render(item: Item): HTMLElement {
       const who = el('div', 'who', item.auto ? '> AUTO-CONTINUE' : '> YOU');
       if (item.auto) box.classList.add('auto');
       const label = item.text.split('\n')[0].slice(0, 40) || item.attachments?.[0]?.name || 'attachment';
-      const undo = button('UNDO FROM HERE', () => askUndo(tab, item.id, label), 'undo-btn');
-      undo.title = "Put back every file Claude changed after this message";
-      who.append(undo);
+      if (!item.paint) {
+        const undo = button('UNDO FROM HERE', () => askUndo(tab, item.id, label), 'undo-btn');
+        undo.title = "Put back every file Claude changed after this message";
+        who.append(undo);
+      }
       box.append(who);
       if (item.attachments?.length) box.append(attachRow(item.attachments));
       if (item.text) box.append(el('div', 'body', item.text));
@@ -321,8 +325,72 @@ function render(item: Item): HTMLElement {
     case 'ask':
       renderAsk(box, item, tab);
       break;
+    case 'image':
+      renderImage(box, item);
+      break;
   }
   return box;
+}
+
+const secs = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s`);
+
+// A picture from the local image model: its progress while it is made, then the picture (tap = full size),
+// SAVE (download) and, in the desktop app, SHOW IN FOLDER.
+// The time on pictures being painted moves every second, between the server's updates.
+setInterval(() => {
+  for (const t of document.querySelectorAll<HTMLElement>('.img-time')) t.textContent = ` · ${secs(Date.now() - Number(t.dataset.started))}`;
+}, 1000);
+
+function renderImage(box: HTMLElement, item: ImageItem): void {
+  box.append(el('div', 'who', `> ${item.model.replace(/\s*\(local\)\s*$/i, '').toUpperCase()}`));
+  const facts = [`${item.width}x${item.height}`, `seed ${item.seed}`, `${item.steps} steps${item.fast ? '' : ' (best)'}`, item.edit ? 'edit' : ''];
+  if (item.status === 'done' && item.file) {
+    const url = `/api/images/${encodeURIComponent(item.file)}`;
+    const link = el('a', 'img-full');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.title = 'Open full size';
+    link.style.setProperty('--ar', String(item.width / item.height));
+    const img = el('img');
+    img.src = url;
+    img.alt = item.prompt;
+    img.width = item.width;
+    img.height = item.height;
+    link.append(img);
+    const row = el('div', 'img-row');
+    const save = el('a', 'img-btn', 'SAVE');
+    save.href = url;
+    save.download = item.file;
+    save.title = 'Download the PNG';
+    row.append(save);
+    const path = item.path;
+    if (path && shellApi?.showInFolder) {
+      row.append(button('SHOW IN FOLDER', () => void shellApi!.showInFolder!(path).then((ok) => ok || toast("Couldn't open the file manager.")), 'img-btn'));
+    }
+    row.append(el('span', 'img-facts', [...facts, item.ms ? secs(item.ms) : ''].filter(Boolean).join(' · ')));
+    row.title = path ?? '';
+    box.append(link, row);
+    return;
+  }
+  const state =
+    item.status === 'queued' ? `QUEUED · ${(item.phase ?? 'waiting for the GPU').toUpperCase()}`
+    : item.status === 'painting' ? `${(item.phase ?? 'Painting').toUpperCase()}${item.phase === 'Painting' && item.step ? ` ${item.step}/${item.steps}` : ''}`
+    : item.status === 'cancelled' ? 'STOPPED BEFORE IT STARTED'
+    : `FAILED: ${item.error ?? 'unknown error'}`;
+  const line = el('div', `img-state ${item.status}`, state);
+  if (item.status === 'painting' && item.startedAt) {
+    const t = el('span', 'img-time', ` · ${secs(Date.now() - item.startedAt)}`);
+    t.dataset.started = String(item.startedAt);
+    line.append(t);
+  }
+  box.append(line);
+  if (item.status === 'painting' && item.step) {
+    const bar = el('div', 'img-bar');
+    bar.style.setProperty('--pct', `${Math.round((100 * item.step) / item.steps)}%`);
+    box.append(bar);
+  }
+  box.append(el('div', 'img-facts', facts.filter(Boolean).join(' · ')));
 }
 
 // Images as thumbnails (tap for full size); other files as chips. id '' = no saved copy.

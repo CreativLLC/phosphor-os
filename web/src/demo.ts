@@ -1,4 +1,4 @@
-import type { Agent, CalendarEvent, CalendarRangeResponse, ClientEvent, Item, Mission, ServerEvent, TabState, TodayResponse } from '../../shared/protocol.ts';
+import { IMAGE_MODEL, type Agent, type CalendarEvent, type CalendarRangeResponse, type ClientEvent, type ImageItem, type Item, type Mission, type ServerEvent, type TabState, type TodayResponse } from '../../shared/protocol.ts';
 import { apply, useDemo } from './net.ts';
 import { setModels } from './pickers.ts';
 import { store } from './store.ts';
@@ -67,6 +67,23 @@ const tab2: TabState = {
   activity: '',
 };
 
+// The local image model: a picture being painted (its steps move with the ticker).
+const painting: ImageItem = { id: 'p2', kind: 'image', status: 'painting', phase: 'Painting', step: 4, steps: 8, startedAt: now - 9000, prompt: 'a lighthouse at sunset', model: 'Qwen-Image 2.1 (local)', width: 1344, height: 768, seed: 42, fast: true };
+const tab3: TabState = {
+  meta: { id: 'demo-3', title: 'Lighthouse pictures', busy: true, attention: false, createdAt: now - 120000 },
+  info: { cwd: CWD, model: IMAGE_MODEL, permissionMode: 'default', effort: '' },
+  items: [
+    { id: 'p1', kind: 'user', text: 'a lighthouse at sunset with a sign reading "PHOSPHOR" --wide --seed 42', paint: true },
+    painting,
+    { id: 'p3', kind: 'user', text: 'the same lighthouse in a storm --wide', paint: true },
+    { id: 'p4', kind: 'image', status: 'queued', phase: 'Waiting for the GPU', prompt: 'the same lighthouse in a storm', model: 'Qwen-Image 2.1 (local)', width: 1344, height: 768, seed: 7, steps: 8, fast: true },
+  ],
+  mission: null,
+  agents: [],
+  stats: { toolCalls: 0, filesChanged: [], turns: 0, turnStartedAt: now - 9000, lastTurnMs: 0, contextTokens: 0, contextWindow: 0 },
+  activity: 'Painting 4/8',
+};
+
 const ACTIVITIES = ['Read: server/index.ts', 'Grep: listSessions', 'Edit: server/tabs.ts', 'Bash: npm run typecheck', 'Writing a reply', 'Thinking'];
 const TOOLS = ['Read server/tab.ts', 'Grep getSessionMessages', 'Glob **/*.jsonl', 'Read sdk.d.ts'];
 const NAMES = ['Explore', 'general-purpose', 'Plan', 'claude-code-guide', 'scout'];
@@ -76,9 +93,10 @@ export function startDemo(): void {
     { value: 'default', label: 'Opus 5.5', description: 'Most capable', resolved: 'claude-opus-5-5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
     { value: 'sonnet', label: 'Sonnet 5.5', description: 'Fast and capable', resolved: 'claude-sonnet-5-5', efforts: ['low', 'medium', 'high'] },
     { value: 'haiku', label: 'Haiku 4.5', description: 'Fastest', resolved: 'claude-haiku-4-5-20251001', efforts: [] },
+    { value: IMAGE_MODEL, label: 'Qwen-Image 2.1 (local)', description: "Makes pictures on this PC. Your message is the picture's description.", efforts: [] },
   ]);
   useDemo(onClientEvent);
-  apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2)] });
+  apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2), structuredClone(tab3)] });
   apply({ t: 'sdk_update', state: { installed: '0.3.296', pending: '0.3.301', claude: '2.1.301', bigger: null, running: false, failed: false } });
 
   let tick = 0;
@@ -86,6 +104,11 @@ export function startDemo(): void {
   let nextAgent = 4;
   setInterval(() => {
     tick++;
+    if (store.tabs.has('demo-3')) {
+      const step = (tick % 8) + 1;
+      emit({ t: 'update', tab: 'demo-3', item: { ...painting, step } });
+      emit({ t: 'patch', tab: 'demo-3', key: 'activity', value: `Painting ${step}/8` });
+    }
     const t = 'demo-1';
     if (!store.tabs.has(t)) return;
     emit({ t: 'patch', tab: t, key: 'activity', value: ACTIVITIES[tick % ACTIVITIES.length] });
@@ -134,7 +157,10 @@ function emit(ev: ServerEvent): void {
 
 function onClientEvent(ev: ClientEvent): void {
   const id = () => Math.random().toString(36).slice(2);
-  if (ev.t === 'send') {
+  if (ev.t === 'send' && cur(ev.tab).info.model === IMAGE_MODEL) {
+    emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'user', text: ev.text, paint: true } });
+    emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'image', status: 'failed', error: 'Demo mode: no image engine here.', prompt: ev.text, model: 'Qwen-Image 2.1 (local)', width: 1024, height: 1024, seed: 1, steps: 30 } });
+  } else if (ev.t === 'send') {
     emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'user', text: ev.text, ...(cur(ev.tab).info.auto ? { route: { model: 'Sonnet 5.5', effort: 'medium', reason: 'small single-file edit' } } : {}) } });
     emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'claude', text: 'Demo mode: no real Claude here.' } });
   } else if (ev.t === 'perm') {

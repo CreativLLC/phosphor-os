@@ -76,6 +76,22 @@ export const localModel =
 export const localChoice = (value?: string) => localModel?.models.find((m) => m.value === value) ?? localModel?.models.find((m) => `local:${m.name}` === value);
 delete process.env.PHOSPHOR_LOCAL_KEY;
 
+// Optional local image model (scripts/setup-image-model.sh): a stable-diffusion.cpp server the app starts with its
+// systemd user unit when a picture is asked for, and stops when idle. EDIT=1: it can change an attached picture.
+// TURBO: a LoRA file in the engine's LoRA folder for the default 8-step mode (--best skips it). DIR: where pictures are saved.
+const imageUrl = process.env.PHOSPHOR_IMAGE_URL;
+export const imageModel = imageUrl
+  ? {
+      url: imageUrl,
+      label: process.env.PHOSPHOR_IMAGE_LABEL || 'Image (local)',
+      unit: process.env.PHOSPHOR_IMAGE_UNIT || '',
+      edit: process.env.PHOSPHOR_IMAGE_EDIT === '1',
+      turbo: process.env.PHOSPHOR_IMAGE_TURBO || '',
+      dir: resolve(process.env.PHOSPHOR_IMAGE_DIR || join(DATA_DIR, 'images')),
+      idleMs: (Number(process.env.PHOSPHOR_IMAGE_IDLE_SECONDS) || 300) * 1000,
+    }
+  : undefined;
+
 // Keep the password out of the environment, so the Claude processes this server starts
 // (and every command they run) do not inherit it.
 delete process.env.PHOSPHOR_PASSWORD;

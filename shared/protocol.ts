@@ -21,14 +21,39 @@ export type RouteTag = { model: string; effort: string; reason: string };
 
 export type Item =
   // auto: sent by AUTO-CONTINUE. route: the AUTO model choice made for this message.
-  | { id: string; kind: 'user'; text: string; attachments?: Attachment[]; auto?: boolean; route?: RouteTag }
+  // paint: a prompt for the local image model (no UNDO: it changed no files).
+  | { id: string; kind: 'user'; text: string; attachments?: Attachment[]; auto?: boolean; route?: RouteTag; paint?: boolean }
   // who: the speaker's name when it is not Claude (a local model's label, e.g. "Qwen3.6 35B MoE").
   | { id: string; kind: 'claude'; text: string; who?: string }
   // body: longer text shown when the line is expanded (full command, diff).
   | { id: string; kind: 'tool'; name: string; detail: string; body?: string; error?: boolean }
   | { id: string; kind: 'note'; text: string }
   | { id: string; kind: 'perm'; tool: string; title: string; detail: string; status: 'pending' | 'allowed' | 'denied' | 'cancelled' }
-  | { id: string; kind: 'ask'; questions: AskQuestion[]; status: 'pending' | 'answered' | 'cancelled'; answers?: Record<string, string> };
+  | { id: string; kind: 'ask'; questions: AskQuestion[]; status: 'pending' | 'answered' | 'cancelled'; answers?: Record<string, string> }
+  | ImageItem;
+
+// A picture from the local image model (server/imagegen.ts). file: its name in the images folder, served at
+// /api/images/<file>; path: where it is on the PC. step/steps while painting; ms: time from start to the saved file.
+export type ImageItem = {
+  id: string;
+  kind: 'image';
+  status: 'queued' | 'painting' | 'done' | 'failed' | 'cancelled';
+  prompt: string;
+  model: string; // the picker label
+  width: number;
+  height: number;
+  seed: number;
+  steps: number;
+  fast?: boolean;
+  edit?: boolean; // made from an attached picture
+  step?: number;
+  phase?: string; // what the engine is doing now, e.g. 'Starting the engine'
+  startedAt?: number;
+  ms?: number;
+  file?: string;
+  path?: string;
+  error?: string;
+};
 
 export type StepStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -152,6 +177,8 @@ export type HistorySearchResponse = { hits: { sessionId: string; snippet: string
 export const LOCAL_MODEL = 'local';
 // Model picker value for AUTO: a router picks model and thinking level per message (server/router.ts).
 export const AUTO_MODEL = 'auto';
+// Model picker value for the local image model (scripts/setup-image-model.sh): messages become pictures.
+export const IMAGE_MODEL = 'image';
 export type ModelChoice = { value: string; label: string; description: string; resolved?: string; efforts: Effort[] };
 export type ModelsResponse = { models: ModelChoice[] };
 
@@ -243,7 +270,10 @@ export type SystemResponse = {
   volume: SystemVolume | null; // null: no volume control here
   note?: string; // why parts are missing
   localSpeed?: LocalSpeed; // only when a local model is set up
+  painting?: Painting | null; // only when the image model is set up; null = idle
 };
+// The local image model at work (SYS panel). step/steps: 0 before sampling starts. ms: since the picture started.
+export type Painting = { model: string; phase: string; step: number; steps: number; ms: number; queued: number };
 // Local model speed (server/localmeter.ts), measured in the relay. Times in ms, speeds in tokens per second, null = not
 // known. readTps: input tokens / time to first token (approximate) unless readExact (the model server's own number).
 // outputTokens: the server's count when outputExact, else estimated from the stream. nowTps: live, last few seconds.

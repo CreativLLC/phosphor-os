@@ -29,6 +29,26 @@ export function makeRoom(m: Local, name: string, f: Fetch = fetch, start = start
   return next;
 }
 
+// The image model (server/imagegen.ts) needs the whole card: every chat model gives its memory back. A running
+// Strata answer finishes first (/unload?wait); the GPU turns (server/gpu.ts) keep router requests from running then.
+export function freeChatModels(f: Fetch = fetch): Promise<void> {
+  if (!localModel) return Promise.resolve();
+  const m = localModel;
+  const next = switching.then(async () => {
+    await unloadRouter(m, f);
+    for (const url of new Set(Object.values(m.urls))) await unloadOwn(url, f);
+  });
+  switching = next.catch(() => {});
+  return next;
+}
+
+// Each chat request waits for its turn on the GPU (server/gpu.ts) while a picture is being made, and holds it until
+// its answer ends. Set by the image model when it is configured; without one, every request goes at once.
+let chatTurn: () => Promise<() => void> = async () => () => {};
+export function setChatTurn(fn: () => Promise<() => void>): void {
+  chatTurn = fn;
+}
+
 async function room(m: Local, name: string, f: Fetch, start: (unit: string) => Promise<void>): Promise<void> {
   const own = m.urls[name];
   if (!own) {
@@ -109,6 +129,9 @@ export function startLocalRelay(): void {
           if (name && j.stream === true && req.url?.split('?')[0] === '/v1/messages') meter = new Meter(name);
           if (name) {
             target = m.urls[name] || m.url;
+            const release = await chatTurn();
+            if (abort.signal.aborted) release(); // the caller left while it waited
+            else res.on('close', release);
             await makeRoom(m, name);
           }
           const effort = j?.output_config?.effort;

@@ -19,9 +19,11 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { Agent, AskQuestion, Attachment, Effort, Item, McpAction, McpServer, Mission, Mode, ModelsResponse, PatchKey, Resume, ServerEvent, SlashCommandInfo, Stats, TabState } from '../shared/protocol.ts';
+import { IMAGE_MODEL, type Agent, type AskQuestion, type Attachment, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
-import { DATA_DIR, localChoice, localModel } from './config.ts';
+import { DATA_DIR, imageModel, localChoice, localModel } from './config.ts';
+import { painter, type Painter } from './imagegen.ts';
+import { editSize, imageSize, parseImageOptions, STEPS } from './imageopts.ts';
 import { LOCAL_RELAY_PORT, localLoaded } from './localrelay.ts';
 import { routeMessage } from './router.ts';
 import { ATTACH_HEADER, cleanUserText } from './transcripts.ts';
@@ -72,7 +74,11 @@ const RESUME_MARGIN_MS = 90_000; // after the reset time, so the first request i
 const RESUME_RETRY_MS = 30 * 60_000; // reset time unknown: try again this much later
 type Waiter = { resolve: (r: PermissionResult) => void; input: Record<string, unknown>; title: string };
 
-export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: string; createdAt?: number; mode?: Mode; model?: string; effort?: Effort; auto?: boolean; agents?: Agent[]; resume?: Resume | null };
+export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: string; createdAt?: number; mode?: Mode; model?: string; effort?: Effort; auto?: boolean; agents?: Agent[]; resume?: Resume | null; images?: SavedImage[] };
+
+// The image model's prompts and pictures are not in Claude Code's transcript: the tab saves them (tabs.json), each
+// with the id of the last transcript message before it, so a reload puts them back in the same place.
+export type SavedImage = { after: string | null; item: Item };
 
 const emptyStats = (): Stats => ({ toolCalls: 0, filesChanged: [], turns: 0, turnStartedAt: null, lastTurnMs: 0, contextTokens: 0, contextWindow: 0 });
 
@@ -113,6 +119,10 @@ export class Tab {
   private savedTitle?: string; // the name last written to the chat's session file (what HISTORY shows)
   // The plan's limit as last reported (rate_limit_event): refused or not, and when it resets (ms).
   private limit: { refused: boolean; resetsAt?: number; type: string } = { refused: false, type: '' };
+  private imageLog: SavedImage[];
+  private painting = 0; // pictures of this tab not finished yet
+  private paintEpoch = 0; // STOP bumps it: pictures still waiting are dropped
+  private paintNote: string[] = []; // pictures made since Claude last heard: told with the next message to Claude
 
   constructor(private emit: (ev: ServerEvent) => void, init: TabInit) {
     this.autoTitle = !init.title || init.title === 'New chat';
@@ -131,6 +141,11 @@ export class Tab {
       stats: emptyStats(),
       activity: '',
     };
+    // A picture that was being made when the app stopped is not coming.
+    this.imageLog = (init.images ?? []).map((e) =>
+      e.item.kind === 'image' && (e.item.status === 'queued' || e.item.status === 'painting') ? { ...e, item: { ...e.item, status: 'failed', error: 'Stopped when the app restarted.', phase: undefined } } : e,
+    );
+    this.state.items = this.imageLog.map((e) => e.item);
     this.pendingMode = init.mode;
     this.pendingModel = init.model;
     this.pendingEffort = init.effort;
@@ -157,6 +172,9 @@ export class Tab {
   get autoModel(): boolean {
     return this.auto;
   }
+
+  // The local image model and its painter (server/imagegen.ts); tests hand in fakes.
+  static images: { painter: Pick<Painter, 'paint'>; model: Pick<NonNullable<typeof imageModel>, 'label' | 'edit' | 'turbo'> } | undefined = painter && imageModel ? { painter, model: imageModel } : undefined;
 
   // For the AUTO tag: the model's name as the picker shows it.
   static models?: () => Promise<ModelsResponse>;
@@ -199,21 +217,16 @@ export class Tab {
     let msgs = await getSessionMessages(sid, { dir: this.state.info.cwd });
     if (!msgs.length) msgs = await getSessionMessages(sid);
     const { items, mission, stats } = historyToItems(msgs);
-    this.state.items = items;
+    this.state.items = mergeImages(items, this.imageLog);
     this.state.mission = mission;
     Object.assign(this.state.stats, stats);
   }
 
   send(text: string, files: StoredUpload[] = [], auto = false): void {
     if (!auto) this.clearResume(); // the owner took over
-    const first = this.state.items.every((i) => i.kind !== 'user');
-    if (this.autoTitle && first) {
-      this.state.meta.title = shortTitle(text || files[0]?.name || 'Attachment');
-      this.autoTitle = false;
-      this.titleFromPrompt = true;
-      this.patch('meta');
-      this.onPersist?.();
-    }
+    if (this.pendingModel === IMAGE_MODEL && Tab.images && !auto) return this.paint(text, files);
+    const first = this.state.items.every((i) => i.kind !== 'user' || i.paint);
+    this.firstWordsTitle(text, files);
     const attachments = files.map(({ path: _p, ...a }) => a);
     // The item id is also the message uuid: file checkpoints (UNDO) are keyed by it.
     const id = randomUUID();
@@ -223,8 +236,12 @@ export class Tab {
     const stopped = () => epoch !== this.stopEpoch;
     this.waitingFor.add(id);
     this.add({ id, kind: 'user', text, ...(attachments.length ? { attachments } : {}), ...(auto ? { auto } : {}) });
-    const forClaude = this.undoNote ? `${this.undoNote}\n\n${text}` : text;
+    const paintNote = this.paintNote.length
+      ? `[Note from the Phosphor-OS app: in this chat the user made pictures with the local image model (${Tab.images?.model.label ?? 'image model'}). Saved files:\n${this.paintNote.join('\n')}]`
+      : '';
+    const forClaude = [this.undoNote, paintNote, text].filter(Boolean).join('\n\n');
     this.undoNote = undefined;
+    this.paintNote = [];
     this.setBusy(true);
     const deliver = () => {
       if (this.gone) return;
@@ -266,6 +283,88 @@ export class Tab {
       .finally(() => this.routing--);
   }
 
+  // The chat's name from its first words, while it has no name of its own yet.
+  private firstWordsTitle(text: string, files: StoredUpload[]): void {
+    if (!this.autoTitle || this.state.items.some((i) => i.kind === 'user')) return;
+    this.state.meta.title = shortTitle(text || files[0]?.name || 'Attachment');
+    this.autoTitle = false;
+    this.titleFromPrompt = true;
+    this.patch('meta');
+    this.onPersist?.();
+  }
+
+  // The tab's model is the image model: the text is a picture's description (server/imagegen.ts). Pictures wait
+  // their turn; the chat shows each one as it is painted.
+  private paint(text: string, files: StoredUpload[]): void {
+    const { painter: p, model: im } = Tab.images!;
+    this.firstWordsTitle(text, files);
+    const after = [...this.state.items].reverse().find((i) => i.kind === 'user' && !i.paint)?.id ?? null;
+    const log = (item: Item) => {
+      this.imageLog.push({ after, item });
+      this.add(item);
+    };
+    const attachments = files.map(({ path: _p, ...a }) => a);
+    log({ id: randomUUID(), kind: 'user', text, paint: true, ...(attachments.length ? { attachments } : {}) });
+    const opts = parseImageOptions(text);
+    const notes = [...opts.notes];
+    const pictures = files.filter((f) => f.kind === 'image');
+    if (files.length > pictures.length) notes.push('Only pictures can go to the image model; the other files were left out.');
+    let ref: Buffer | undefined;
+    if (pictures.length && !im.edit) notes.push(`${im.label} cannot change a picture you attach: it painted a new one from your words only.`);
+    else if (pictures.length) {
+      if (pictures.length > 1) notes.push('Only the first picture is used.');
+      ref = readFileSync(pictures[0].path);
+      const size = imageSize(ref);
+      if (size && !opts.shaped) [opts.width, opts.height] = editSize(size[0], size[1], opts.hd);
+    }
+    if (opts.fast && !im.turbo) {
+      // No Turbo installed: the full model is the only mode.
+      opts.fast = false;
+      if (!opts.stepsSet) opts.steps = STEPS;
+    }
+    if (notes.length) log({ id: randomUUID(), kind: 'note', text: notes.join(' ') });
+    if (!opts.prompt) {
+      this.onPersist?.();
+      return log({ id: randomUUID(), kind: 'note', text: 'Nothing to paint: write what the picture should show.' });
+    }
+    const id = randomUUID();
+    const item: ImageItem = { id, kind: 'image', status: 'queued', prompt: opts.prompt, model: im.label, width: opts.width, height: opts.height, seed: opts.seed, steps: opts.steps, ...(opts.fast ? { fast: true } : {}), ...(ref ? { edit: true } : {}) };
+    log(item);
+    this.onPersist?.();
+    const epoch = this.paintEpoch;
+    this.painting++;
+    this.setBusy(true);
+    this.setActivity('Waiting for the GPU');
+    void p
+      .paint({
+        opts,
+        ref,
+        cancelled: () => this.gone || epoch !== this.paintEpoch,
+        update: (fields) => {
+          if (this.gone) return;
+          this.patchItem(id, fields);
+          const step = fields.step ? ` ${fields.step}/${opts.steps}` : '';
+          if (fields.phase) this.setActivity(`${fields.phase}${fields.phase === 'Painting' ? step : ''}`);
+        },
+      })
+      .then((r) => {
+        if (r.status === 'done') {
+          this.patchItem(id, { status: 'done', file: r.file, path: r.path, ms: r.ms, phase: undefined, step: undefined });
+          this.paintNote.push(`${r.path} (prompt: ${opts.prompt.slice(0, 200)})`);
+        } else if (r.status === 'failed') this.patchItem(id, { status: 'failed', error: r.error, phase: undefined });
+        else this.patchItem(id, { status: 'cancelled', phase: undefined });
+      })
+      .finally(() => {
+        this.onPersist?.();
+        if (--this.painting === 0 && this.waitingFor.size === 0) this.setBusy(false);
+      });
+  }
+
+  // Saved with the tab (tabs.json).
+  get images(): SavedImage[] {
+    return this.imageLog.slice(-200);
+  }
+
   // The local server loads a model when a request names one it has not loaded (about 30 s): say so while the first message waits.
   private async watchLocalLoad(): Promise<void> {
     const local = localChoice(this.pendingModel);
@@ -305,6 +404,7 @@ export class Tab {
 
   async stop(): Promise<void> {
     this.stopEpoch++;
+    this.paintEpoch++;
     await this.q?.interrupt().catch(() => {});
   }
 
@@ -357,7 +457,7 @@ export class Tab {
       await this.q?.interrupt().catch(() => {}); // not stop(): a message waiting for the router is the one being sent
       this.close(true);
       this.setBusy(false);
-    } else if (this.q) await this.q.setModel(model).catch(() => {});
+    } else if (this.q && model !== IMAGE_MODEL) await this.q.setModel(model).catch(() => {}); // pictures do not use Claude's process
     this.state.info.model = model;
     this.state.info.auto = this.auto;
     this.patch('info');
@@ -972,6 +1072,32 @@ function splitAttachments(text: string): { text: string; files: Attachment[] } {
     }
   }
   return { text: text.slice(0, at).trim(), files };
+}
+
+// Transcript items with the saved image prompts and pictures put back after the message each followed.
+export function mergeImages(items: Item[], log: SavedImage[]): Item[] {
+  if (!log.length) return items;
+  const byAnchor = new Map<string | null, Item[]>();
+  const known = new Set(items.map((i) => i.id));
+  for (const e of log) {
+    const at = e.after === null || known.has(e.after) ? e.after : '\0end'; // its message is gone: at the end
+    byAnchor.set(at, [...(byAnchor.get(at) ?? []), e.item]);
+  }
+  const out: Item[] = [...(byAnchor.get(null) ?? [])];
+  let anchor: string | null = null;
+  const flush = () => {
+    if (anchor !== null) out.push(...(byAnchor.get(anchor) ?? []));
+  };
+  for (const i of items) {
+    if (i.kind === 'user') {
+      flush();
+      anchor = i.id;
+    }
+    out.push(i);
+  }
+  flush();
+  out.push(...(byAnchor.get('\0end') ?? []));
+  return out;
 }
 
 function historyToItems(msgs: SessionMessage[]): { items: Item[]; mission: Mission | null; stats: Partial<Stats> } {

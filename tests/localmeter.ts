@@ -220,7 +220,7 @@ Object.assign(process.env, {
   PHOSPHOR_LOCAL_UNITS: '',
   PHOSPHOR_LOCAL_CONTEXTS: '',
 });
-const { startLocalRelay, LOCAL_RELAY_PORT } = await import('../server/localrelay.ts');
+const { startLocalRelay, LOCAL_RELAY_PORT, setChatTurn } = await import('../server/localrelay.ts');
 check('relay: spare port, not the live one', LOCAL_RELAY_PORT === free, LOCAL_RELAY_PORT);
 startLocalRelay();
 await new Promise((r) => setTimeout(r, 50));
@@ -266,6 +266,39 @@ resetMeter();
   check('relay: cancelled answer measured as cancelled', last?.outcome === 'cancelled' && (last.outputTokens ?? 0) > 1, last);
   const r = await post({ stream: true });
   check('relay: still serving after a cancel', r.status === 200 && r.text === STREAM);
+}
+
+// The GPU turn (server/gpu.ts, with an image model): a request waits for its turn and gives it back when its answer
+// ends, also when the caller left while it waited.
+{
+  let open: () => void = () => {};
+  let turns = 0;
+  let released = 0;
+  setChatTurn(async () => {
+    turns++;
+    await new Promise<void>((r) => (open = r));
+    return () => released++;
+  });
+  let answered = false;
+  const p = post({ stream: true }).then((r) => ((answered = true), r));
+  await new Promise((r) => setTimeout(r, 60));
+  check('turn: request waits for the GPU', turns === 1 && !answered && released === 0);
+  open();
+  const r = await p;
+  await new Promise((res) => setTimeout(res, 20));
+  check('turn: then answered, turn given back once', r.status === 200 && r.text === STREAM && released === 1, `${r.status} ${released}`);
+  // The caller leaves while it waits: its turn is still given back once it comes.
+  turns = 0;
+  const req = request({ host: '127.0.0.1', port: LOCAL_RELAY_PORT, method: 'POST', path: '/v1/messages', headers: { 'content-type': 'application/json' } });
+  req.on('error', () => {});
+  req.end(JSON.stringify({ model: 'fake', stream: true }));
+  await new Promise((res) => setTimeout(res, 60));
+  req.destroy();
+  await new Promise((res) => setTimeout(res, 30));
+  open();
+  await new Promise((res) => setTimeout(res, 30));
+  check('turn: caller left while waiting: turn given back', turns === 1 && released === 2, `${turns} ${released}`);
+  setChatTurn(async () => () => {});
 }
 
 fake.close();

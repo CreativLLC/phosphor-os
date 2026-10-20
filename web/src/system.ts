@@ -257,8 +257,10 @@ export function mountSystem(root: HTMLElement): void {
   const vram = gauge('VRAM', 'vram');
   const gpuModel = el('div', 'sys-d sys-gpu-model');
   const speed = localSpeedBlock();
+  const paint = el('div', 'sys-d sys-llm-1 sys-paint');
+  paint.hidden = true;
   const loadSec = el('section', 'ms-sec sys-sec');
-  loadSec.append(loadH.root, cpu.root, coresRow, ram.root, gpu.root, vram.root, gpuModel, speed.root);
+  loadSec.append(loadH.root, cpu.root, coresRow, ram.root, gpu.root, vram.root, gpuModel, speed.root, paint);
 
   // Network
   const netH = heading('NETWORK');
@@ -329,6 +331,14 @@ export function mountSystem(root: HTMLElement): void {
     gpuModel.textContent = `LOADED: ${loaded.join(', ')}`;
     gpuModel.title = 'Local AI model in video memory';
     speed.show(d.localSpeed);
+    // The local image model at work: PAINTING 12/30 steps · 14 s (+ how many wait).
+    const p = d.painting;
+    paint.hidden = !p;
+    if (p) {
+      const head = p.phase === 'Painting' && p.steps ? `PAINTING ${p.step}/${p.steps} steps` : p.phase.toUpperCase();
+      paint.textContent = `${head} · ${secs(p.ms)}${p.queued ? ` · ${p.queued} waiting` : ''}`;
+      paint.title = `${p.model}: making a picture`;
+    }
     if (d.gpu) {
       const g = d.gpu;
       const gTitle = g.tempC === null && d.os === 'win32' ? tempTitle : g.hotspotC !== null ? `Edge ${temp(g.tempC)}, hot spot ${temp(g.hotspotC)}` : 'Temperature';

@@ -935,3 +935,102 @@ dialog.confirm-box p {
 .item.user.auto .body {
   color: var(--ph-dim);
 }
+
+/* ---------- Pictures from the local image model (chat.ts renderImage) ---------- */
+
+.item.image {
+  margin: 8px 0 18px;
+}
+
+.item.image .who {
+  color: var(--ph-bright);
+  letter-spacing: 2px;
+}
+
+/* The picture is the product: real colors, a phosphor frame. */
+.img-full {
+  display: inline-block;
+  margin: 6px 0 4px;
+  border: 1px solid var(--ph);
+  box-shadow: 0 0 10px rgb(var(--ph-rgb) / 0.35);
+  line-height: 0;
+}
+
+/* Sized from its shape (--ar = width / height, set in chat.ts), so a wide or tall picture never gets squashed. */
+.img-full {
+  width: min(640px, 100%, calc(70dvh * var(--ar, 1)));
+}
+
+.img-full img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: var(--ar, 1);
+}
+
+.img-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+a.img-btn,
+button.img-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  padding: 2px 10px;
+  border: 1px solid rgb(var(--ph-rgb) / 0.55);
+  background: rgb(var(--ph-rgb) / 0.04);
+  color: inherit;
+  text-decoration: none;
+  letter-spacing: 1px;
+  font-size: var(--fs-sm, 0.88em);
+}
+
+a.img-btn:hover {
+  border-color: var(--ph);
+  color: var(--ph-bright);
+  background: rgb(var(--ph-rgb) / 0.15);
+}
+
+.img-facts {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm, 0.88em);
+}
+
+.img-state {
+  letter-spacing: 1px;
+}
+
+.img-state.painting,
+.img-state.queued {
+  animation: img-blink 1.6s steps(2, start) infinite;
+}
+
+.img-state.failed {
+  color: var(--ph-bright);
+}
+
+/* Steps done, as a segmented bar under the state line. */
+.img-bar {
+  height: 6px;
+  margin: 4px 0;
+  max-width: 320px;
+  border: 1px solid rgb(var(--ph-rgb) / 0.55);
+  background: linear-gradient(to right, var(--ph) var(--pct), transparent var(--pct));
+}
+
+@keyframes img-blink {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .img-state.painting,
+  .img-state.queued {
+    animation: none;
+  }
+}

@@ -2,7 +2,8 @@
 # Load or unload the local model (frees the GPU memory at once).
 # Run:  bash scripts/local-model.sh on|off|status|unload [--keep URL]
 #   unload  the router keeps running but gives back every model it holds, and every model on its own server
-#           (PHOSPHOR_LOCAL_URLS, Strata) unloads, except the one at --keep URL. Strata runs this before it loads,
+#           (PHOSPHOR_LOCAL_URLS, Strata) unloads, except the one at --keep URL; the image model's engine stops
+#           (PHOSPHOR_IMAGE_UNIT, after the picture it paints). Strata runs this before it loads,
 #           so two models never share the GPU; see scripts/setup-strata.sh
 # It also unloads by itself after 15 minutes idle and loads again on the next message (see docs/LOCAL-MODEL.md).
 set -euo pipefail
@@ -31,6 +32,19 @@ unload_all() {
     curl -sf --max-time 95 -X POST -H 'Content-Type: application/json' -d '{}' "$own/unload?wait=90" >/dev/null &&
       echo "unloaded: $own"
   done
+  # The local image model (scripts/setup-image-model.sh) holds the card while its engine runs: stop it, after the
+  # picture being painted (up to 3 minutes). The app stops it the same way when idle.
+  local image unit
+  image=$(env_value PHOSPHOR_IMAGE_URL)
+  unit=$(env_value PHOSPHOR_IMAGE_UNIT)
+  if [[ -n "$image" && -n "$unit" && "$image" != "$keep" ]] && systemctl --user -q is-active "$unit"; then
+    local i
+    for i in $(seq 90); do
+      [[ -e "$(dirname "$ENV_FILE")/data/image-busy" ]] || break # the app paints (server/imagegen.ts)
+      sleep 2
+    done
+    systemctl --user stop "$unit" && echo "stopped: $unit"
+  fi
   return 0
 }
 

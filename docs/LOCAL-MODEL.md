@@ -138,6 +138,11 @@ thinking or text (a model switch before that is not counted), then the server's 
 RECENT is the middle value of the last 5 finished requests, so one odd request does not move it. LAST STOPPED /
 FAILED: the answer was cancelled or broke. Tests: `npx tsx tests/localmeter.ts`.
 
+## Pictures
+
+A local image model can share the card with these: [IMAGE-MODEL.md](IMAGE-MODEL.md). While it paints, the chat models
+are unloaded; the next local chat message loads its model again.
+
 ## Traps
 
 - Claude Code assumes a 200k window; `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set to the local context so it compacts in time.

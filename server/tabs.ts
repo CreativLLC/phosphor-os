@@ -1,8 +1,8 @@
 import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
-import { DATA_DIR, config, localChoice, localModel } from './config.ts';
+import { EFFORTS, IMAGE_MODEL, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { DATA_DIR, config, imageModel, localChoice, localModel } from './config.ts';
 import { Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
@@ -36,7 +36,8 @@ export class Tabs {
     }
     for (const init of saved) {
       // The local model is gone (not configured now): Claude would be handed the name "local" and fail.
-      const missingLocal = !!init.model && (init.model === LOCAL_MODEL || init.model.startsWith(`${LOCAL_MODEL}:`)) && !localChoice(init.model);
+      const missingLocal =
+        !!init.model && (((init.model === LOCAL_MODEL || init.model.startsWith(`${LOCAL_MODEL}:`)) && !localChoice(init.model)) || (init.model === IMAGE_MODEL && !imageModel));
       const tab = this.make(missingLocal ? { ...init, model: undefined, effort: undefined, auto: true } : init);
       await tab.loadHistory().catch((e) => console.warn(`Could not load history for tab ${init.title}:`, e));
     }
@@ -161,7 +162,8 @@ export class Tabs {
             description: m.description,
             resolved: m.resolvedModel,
             efforts: m.supportsEffort === false ? [] : (m.supportedEffortLevels ?? [...EFFORTS]),
-          })), ...(localModel?.models ?? []).map((m) => ({ value: m.value, label: m.label, description: 'Runs on this PC, no plan limits.', efforts: ['low', 'medium', 'xhigh'] as Effort[] }))],
+          })), ...(localModel?.models ?? []).map((m) => ({ value: m.value, label: m.label, description: 'Runs on this PC, no plan limits.', efforts: ['low', 'medium', 'xhigh'] as Effort[] })),
+            ...(imageModel ? [{ value: IMAGE_MODEL, label: imageModel.label, description: 'Makes pictures on this PC. Your message is the picture\'s description.', efforts: [] as Effort[] }] : [])],
         };
       } finally {
         q.close();
@@ -213,6 +215,7 @@ export class Tabs {
       auto: t.autoModel || undefined,
       agents: t.state.agents.slice(-30),
       resume: t.state.meta.resume ?? undefined,
+      images: t.images.length ? t.images : undefined,
     }));
     writeFileSync(TABS_FILE, JSON.stringify(data, null, 2));
   }

@@ -151,6 +151,7 @@ own tailnet. More: [SECURITY.md](SECURITY.md).
 
 - Calendar in TODAY and the clock popup: [docs/CALENDAR.md](docs/CALENDAR.md)
 - Local models on your own GPU (AMD, about 27 GB of disk): [docs/LOCAL-MODEL.md](docs/LOCAL-MODEL.md)
+- Local image generator on your own GPU (AMD, about 19 GB of disk): [docs/IMAGE-MODEL.md](docs/IMAGE-MODEL.md)
 - Settings (`PHOSPHOR_*`) are listed in `.env.example`
 
 ## Update

@@ -7,6 +7,7 @@ import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { appFolder } from '../shared/names.mjs';
 import type { SystemDisk, SystemResponse, SystemVolume } from '../shared/protocol.ts';
+import { painting } from './imagegen.ts';
 import { localSpeed } from './localmeter.ts';
 
 // SYS panel. GET /api/system -> SystemResponse, POST /api/system/volume { pct?, muted? } (shared/protocol.ts).
@@ -137,6 +138,7 @@ function snapshot(): SystemResponse {
     volume: live.volume,
     ...(note ? { note } : {}),
     localSpeed: localSpeed(),
+    ...(painting() !== undefined ? { painting: painting() } : {}),
   };
 }
 
