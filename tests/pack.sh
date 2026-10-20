@@ -61,6 +61,7 @@ stub pgrep '[[ $* == "-x hyprsunset" && -f $HOME/sunset-running ]]'
 stub uwsm-app 'touch "$HOME/sunset-running"'
 stub fc-cache
 stub notify-send
+stub xdg-mime # the picture viewer step: no default to change in a fake home
 stub tailscale 'exit 1'
 stub sudo 'exit 1'
 stub pacman 'exit 1'
@@ -152,7 +153,7 @@ check "notes under the new name" test -f "$T/A/.local/state/PhosphorOS/desktop.s
 check "night light timer installed and started" bash -c "diff -q '$R/os/omarchy/nightlight/phosphor-os-nightlight.timer' '$T/A/.config/systemd/user/phosphor-os-nightlight.timer' && diff -q '$R/os/omarchy/nightlight/phosphor-os-nightlight.service' '$T/A/.config/systemd/user/phosphor-os-nightlight.service' && grep -q 'systemctl --user enable --now phosphor-os-nightlight.timer' '$T/A/stub.log'"
 check "the timer runs the script in the clock plugin" bash -c "grep -qx 'ExecStart=%h/.config/omarchy/plugins/phosphor-os.clock/phosphor-nightlight tick' '$R/os/omarchy/nightlight/phosphor-os-nightlight.service' && test -x '$h/plugins/phosphor-os.clock/phosphor-nightlight'"
 rm -f "$T/A/stub.log"; q A bash "$D"; snap A >"$T/A.r2"; check "run 2 changes no file" cmp -s "$T/A.r1" "$T/A.r2"
-check "run 2 called no setter" bash -c "! grep -v 'font current' '$T/A/stub.log'"
+check "run 2 called no setter" bash -c "! grep -v -e 'font current' -e 'xdg-mime query' '$T/A/stub.log'"
 tenv A bash "$D" --undo --dry-run >/dev/null; snap A >"$T/A.x"; check "undo dry-run changes nothing" cmp -s "$T/A.r2" "$T/A.x"
 q A bash "$D" --undo; snap A >"$T/A.u"; check "undo: byte-for-byte as before" cmp -s "$T/A.before" "$T/A.u"
 check "undo stopped the night light timer" grep -q 'systemctl --user disable --now phosphor-os-nightlight.timer' "$T/A/stub.log"

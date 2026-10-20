@@ -33,5 +33,7 @@ if (base && location.origin === base) {
     clipboardImage: () => ipcRenderer.invoke('clipboard:image'),
     // FILES: show this absolute path in the system file manager.
     showInFolder: (path) => ipcRenderer.invoke('files:show', String(path)),
+    // A picture file, full size in the system image viewer.
+    openImage: (path) => ipcRenderer.invoke('files:open-image', String(path)),
   });
 }

@@ -531,6 +531,32 @@ dictate_undo() {
   fi
 }
 
+# Pictures open in imv-dir (imv with the picture's whole folder, so Left/Right go to the previous and next
+# picture) instead of imv (that one picture only). Only types whose default is imv: a viewer someone picked stays.
+IMAGE_TYPES=(image/png image/jpeg image/webp image/gif image/bmp image/tiff)
+viewer_step() {
+  [[ -f /usr/share/applications/imv-dir.desktop ]] && command -v xdg-mime >/dev/null || return 0
+  local t changed=0
+  for t in "${IMAGE_TYPES[@]}"; do
+    [[ $(xdg-mime query default "$t" 2>/dev/null) == imv.desktop ]] || continue
+    run xdg-mime default imv-dir.desktop "$t"
+    changed=1
+  done
+  if ((changed)); then
+    keep viewer_dir 1
+    ((DRY)) || say "  Pictures: open in imv-dir (Left/Right go through the folder)."
+  fi
+}
+
+viewer_undo() {
+  noted viewer_dir || return 0
+  local t
+  for t in "${IMAGE_TYPES[@]}"; do
+    [[ $(xdg-mime query default "$t" 2>/dev/null) == imv-dir.desktop ]] && run xdg-mime default imv.desktop "$t"
+  done
+  drop viewer_dir
+}
+
 nightlight_undo() {
   noted nl_units || return 0
   local u
@@ -568,6 +594,7 @@ undo() {
   plugin_undo "$NOTIF" notif_dir
   nightlight_undo
   dictate_undo
+  viewer_undo
   plugin_undo "$CLOCK" clock_dir
   if noted plugin_dir; then
     run rm -rf "$SAVER"
@@ -630,5 +657,6 @@ plugin_step Notifications "$PACK/notifications" "$NOTIF" notif_dir
 plugin_step Clock "$PACK/clock" "$CLOCK" clock_dir
 nightlight_step # after the clock: the timer runs the script in its folder
 dictate_step
+viewer_step
 apply_edit json "$SHELL_JSON" "$DEFAULT_JSON" # last: it names the taskbar and the plugins, now in place
 ((DRY)) || say "  The Phosphor-OS look is on. Undo: bash $(printf '%q' "$PACK/desktop.sh") --undo"

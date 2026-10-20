@@ -432,6 +432,13 @@ export function mountWeb({ win, isApp, prefs, savePrefs, onFullscreenKey }) {
     shell.showItemInFolder(path);
     return true;
   });
+  // A picture from the chat, full size in the system image viewer. Only picture files (by their ending), so this
+  // too can never start a program.
+  ipcMain.handle('files:open-image', async (e, path) => {
+    if (!fromApp(e) || typeof path !== 'string' || !isAbsolute(path) || !/\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(path)) return false;
+    const st = await stat(path).catch(() => null);
+    return !!st?.isFile() && (await shell.openPath(path)) === '';
+  });
   // STATION skins: which addresses get which app's skin, and the app's theme. Applied on every page of those sites.
   ipcMain.on('web:skins', (e, cfg) => fromApp(e) && skins.set(cfg));
   ipcMain.on('web:sites', (e, list) => {

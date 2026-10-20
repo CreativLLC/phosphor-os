@@ -49,6 +49,8 @@ export type PhosphorShell = {
   clipboardImage?(): Promise<Uint8Array | null>;
   // Show a file (or open a folder) in the system file manager. Optional: an older desktop app does not have it.
   showInFolder?(path: string): Promise<boolean>;
+  // Open a picture file in the system image viewer. Optional: an older desktop app does not have it.
+  openImage?(path: string): Promise<boolean>;
 };
 
 declare global {

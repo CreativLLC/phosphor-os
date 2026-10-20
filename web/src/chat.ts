@@ -334,7 +334,8 @@ function render(item: Item): HTMLElement {
 
 const secs = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s`);
 
-// A picture from the local image model: its progress while it is made, then the picture (tap = full size),
+// A picture from the local image model: its progress while it is made, then the picture (tap = full size: in the
+// desktop app the system image viewer, which opened it in an outside browser that is not logged in),
 // SAVE (download) and, in the desktop app, SHOW IN FOLDER.
 // The time on pictures being painted moves every second, between the server's updates.
 setInterval(() => {
@@ -352,6 +353,13 @@ function renderImage(box: HTMLElement, item: ImageItem): void {
     link.rel = 'noopener';
     link.title = 'Open full size';
     link.style.setProperty('--ar', String(item.width / item.height));
+    const file = item.path;
+    if (file && shellApi?.openImage) {
+      link.onclick = (e) => {
+        e.preventDefault();
+        void shellApi!.openImage!(file).then((ok) => ok || toast("Couldn't open the picture."));
+      };
+    }
     const img = el('img');
     img.src = url;
     img.alt = item.prompt;
