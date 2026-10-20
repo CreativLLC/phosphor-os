@@ -334,9 +334,30 @@ function render(item: Item): HTMLElement {
 
 const secs = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.floor(ms / 60_000)}m ${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s`);
 
-// A picture from the local image model: its progress while it is made, then the picture (tap = full size: in the
-// desktop app the system image viewer, which opened it in an outside browser that is not logged in),
+// A picture from the local image model: its progress while it is made, then the picture (tap = full size, over the
+// chat: an outside browser is not logged in, and an older desktop app has no way to open the file),
 // SAVE (download) and, in the desktop app, SHOW IN FOLDER.
+// A picture full size over the chat. A click, Esc or CLOSE closes it. In the desktop app OPEN IN VIEWER hands the
+// file to the system image viewer (there Left/Right go through its folder).
+function showPicture(url: string, alt: string, path?: string): void {
+  const dlg = el('dialog', 'img-view');
+  const img = el('img');
+  img.src = url;
+  img.alt = alt;
+  const close = () => dlg.close();
+  img.onclick = close;
+  dlg.onclick = (e) => e.target === dlg && close(); // the dark area around it
+  dlg.onclose = () => dlg.remove();
+  const row = el('div', 'img-row');
+  if (path && shellApi?.openImage) {
+    row.append(button('OPEN IN VIEWER', () => void shellApi!.openImage!(path).then((ok) => (ok ? close() : toast("Couldn't open the picture."))), 'img-btn'));
+  }
+  row.append(button('CLOSE', close, 'img-btn'));
+  dlg.append(img, row);
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
 // The time on pictures being painted moves every second, between the server's updates.
 setInterval(() => {
   for (const t of document.querySelectorAll<HTMLElement>('.img-time')) t.textContent = ` · ${secs(Date.now() - Number(t.dataset.started))}`;
@@ -353,13 +374,10 @@ function renderImage(box: HTMLElement, item: ImageItem): void {
     link.rel = 'noopener';
     link.title = 'Open full size';
     link.style.setProperty('--ar', String(item.width / item.height));
-    const file = item.path;
-    if (file && shellApi?.openImage) {
-      link.onclick = (e) => {
-        e.preventDefault();
-        void shellApi!.openImage!(file).then((ok) => ok || toast("Couldn't open the picture."));
-      };
-    }
+    link.onclick = (e) => {
+      e.preventDefault();
+      showPicture(url, item.prompt, item.path);
+    };
     const img = el('img');
     img.src = url;
     img.alt = item.prompt;

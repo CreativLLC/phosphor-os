@@ -1034,3 +1034,25 @@ a.img-btn:hover {
     animation: none;
   }
 }
+
+/* A picture full size over the chat (showPicture in chat.ts): no scanlines over it, the picture is the point. */
+dialog.img-view {
+  max-width: 96vw;
+  max-height: 96dvh;
+  padding: 8px;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--ph);
+  background: var(--bg);
+}
+
+dialog.img-view::after {
+  display: none;
+}
+
+dialog.img-view img {
+  max-width: calc(96vw - 18px);
+  max-height: calc(96dvh - 60px);
+  object-fit: contain;
+  cursor: zoom-out;
+}
