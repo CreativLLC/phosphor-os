@@ -4,6 +4,7 @@ import { Sprite } from './sprites/engine.ts';
 import { operatorAnim, type OperatorState } from './sprites/operator.ts';
 import { send } from './net.ts';
 import { watchActive } from './store.ts';
+import { mountIdeas } from './ideas.ts';
 import { mountToday } from './today.ts';
 import { button, el, fmtDuration } from './ui.ts';
 
@@ -211,8 +212,11 @@ export function mountAgents(root: HTMLElement): void {
   }, 'crew-more');
   const todayHead = heading('TODAY');
   const todayBox = el('section', 'today');
-  root.replaceChildren(opHead.el, op.el, crewHead.el, list, empty, more, todayBox);
+  const ideasHead = heading('IDEAS');
+  const ideasBox = el('section', 'ideas');
+  root.replaceChildren(opHead.el, op.el, crewHead.el, list, empty, more, todayBox, ideasBox);
   mountToday(todayBox, todayHead);
+  mountIdeas(ideasBox, ideasHead);
 
   const cards = new Map<string, AgentCard>();
   let current: TabState | undefined;

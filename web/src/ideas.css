@@ -1,0 +1,94 @@
+/* IDEAS section under TODAY (ideas.ts). Theme tokens only (see theme.css); headings come from agents.css,
+   the SUGGESTED label from today.css (.today-sub). */
+
+.ideas {
+  margin-top: 14px;
+}
+
+.ideas[hidden],
+.ideas [hidden] {
+  display: none;
+}
+
+.ideas-body {
+  max-height: min(14em, 40vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.ideas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ideas-row {
+  display: grid;
+  grid-template-columns: 3ch minmax(0, 1fr) auto;
+  gap: 0 1ch;
+  align-items: start;
+  padding: 3px 6px;
+  border: 1px solid var(--line, var(--ph-dim));
+  background: var(--bg-raise);
+  cursor: pointer;
+}
+
+.ideas-row:focus-visible {
+  outline: 1px solid var(--ph-bright);
+}
+
+.ideas-mark {
+  color: var(--ph-dim);
+}
+
+.ideas-text {
+  color: var(--ph);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ideas-proj {
+  margin-right: 1ch;
+  color: var(--ph-dim);
+}
+
+.ideas-row.on {
+  border-color: var(--ph);
+}
+
+.ideas-row.on .ideas-mark,
+.ideas-row.on .ideas-text {
+  color: var(--ph-bright);
+}
+
+.ideas-drop {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--ph-dim);
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .ideas-drop:hover {
+    color: var(--ph-bright);
+  }
+}
+
+.ideas-empty {
+  color: var(--ph-dim);
+}
+
+.ideas-bar {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ideas-do {
+  flex: 1;
+}

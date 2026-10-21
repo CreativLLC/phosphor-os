@@ -1,5 +1,6 @@
 import { IMAGE_MODEL, type Agent, type CalendarEvent, type CalendarRangeResponse, type ClientEvent, type ImageItem, type Item, type Mission, type ServerEvent, type TabState, type TodayResponse } from '../../shared/protocol.ts';
 import { TTL_1H } from '../../shared/cache.ts';
+import { parseIdeas, type IdeasResponse } from '../../shared/ideas.ts';
 import { apply, useDemo } from './net.ts';
 import { setModels } from './pickers.ts';
 import { store } from './store.ts';
@@ -196,6 +197,19 @@ const demoEdit = (start: string) => {
 };
 
 // Sample TODAY panel: times are relative to the clock, so there is always something left today.
+export function demoIdeas(): IdeasResponse {
+  const file = '/home/user/workspace/parked.md';
+  const md = [
+    '## Parked',
+    '- [ ] 2026-10-20 · sample-app · Dark mode for the settings page',
+    '- [ ] 2026-10-21 · phosphor-os · Search old pictures and docs from HISTORY too, not only chats',
+    '- [ ] 2026-10-21 · notes · Write a short guide for the backup script',
+    '## Suggested',
+    '- [ ] 2026-10-23 · routine · Weekly check that every project still builds',
+  ].join('\n');
+  return { file, found: true, ideas: parseIdeas(md) };
+}
+
 export function demoToday(): TodayResponse {
   const d = new Date();
   const at = (days: number, h: number, m = 0) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, h, m).toISOString();

@@ -6,6 +6,7 @@ import { AUTO_MODEL, EFFORTS, MODES, type ClientEvent, type ServerEvent } from '
 import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPassword } from './auth.ts';
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
+import { handleIdeas } from './ideas.ts';
 import { WEB_DIST, config } from './config.ts';
 import { handleDocs, handleOpenLocal, localKey } from './docs.ts';
 import { handleFiles } from './files.ts';
@@ -177,6 +178,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/update') return await handleUpdate(req, res, url);
     if (url.pathname === '/api/bootcheck') return sendJson(res, await bootChecks(tabs));
     if (url.pathname === '/api/today') return sendJson(res, await today());
+    if (url.pathname === '/api/ideas' || url.pathname.startsWith('/api/ideas/')) return await handleIdeas(req, res, url);
     if (url.pathname === '/api/calendar') return sendJson(res, calendarRange(Number(url.searchParams.get('from') ?? NaN), Number(url.searchParams.get('to') ?? NaN)));
     if (url.pathname.startsWith('/api/')) return sendJson(res, { error: 'not found' }, 404);
   } catch (e) {

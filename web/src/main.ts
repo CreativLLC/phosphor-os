@@ -4,6 +4,7 @@ import './layout.css';
 import './chat.css';
 import './agents.css';
 import './today.css';
+import './ideas.css';
 import './calendar.css';
 import './mission.css';
 import './files.css';

@@ -8,7 +8,7 @@ let retryTimer = 0;
 let hiddenAt = 0;
 // Relink timing after the page comes back (phone screen on), sent once to data/voice-diag.log to see where time goes.
 let woke: { at: number; hiddenMs: number; was: string } | null = null;
-const myReqs = new Set<string>();
+const myReqs = new Map<string, ((tab: string) => void) | undefined>();
 let demoHandler: ((ev: ClientEvent) => void) | undefined;
 
 // After this long in the background (phone screen off), the old socket may be dead without knowing it:
@@ -88,10 +88,10 @@ export function send(ev: ClientEvent): void {
   else toast('Not connected. Retrying…');
 }
 
-// New tab / open old chat: switch to the tab when the server answers this request.
-export function newReq(): string {
+// New tab / open old chat: switch to the tab when the server answers this request, then run `then` (if given).
+export function newReq(then?: (tab: string) => void): string {
   const req = Math.random().toString(36).slice(2);
-  myReqs.add(req);
+  myReqs.set(req, then);
   return req;
 }
 
@@ -113,7 +113,12 @@ export function apply(ev: ServerEvent): void {
       store.tabs.set(ev.tab.meta.id, ev.tab);
       store.emit({ kind: 'tabs' });
       store.emit({ kind: 'reset', tab: ev.tab.meta.id });
-      if (ev.req && myReqs.delete(ev.req)) store.setActive(ev.tab.meta.id);
+      if (ev.req && myReqs.has(ev.req)) {
+        const then = myReqs.get(ev.req);
+        myReqs.delete(ev.req);
+        store.setActive(ev.tab.meta.id);
+        then?.(ev.tab.meta.id);
+      }
       return;
     }
     case 'tab_closed': {
