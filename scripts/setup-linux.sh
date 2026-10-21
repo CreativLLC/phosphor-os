@@ -597,7 +597,10 @@ docs_default_step() {
   local t cur changed=0
   for t in "${DOCS_TYPES[@]}"; do
     cur="$(xdg-mime query default "$t" 2>/dev/null || true)"
-    [[ $cur == "$DOCS_APP" ]] && continue
+    # Only a line in mimeapps.list counts: with none, xdg-mime may name this app while the file manager
+    # (gio) still picks another one from the system cache.
+    [[ $cur == "$DOCS_APP" ]] && grep -qx "$t=$DOCS_APP;\\?" "$MIMEAPPS" 2>/dev/null && continue
+    [[ $cur == "$DOCS_APP" ]] && cur='' # came from the cache, not a choice of yours: undo leaves no line
     if mime_noted "$t"; then
       say "  $t opens with ${cur:-the system default} (you changed it after setup), so it stays."
       continue
