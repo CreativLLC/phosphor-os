@@ -1,7 +1,7 @@
 // Local model relay: one model on the GPU at a time. Fake servers (a fetch stub), nothing real is started or called.
 //   npx tsx tests/localrelay.ts
 
-import { makeRoom } from '../server/localrelay.ts';
+import { IMAGE_NOTE, makeRoom, NO_VISION, withoutImages } from '../server/localrelay.ts';
 
 let fail = 0;
 const check = (what: string, cond: boolean, detail = '') => {
@@ -119,6 +119,28 @@ function world(o: { router: Record<string, string>; ownUp: boolean; ownLoaded: b
   await makeRoom(m2, 'big2', f, async () => {});
   check('own model: the other own server unloaded', calls.includes(`POST ${OWN}/unload?wait=300`), calls.join(' | '));
   check('own model: its own server not unloaded', !calls.includes(`POST ${OWN2}/unload?wait=300`), calls.join(' | '));
+}
+
+// A model without its vision file: pictures go out as a short note, the rest stays as it was.
+{
+  const img = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } };
+  const req = {
+    model: 'big',
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'look' }, img] },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: [img, { type: 'text', text: 'ok' }] }] },
+      { role: 'user', content: 'plain text' },
+    ],
+  };
+  const out = withoutImages(req) as typeof req | null;
+  const flat = JSON.stringify(out);
+  check('no vision: pictures swapped', !!out && !flat.includes('"image"') && flat.split(IMAGE_NOTE).length === 3, flat);
+  check('no vision: other text kept', flat.includes('"look"') && flat.includes('"ok"') && flat.includes('"plain text"') && flat.includes('"model":"big"'));
+  check('no vision: the request itself not changed', JSON.stringify(req).includes('"image"'));
+  check('no vision: no pictures gives null', withoutImages({ messages: [{ role: 'user', content: 'hi' }] }) === null);
+  check('no vision: Strata error matches', NO_VISION.test('this server was started without the vision encoder (run setup again and choose \'vision\'), so it cannot read images'));
+  check('no vision: llama.cpp error matches', NO_VISION.test('{"error":{"message":"image input is not supported - hint: if this is unexpected, you may need to provide the mmproj"}}'));
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');

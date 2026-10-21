@@ -109,6 +109,29 @@ async function ensureUp(url: string, unit: string | undefined, f: Fetch, start: 
   }
 }
 
+// A model without its vision file refuses any request with a picture in it (Strata: "400 ... started without the vision
+// encoder"; llama.cpp: "500 image input is not supported"). The picture stays in the chat's history, so every later
+// message failed too and the chat was stuck. Then the relay sends a short note in each picture's place and tries again.
+export const NO_VISION = /without the vision encoder|image input is not supported/i;
+export const IMAGE_NOTE = '[A picture was here. This model cannot see pictures, so it was left out.]';
+
+// The request with every picture (also those inside tool results) swapped for IMAGE_NOTE; null when it has none.
+export function withoutImages(j: { messages?: unknown }): object | null {
+  let found = false;
+  const swap = (blocks: unknown): unknown =>
+    Array.isArray(blocks)
+      ? blocks.map((b) => {
+          if (b?.type === 'image') {
+            found = true;
+            return { type: 'text', text: IMAGE_NOTE };
+          }
+          return b?.type === 'tool_result' && Array.isArray(b.content) ? { ...b, content: swap(b.content) } : b;
+        })
+      : blocks;
+  const messages = Array.isArray(j.messages) ? j.messages.map((msg) => (msg && typeof msg === 'object' ? { ...msg, content: swap((msg as { content?: unknown }).content) } : msg)) : j.messages;
+  return found ? { ...j, messages } : null;
+}
+
 export function startLocalRelay(): void {
   if (!localModel) return;
   const m = localModel;
@@ -122,6 +145,7 @@ export function startLocalRelay(): void {
       const chunks: Buffer[] = [];
       for await (const c of req) chunks.push(c as Buffer);
       let body = Buffer.concat(chunks);
+      let blind: object | null = null; // the request without its pictures, for a model that cannot see them
       if (req.method === 'POST') {
         try {
           const j = JSON.parse(body.toString('utf8'));
@@ -135,6 +159,7 @@ export function startLocalRelay(): void {
             await makeRoom(m, name);
           }
           const effort = j?.output_config?.effort;
+          if (req.url?.startsWith('/v1/messages')) blind = withoutImages(j);
           if (req.url?.startsWith('/v1/messages') && effort) {
             if (m.urls[name]) {
               if (OWN_LEVEL[effort] && OWN_LEVEL[effort] !== effort) body = Buffer.from(JSON.stringify({ ...j, output_config: { ...j.output_config, effort: OWN_LEVEL[effort] } }));
@@ -150,7 +175,16 @@ export function startLocalRelay(): void {
       const headers: Record<string, string> = {};
       for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !['host', 'content-length', 'connection'].includes(k)) headers[k] = v;
       meter?.forwarded();
-      const r = await fetch(new URL(req.url ?? '/', target), { method: req.method, headers, body: body.length ? body : undefined, signal: abort.signal });
+      const send = (b: typeof body) => fetch(new URL(req.url ?? '/', target), { method: req.method, headers, body: b.length ? b : undefined, signal: abort.signal });
+      let r = await send(body);
+      if (blind && !r.ok) {
+        const text = await r.text();
+        if (NO_VISION.test(text)) {
+          // Same changes as above (thinking level), pictures out.
+          const sent = JSON.parse(body.toString('utf8'));
+          r = await send(Buffer.from(JSON.stringify({ ...sent, messages: (blind as { messages?: unknown }).messages })));
+        } else r = new Response(text, { status: r.status, statusText: r.statusText, headers: r.headers });
+      }
       res.writeHead(r.status, Object.fromEntries([...r.headers].filter(([k]) => !['content-length', 'content-encoding', 'transfer-encoding', 'connection'].includes(k))));
       const sse = r.ok && !!r.headers.get('content-type')?.includes('text/event-stream');
       if (meter && !sse) {
