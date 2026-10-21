@@ -90,6 +90,7 @@ and a 29 GB file.
 | Engine | Strata, pinned release, compiled for the card (HIP on AMD) | the only engine built around this model's small experts |
 | Model | ISTA-DASLab's Coder (`IQ1_M` by name, experts stored like IQ3_S; 256 of the 512 experts per layer kept, chosen for code and tools; 23 GB of experts, plus a 29 GB table read from the SSD) | Strata's pick for a 32 GB PC; weaker outside code. `STRATA_FAMILY=qwen` installs a size with every expert (`IQ2_XS`: 35.5 GB of experts, `IQ3_XXS`: 43 GB; see the RAM note below) |
 | Server | its own per size: the Coder on port 8082, a qwen size on 8083; `phosphor-strata-<size>.service` (user), not started at login | not a llama.cpp model, so not in the router |
+| AUTO mode | runs as ACCEPT EDITS on a model with its own server: edits and read-only commands go ahead, other commands ask | AUTO's safety check uses the chat's model, and Strata reads its long prompt too slowly: the check timed out and blocked most Bash calls |
 | VRAM reserve | 3072 MiB | Strata's docs: an AMD card that drives the desktop lost the compositor with less |
 | Idle | unloads after 15 minutes (`idle_unload_s`), RAM and GPU go back | it holds tens of GB |
 | Context | 131072 (`STRATA_CONTEXT`) | the window Claude Code compacts to (`PHOSPHOR_LOCAL_CONTEXTS`). Past 32K the older KV cache lives in RAM (`--kv-resident 32768`, about 13.7 KB a token, 1.7 GB at 128K), not on the card. A 57K-token prompt read in 74 s (Coder) and 90 s (`IQ3_XXS`) |

@@ -92,6 +92,15 @@ function speakerFor(model: string | undefined): string | undefined {
   return (local?.label ?? model).replace(/\s*\(local\)\s*$/i, '');
 }
 
+// AUTO mode has a model check each command before it runs, and that check uses the chat's own model. A model on its
+// own server (Strata) reads a long prompt too slowly: the check timed out and blocked 29 of 42 Bash calls (2026-10-20).
+// There, AUTO runs as ACCEPT EDITS: edits and read-only commands go ahead, any other command asks the owner.
+const slowCheck = (model?: string) => {
+  const local = localChoice(model);
+  return !!local && !!localModel?.urls[local.name];
+};
+const sdkMode = (mode: Mode | undefined, model?: string): Mode | undefined => (mode === 'auto' && slowCheck(model) ? 'acceptEdits' : mode);
+
 export class Tab {
   state: TabState;
   onPersist?: () => void; // title or session id changed
@@ -410,7 +419,7 @@ export class Tab {
 
   async setMode(mode: Mode): Promise<void> {
     this.pendingMode = mode;
-    if (this.q) await this.q.setPermissionMode(mode).catch(() => {});
+    if (this.q) await this.q.setPermissionMode(sdkMode(mode, this.pendingModel)!).catch(() => {});
     this.state.info.permissionMode = mode;
     this.patch('info');
     this.onPersist?.();
@@ -614,7 +623,7 @@ export class Tab {
         systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP },
         includePartialMessages: true,
         agentProgressSummaries: true,
-        permissionMode: this.pendingMode,
+        permissionMode: sdkMode(this.pendingMode, this.pendingModel),
         model: local ? local.name : this.pendingModel,
         env: local ? localEnv(localModel!, local.name) : undefined,
         effort: this.pendingEffort,
@@ -758,7 +767,7 @@ export class Tab {
       const effort = (m as { effort?: string | null }).effort;
       // Keep the tab's own folder: init reports the shell's current folder, which moves when a command cd's
       // into a subfolder (saving that moved chats out of the workspace).
-      this.state.info = { cwd: this.state.info.cwd, model: m.model, permissionMode: m.permissionMode, effort: effort ?? this.pendingEffort ?? this.state.info.effort, auto: this.auto };
+      this.state.info = { cwd: this.state.info.cwd, model: m.model, permissionMode: this.shownMode(m.permissionMode), effort: effort ?? this.pendingEffort ?? this.state.info.effort, auto: this.auto };
       Tab.lastModel = m.model;
       if (m.terminal_slash_commands) Tab.terminalCommands = new Set(m.terminal_slash_commands);
       this.patch('info');
@@ -785,7 +794,7 @@ export class Tab {
         this.setBusy(true);
       }
     } else if (m.subtype === 'status' && m.permissionMode) {
-      this.state.info.permissionMode = m.permissionMode;
+      this.state.info.permissionMode = this.shownMode(m.permissionMode);
       this.patch('info');
     } else if (m.subtype === 'task_started') {
       const isAgent = !!m.subagent_type || !m.task_type || /agent|workflow/.test(m.task_type);
@@ -895,6 +904,11 @@ export class Tab {
     const detail = describeTool(name, input);
     this.add({ id, kind: 'tool', name, detail, body: toolBody(name, input) });
     this.setActivity(`${name}: ${describeTool(name, input, 80)}`);
+  }
+
+  // The tab shows the mode the owner picked: AUTO stays AUTO while it runs as ACCEPT EDITS (sdkMode).
+  private shownMode(mode: string): string {
+    return this.pendingMode === 'auto' && mode === 'acceptEdits' && slowCheck(this.pendingModel) ? 'auto' : mode;
   }
 
   private canUseTool: CanUseTool = (toolName, input, opts) =>
