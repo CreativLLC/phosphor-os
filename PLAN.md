@@ -349,7 +349,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | Server core | `server/index.ts`, `server/tabs.ts`, `server/tab.ts`, `server/auth.ts`, `server/config.ts` |
 | Files API | `server/files.ts` |
 | Shared types | `shared/protocol.ts` (WebSocket events and REST shapes) |
-| Page core | `web/src/main.ts`, `store.ts`, `net.ts`, `chat.ts`, `tabs.ts`, `history.ts`, `md.ts`, `demo.ts`, `layout.css` |
+| Page core | `web/src/main.ts`, `store.ts`, `net.ts`, `chat.ts`, `tabs.ts`, `history.ts`, `md.ts` (+ `mdlists.ts`: numbered lists after a text line, `tests/mdlists.ts`), `demo.ts`, `layout.css` |
 | Look | `theme.css` (token contract at top), `chat.css`, `settings.ts`, `sound.ts`, `boot.ts`, login page |
 | HUD | `mission.ts`, `mission.css` |
 | Cache clock | `shared/cache.ts` (TTL from usage, time left), `noteCache` in `server/tab.ts` (live replies + reopened chats), `cacheOf`/`watchCache` in `web/src/context.ts` (CTX gauge suffix), CACHE row in `mission.ts`, `tests/cache.ts` |

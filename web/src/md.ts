@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { fixLists } from './mdlists.ts';
 import { toast } from './ui.ts';
 
 marked.setOptions({ gfm: true, breaks: false });
@@ -13,7 +14,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 
 // Claude's markdown to safe HTML. Sanitized because this page can run commands on the PC.
 export function renderMarkdown(text: string): string {
-  const html = marked.parse(text, { async: false }) as string;
+  const html = marked.parse(fixLists(text), { async: false }) as string;
   return DOMPurify.sanitize(html, { FORBID_TAGS: ['img', 'style', 'iframe', 'form', 'input', 'video', 'audio'] });
 }
 
