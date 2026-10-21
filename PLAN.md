@@ -352,6 +352,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | Page core | `web/src/main.ts`, `store.ts`, `net.ts`, `chat.ts`, `tabs.ts`, `history.ts`, `md.ts`, `demo.ts`, `layout.css` |
 | Look | `theme.css` (token contract at top), `chat.css`, `settings.ts`, `sound.ts`, `boot.ts`, login page |
 | HUD | `mission.ts`, `mission.css` |
+| Cache clock | `shared/cache.ts` (TTL from usage, time left), `noteCache` in `server/tab.ts` (live replies + reopened chats), `cacheOf`/`watchCache` in `web/src/context.ts` (CTX gauge suffix), CACHE row in `mission.ts`, `tests/cache.ts` |
 | Agents | `agents.ts`, `agents.css`, `sprites/` |
 | TODAY panel (calendar + reminders) | `server/calendar.ts` (`GET /api/today`, 10-min fetch, cache file), `server/icsexpand.ts` (pure ICS expansion), `web/src/today.ts`, `today.css`, `docs/CALENDAR.md`, `tests/calendar.ts` |
 | Month view (opened from the TODAY heading) | `GET /api/calendar` (`calendarRange` in `server/calendar.ts`), `web/src/calendar.ts`, `calendar.css`, `calfmt.ts` (shared text helpers, EDIT / + NEW links), `demoMonth` in `demo.ts`; Google Calendar links (EDIT, + NEW): `server/gcal.ts` (pure, tested) |

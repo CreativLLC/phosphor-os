@@ -548,6 +548,12 @@
   background: var(--ph-bright);
 }
 
+/* CACHE row: bright in the last minutes before the prompt cache goes cold (shared/cache.ts). */
+.ms-cache.ending .ms-k,
+.ms-cache.ending .ms-v {
+  color: var(--ph-bright);
+}
+
 .ms-sub {
   text-align: right;
   color: var(--ph-dim);
@@ -704,6 +710,16 @@
 }
 
 .pg-ctx.hot {
+  color: var(--ph-bright);
+}
+
+/* Prompt cache clock after the percent: minutes left, COLD, bright near the end. */
+.pg-ctx-cache::before {
+  content: '·';
+  margin-right: 5px;
+}
+
+.pg-ctx-cache.ending {
   color: var(--ph-bright);
 }
 

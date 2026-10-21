@@ -1,4 +1,5 @@
 import { IMAGE_MODEL, type Agent, type CalendarEvent, type CalendarRangeResponse, type ClientEvent, type ImageItem, type Item, type Mission, type ServerEvent, type TabState, type TodayResponse } from '../../shared/protocol.ts';
+import { TTL_1H } from '../../shared/cache.ts';
 import { apply, useDemo } from './net.ts';
 import { setModels } from './pickers.ts';
 import { store } from './store.ts';
@@ -50,7 +51,7 @@ const tab1: TabState = {
     agent('a2', 'Plan', 'Design the tab protocol', 'completed', 300, { summary: 'Protocol drafted: one WebSocket, events carry a tab id.', toolUses: 4, tokens: 9100, endedAt: now - 120000 }),
     agent('a3', 'general-purpose', 'Check the old login code', 'failed', 400, { summary: 'Could not read data/secret', toolUses: 2, tokens: 3300, endedAt: now - 200000 }),
   ],
-  stats: { toolCalls: 23, filesChanged: [`${CWD}/server/tabs.ts`, `${CWD}/server/tab.ts`, `${CWD}/web/src/tabs.ts`], turns: 3, turnStartedAt: now - 95000, lastTurnMs: 42000, contextTokens: 61000, contextWindow: 200000 },
+  stats: { toolCalls: 23, filesChanged: [`${CWD}/server/tabs.ts`, `${CWD}/server/tab.ts`, `${CWD}/web/src/tabs.ts`], turns: 3, turnStartedAt: now - 95000, lastTurnMs: 42000, contextTokens: 61000, contextWindow: 200000, cacheAt: now, cacheTtlMs: TTL_1H },
   activity: 'Edit: server/tabs.ts',
 };
 
@@ -63,7 +64,7 @@ const tab2: TabState = {
   ],
   mission: { title: 'Fix metronome drift', summary: 'Moved the metronome to the audio clock so it stays on time.', steps: steps(['Find the timer', 'Switch to audio clock', 'Test at 200 bpm'], 3), updatedAt: now },
   agents: [],
-  stats: { toolCalls: 6, filesChanged: [], turns: 1, turnStartedAt: null, lastTurnMs: 31000, contextTokens: 22000, contextWindow: 200000 },
+  stats: { toolCalls: 6, filesChanged: [], turns: 1, turnStartedAt: null, lastTurnMs: 31000, contextTokens: 22000, contextWindow: 200000, cacheAt: now - 22 * 60000, cacheTtlMs: TTL_1H },
   activity: '',
 };
 
@@ -80,7 +81,7 @@ const tab3: TabState = {
   ],
   mission: null,
   agents: [],
-  stats: { toolCalls: 0, filesChanged: [], turns: 0, turnStartedAt: now - 9000, lastTurnMs: 0, contextTokens: 0, contextWindow: 0 },
+  stats: { toolCalls: 0, filesChanged: [], turns: 0, turnStartedAt: now - 9000, lastTurnMs: 0, contextTokens: 0, contextWindow: 0, cacheAt: null, cacheTtlMs: 0 },
   activity: 'Painting 4/8',
 };
 

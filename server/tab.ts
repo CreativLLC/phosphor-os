@@ -20,6 +20,7 @@ import { appendFile, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { IMAGE_MODEL, type Agent, type AskQuestion, type Attachment, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
+import { ttlFromUsage } from '../shared/cache.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
 import { DATA_DIR, imageModel, localChoice, localModel } from './config.ts';
 import { painter, type Painter } from './imagegen.ts';
@@ -80,7 +81,7 @@ export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: st
 // with the id of the last transcript message before it, so a reload puts them back in the same place.
 export type SavedImage = { after: string | null; item: Item };
 
-const emptyStats = (): Stats => ({ toolCalls: 0, filesChanged: [], turns: 0, turnStartedAt: null, lastTurnMs: 0, contextTokens: 0, contextWindow: 0 });
+const emptyStats = (): Stats => ({ toolCalls: 0, filesChanged: [], turns: 0, turnStartedAt: null, lastTurnMs: 0, contextTokens: 0, contextWindow: 0, cacheAt: null, cacheTtlMs: 0 });
 
 // One chat tab = one Claude Code session.
 
@@ -724,6 +725,7 @@ export class Tab {
         } else {
           const u = m.message.usage;
           if (u) this.state.stats.contextTokens = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+          if (u) noteCache(this.state.stats, u, m.message.model, Date.now());
         }
         for (const block of m.message.content) {
           if (block.type === 'text' && !sub && !this.streamedMsgs.has(m.message.id) && block.text.trim()) {
@@ -1114,13 +1116,30 @@ export function mergeImages(items: Item[], log: SavedImage[]): Item[] {
   return out;
 }
 
+// The cache clock of a main-chat reply. Messages Claude Code makes itself ('<synthetic>') never reach Claude;
+// a local model has no prompt cache to count down.
+type CacheStats = Pick<Stats, 'cacheAt' | 'cacheTtlMs'>;
+function noteCache(s: CacheStats, u: Parameters<typeof ttlFromUsage>[0], model: string | undefined, at: number): void {
+  if (model === '<synthetic>') return;
+  s.cacheTtlMs = speakerFor(model) ? 0 : ttlFromUsage(u, s.cacheTtlMs);
+  s.cacheAt = s.cacheTtlMs ? at : null;
+}
+
 function historyToItems(msgs: SessionMessage[]): { items: Item[]; mission: Mission | null; stats: Partial<Stats> } {
   const items: Item[] = [];
   let mission: Mission | null = null;
-  const stats = { turns: 0, toolCalls: 0, filesChanged: [] as string[] };
+  const stats: Partial<Stats> & CacheStats & { turns: number; toolCalls: number; filesChanged: string[] } = { turns: 0, toolCalls: 0, filesChanged: [], cacheAt: null, cacheTtlMs: 0 };
   for (const m of msgs) {
     if (m.parent_tool_use_id) continue;
-    const msg = m.message as { content?: unknown; model?: string } | undefined;
+    const msg = m.message as { content?: unknown; model?: string; usage?: Parameters<typeof ttlFromUsage>[0] & { input_tokens?: number } } | undefined;
+    // The transcript has a time on each line; the SDK passes it on but does not type it.
+    const at = Date.parse(String((m as { timestamp?: string }).timestamp ?? ''));
+    // A reopened chat shows its context and cache clock from its last reply, before the next message.
+    if (m.type === 'assistant' && msg?.usage && at && msg.model !== '<synthetic>') {
+      const u = msg.usage;
+      stats.contextTokens = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+      noteCache(stats, u, msg.model, at);
+    }
     const content = msg?.content;
     const blocks: Record<string, unknown>[] = typeof content === 'string' ? [{ type: 'text', text: content }] : Array.isArray(content) ? content : [];
     const images: Attachment[] = []; // inline images with no saved copy listed (e.g. pasted in the terminal)
@@ -1138,8 +1157,6 @@ function historyToItems(msgs: SessionMessage[]): { items: Item[]; mission: Missi
         } else {
           const text = b.text.trim();
           const who = speakerFor(msg?.model);
-          // The transcript has a time on each line; the SDK passes it on but does not type it.
-          const at = Date.parse(String((m as { timestamp?: string }).timestamp ?? ''));
           if (text) items.push({ id: randomUUID(), kind: 'claude', text, ...(at ? { at } : {}), ...(who ? { who } : {}) });
         }
       } else if (b.type === 'image' && m.type === 'user') {

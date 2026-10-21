@@ -1,4 +1,4 @@
-import { compressButton, contextGauge } from './context.ts';
+import { cacheOf, compressButton, contextGauge, watchCache } from './context.ts';
 import type { Mission, TabState } from '../../shared/protocol.ts';
 import { store, watchActive } from './store.ts';
 import { button, el, folderName, shortPath } from './ui.ts';
@@ -300,13 +300,15 @@ export function mountMission(root: HTMLElement): void {
   const ctxSub = el('div', 'ms-sub');
   const ctxMore = el('div', 'ms-sub ms-ctx-more');
   ctxMore.append(ctxSub, compressButton());
+  const cache = row('CACHE');
+  cache.row.classList.add('ms-cache');
   const agents = row('AGENTS');
   const model = row('MODEL');
   const thinking = row('THINKING');
   const mode = row('MODE');
   const folder = row('FOLDER');
   const grid = el('div', 'ms-stats');
-  grid.append(time.row, turns.row, tools.row, files.row, fileList, ctx.row, ctxMore, agents.row, model.row, thinking.row, mode.row, folder.row);
+  grid.append(time.row, turns.row, tools.row, files.row, fileList, ctx.row, ctxMore, cache.row, agents.row, model.row, thinking.row, mode.row, folder.row);
   const stats = section('STATS', grid);
 
   const wrap = el('div', 'ms');
@@ -433,6 +435,14 @@ export function mountMission(root: HTMLElement): void {
   }
 
   watchActive(['stats', 'agents', 'info', 'meta'], renderStats);
+  watchCache((tab) => {
+    const c = cacheOf(tab);
+    cache.row.hidden = !c;
+    cache.val.textContent = c?.line ?? '';
+    cache.row.title = c?.tip ?? '';
+    cache.row.classList.toggle('cold', c?.left === 0);
+    cache.row.classList.toggle('ending', !!c?.ending);
+  });
 }
 
 // 75000 -> "01:15"

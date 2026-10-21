@@ -91,6 +91,8 @@ export type Stats = {
   lastTurnMs: number;
   contextTokens: number; // tokens in the last request = how full the context is
   contextWindow: number;
+  cacheAt: number | null; // when the chat last called Claude: its prompt cache counts down from here (shared/cache.ts)
+  cacheTtlMs: number; // how long that cache lives (5 min or 1 h); 0 = no cache (a local model, or not known yet)
 };
 
 export type TabMeta = {

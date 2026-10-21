@@ -104,7 +104,7 @@ if (!only || only === 'cards') {
       a('6', 'scout', 'stopped', 'Map the wiki', { summary: 'Stopped by you', toolUses: 4, tokens: 5200 }),
       a('7', 'linter', 'completed', 'Tidy the index', { summary: 'All clean.', toolUses: 12, tokens: 40100, endedAt: t - 50_000 }),
     ],
-    stats: { toolCalls: 23, filesChanged: [], turns: 3, turnStartedAt: t - 95_000, lastTurnMs: 42_000, contextTokens: 61_000, contextWindow: 200_000 },
+    stats: { toolCalls: 23, filesChanged: [], turns: 3, turnStartedAt: t - 95_000, lastTurnMs: 42_000, contextTokens: 61_000, contextWindow: 200_000, cacheAt: t, cacheTtlMs: 3_600_000 },
     activity: 'Edit: server/tabs.ts',
   };
   if (params.has('many')) {
