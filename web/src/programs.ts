@@ -104,6 +104,11 @@ function command(c: string): void {
   if (c.startsWith('program:')) pick(Number(c.slice(8)));
   else if (c === 'focus-address') focusAddress();
   else if (c === 'docs') openDocs(); // the desktop app started with --docs ("Phosphor Docs" in the app menu)
+  else if (c.startsWith('docs-open:')) openDocs(c.slice(10)); // --docs <file>: a file double-clicked on the PC
+  else if (c.startsWith('docs-error:')) {
+    openDocs();
+    toast(c.slice(11), 8000);
+  }
 }
 
 // 1 = CHAT, then the apps, then the saved sites, in bar order.

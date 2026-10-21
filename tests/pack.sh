@@ -61,7 +61,12 @@ stub pgrep '[[ $* == "-x hyprsunset" && -f $HOME/sunset-running ]]'
 stub uwsm-app 'touch "$HOME/sunset-running"'
 stub fc-cache
 stub notify-send
-stub xdg-mime # the picture viewer step: no default to change in a fake home
+# Default apps in the fake home's ~/.config/mimeapps.list (one [Default Applications] section).
+stub xdg-mime 'f="$HOME/.config/mimeapps.list"
+case "$1" in
+  query) [[ $2 == default ]] && sed -n "s|^$3=||p" "$f" 2>/dev/null | head -n 1 ;;
+  default) mkdir -p "${f%/*}"; { grep -qx "\[Default Applications\]" "$f" 2>/dev/null || echo "[Default Applications]"; grep -v "^$3=" "$f" 2>/dev/null; echo "$3=$2"; } >"$f.new"; mv "$f.new" "$f" ;;
+esac; exit 0'
 stub tailscale 'exit 1'
 stub sudo 'exit 1'
 stub pacman 'exit 1'
@@ -413,6 +418,7 @@ rsync -a --exclude .git --exclude node_modules --exclude data --exclude .env --e
 ln -s "$R/node_modules" "$NEW/node_modules" # never npm ci here: it would empty the real one through the link
 mkdir -p "$NEW/web" && cp -r "$R/web/dist" "$NEW/web/dist"
 oldinstall M "$OLDP"
+printf '[Default Applications]\ntext/markdown=typora.desktop\ntext/plain=nvim.desktop\n' >"$h/.config/mimeapps.list" # your own pick
 mkdir -p "$OLDP/data" "$h/ws"
 echo s3cret-key >"$OLDP/data/secret"; echo '[]' >"$OLDP/data/tabs.json"
 printf 'RETRO_PASSWORD="old pass"\nRETRO_CWD=%s\nRETRO_PORT=7399\nPHOSPHOR_PORT=7398\n' "$h/ws" >"$OLDP/.env"; chmod 600 "$OLDP/.env"
@@ -439,7 +445,8 @@ check ".env only readable by you" test "$(stat -c %a "$NEW/.env")" == 600
 check "per-PC folders moved" bash -c "[[ -x '$h/.local/share/PhosphorOS/shell/electron-44.4.5/electron' && ! -e '$h/.local/share/RetroClaude' && -d '$h/.local/share/fonts/phosphor-os' && ! -e '$h/.local/share/fonts/retro-claude' && -f '$h/.local/state/PhosphorOS/desktop.state' && ! -e '$h/.local/state/RetroClaude' ]]"
 check "Hyprland: old line swapped for the new one" bash -c "! grep -q retro-claude '$h/.config/hypr/hyprland.lua' && [[ \$(grep -c 'phosphor-os-desktop' '$h/.config/hypr/hyprland.lua') == 1 ]] && grep -q 'phosphor_os_dir = \"$NEW\"' '$h/.config/hypr/hyprland.lua'"
 check "menu entry swapped" bash -c "[[ -f '$h/.local/share/applications/phosphor-os.desktop' && ! -e '$h/.local/share/applications/retro-claude.desktop' ]]"
-check "Phosphor Docs menu entry opens DOCS" bash -c "grep -qx 'Name=Phosphor Docs' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Exec=bash \".*/scripts/phosphor-os.sh\" --docs\$' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Keywords=docs;' '$h/.local/share/applications/phosphor-docs.desktop'"
+check "Phosphor Docs menu entry opens DOCS, and a Markdown file in it" bash -c "grep -qx 'Name=Phosphor Docs' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Exec=bash \".*/scripts/phosphor-os.sh\" --docs %f\$' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Keywords=docs;' '$h/.local/share/applications/phosphor-docs.desktop' && grep -qx 'MimeType=text/markdown;text/x-markdown;' '$h/.local/share/applications/phosphor-docs.desktop'"
+check "Markdown opens in Phosphor Docs; text/plain untouched" bash -c "grep -qx 'text/markdown=phosphor-docs.desktop' '$h/.config/mimeapps.list' && grep -qx 'text/x-markdown=phosphor-docs.desktop' '$h/.config/mimeapps.list' && grep -qx 'text/plain=nvim.desktop' '$h/.config/mimeapps.list'"
 check "screensaver plugin swapped" bash -c "[[ -d '$h/.config/omarchy/plugins/phosphor-os.screensaver' && ! -e '$h/.config/omarchy/plugins/retro-claude.screensaver' ]] && jq -e '.plugins|map(.id)==[\"phosphor-os.screensaver\",\"phosphor-os.notifications\"]' '$h/.config/omarchy/shell.json' >/dev/null"
 check "run 1 ends with the setup's Done" grep -q '^== Done' "$T/M.run1"
 snap M phosphor-os retro-claude .npm >"$T/M.r1"
@@ -448,6 +455,7 @@ check "run 2 changes nothing" cmp -s "$T/M.r1" "$T/M.r2"
 check "run 2 has nothing left to move" bash -c "grep -q 'Nothing runs under the old name' '$T/M.run2' && grep -q 'Nothing to rename' '$T/M.run2'"
 yes_tty M bash "$NEW/scripts/setup-linux.sh" --undo
 check "undo after the move: Hyprland line out, service, menu entries, plugin gone" bash -c "cmp -s '$T/M.hypr0' '$h/.config/hypr/hyprland.lua' && [[ ! -e '$h/.config/systemd/user/phosphor-os-server.service' && ! -e '$h/.local/share/applications/phosphor-os.desktop' && ! -e '$h/.local/share/applications/phosphor-docs.desktop' && ! -e '$h/.config/omarchy/plugins/phosphor-os.screensaver' && ! -e '$h/.config/omarchy/plugins/phosphor-os.notifications' ]]"
+check "undo: Markdown back to your own pick, x-markdown line gone, notes gone" bash -c "grep -qx 'text/markdown=typora.desktop' '$h/.config/mimeapps.list' && ! grep -q phosphor-docs '$h/.config/mimeapps.list' && grep -qx 'text/plain=nvim.desktop' '$h/.config/mimeapps.list' && ! grep -qs mime_was '$h/.local/state/PhosphorOS/setup-linux.state'"
 if grep -q retro-claude-server.service /proc/self/cgroup; then # only testable from inside that service
   out="$(tenv M bash "$NEW/scripts/migrate-from-retro-claude.sh" --dry-run 2>&1)"
   check "refuses to run inside the old server's service" grep -q 'would stop itself' <<<"$out"

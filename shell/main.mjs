@@ -4,7 +4,7 @@
 // it, so the phone and running chats keep going. If the server is not running, this app starts it,
 // hidden, and leaves it running.
 //
-// Run: <electron.exe> shell/main.mjs [--hidden] [--desktop] [--launcher | --docs]
+// Run: <electron.exe> shell/main.mjs [--hidden] [--desktop] [--launcher | --docs [file]]
 //   (Windows: scripts/setup-shell.ps1 installs Electron + shortcut. Linux: scripts/setup-linux.sh, and
 //   scripts/phosphor-os.sh starts it.)
 //   --hidden: start in the tray only (used by "Start with Windows").
@@ -14,6 +14,9 @@
 //   --launcher: show the window and open the page's launcher. Works on the first start and on a second start
 //     while it runs (the Super key on Linux does that). On Windows Ctrl+Alt+Space does the same.
 //   --docs: the same, but switches the page to DOCS (the "Phosphor Docs" entry in the app menu).
+//   --docs <file>: opens that file in DOCS where it is (a .md double-clicked in the file manager): this process
+//     adds it to the server's OPEN FILES with the key in data/docs-open.key, which only this user can read
+//     (server/docs.ts handleOpenLocal). The page itself can never add a file. Give the full path.
 // Env: PHOSPHOR_NO_GLOBAL_KEYS=1 registers no global keys (tests use it, so a test app never takes the owner's keys).
 //
 // Safety (the window can reach the whole PC through Claude):
@@ -27,7 +30,7 @@ import { execFile, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { adoptOldEnv, appFolder, envFileValue } from '../shared/names.mjs';
 import { mountWeb } from './web.mjs';
@@ -61,6 +64,11 @@ const GLOBAL_KEYS = WIN && process.env.PHOSPHOR_NO_GLOBAL_KEYS !== '1';
 const DESKTOP = process.argv.includes('--desktop');
 // What a start asks the page to do (sent as a preload onCommand command): open the launcher, or show DOCS.
 const wantedCommand = (argv) => (argv.includes('--docs') ? 'docs' : argv.includes('--launcher') ? 'launcher' : '');
+// The file after --docs, if any (scripts/phosphor-os.sh makes it a full path).
+const wantedFile = (argv) => {
+  const f = argv[argv.indexOf('--docs') + 1];
+  return argv.includes('--docs') && f && !f.startsWith('-') ? f : '';
+};
 
 function readEnv() {
   try {
@@ -81,7 +89,8 @@ if (WIN) app.setAppUserModelId('PhosphorOS.Desktop'); // Windows-only API (missi
 // (os/hyprland/phosphor-os.lua). Matches ~/.local/share/applications/phosphor-os.desktop.
 if (LINUX) app.setDesktopName?.('phosphor-os.desktop');
 
-const firstInstance = app.requestSingleInstanceLock();
+// The request also goes as additionalData: Chromium may reorder a second start's argv.
+const firstInstance = app.requestSingleInstanceLock({ command: wantedCommand(process.argv), file: wantedFile(process.argv) });
 if (!firstInstance) app.exit(0); // already open: that one shows its window (and opens the launcher or DOCS if asked)
 else if (LINUX) {
   try {
@@ -95,7 +104,7 @@ let win = null;
 let tray = null;
 let web = null;
 let quitting = false;
-let pendingCommand = ''; // 'launcher' or 'docs', until the app page can take it
+let pendingCommand = ''; // 'launcher', 'docs', 'docs-open:<path>' or 'docs-error:<text>', until the app page can take it
 let shownUrl = '';
 let prefs = { fullscreen: true, trayTipShown: false };
 try {
@@ -334,6 +343,26 @@ function sendCommand() {
   win.webContents.send('web:command', command); // same channel as shell/web.mjs commands (preload onCommand)
 }
 
+// --docs <file>: add the file to the server's OPEN FILES, then have the page open it (or say why not).
+async function openDocsFile(file) {
+  showWindow();
+  let answer;
+  try {
+    const key = readFileSync(join(ROOT, 'data', 'docs-open.key'), 'utf8').trim();
+    const r = await fetch(`http://127.0.0.1:${PORT}/api/docs/open-local`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Phosphor-Key': key },
+      body: JSON.stringify({ path: file }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await r.json().catch(() => ({}));
+    answer = r.ok && typeof data.path === 'string' ? `docs-open:${data.path}` : `docs-error:Could not open ${file}: ${data.error ?? `error ${r.status}`}`;
+  } catch {
+    answer = `docs-error:Could not open ${file}: the server did not answer (restart it if it is older than this app).`;
+  }
+  showWith(answer);
+}
+
 function setFullscreen(on) {
   if (!win) return;
   win.setFullScreen(on);
@@ -405,9 +434,11 @@ function buildTrayMenu() {
 
 // ---------------------------------------------------------------- start
 
-app.on('second-instance', (_e, argv) => {
-  const command = wantedCommand(argv);
-  if (command) showWith(command);
+app.on('second-instance', (_e, argv, cwd, data) => {
+  const command = data?.command ?? wantedCommand(argv);
+  const file = data?.file ?? wantedFile(argv);
+  if (file) void openDocsFile(isAbsolute(file) ? file : join(cwd, file));
+  else if (command) showWith(command);
   else showWindow();
 });
 // Any quit (tray, SIGTERM from the restart key, logout) may close the window, also as the desktop.
@@ -454,6 +485,8 @@ app.whenReady().then(async () => {
   const hidden = process.argv.includes('--hidden') && !DESKTOP;
   createWindow(!hidden);
   const command = wantedCommand(process.argv);
-  if (command) showWith(command);
+  const file = wantedFile(process.argv);
+  if (command && !file) showWith(command);
   await connectServer();
+  if (file) await openDocsFile(isAbsolute(file) ? file : join(process.cwd(), file));
 });

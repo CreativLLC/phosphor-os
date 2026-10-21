@@ -157,7 +157,7 @@ export function mountLauncher(btn: HTMLElement | null): void {
   );
   // The shell sends 'launcher' for its own hotkey: open, or close when it is already open in front of you.
   shellApi?.onCommand((c) => {
-    if (c === 'docs' && isOpen()) closeLauncher(); // DOCS asked for from outside: nothing in front of it
+    if (c.startsWith('docs') && isOpen()) closeLauncher(); // DOCS asked for from outside: nothing in front of it
     if (c !== 'launcher') return;
     if (isOpen() && document.hasFocus()) closeLauncher();
     else openLauncher();

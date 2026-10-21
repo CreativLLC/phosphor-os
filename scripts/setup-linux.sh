@@ -19,7 +19,8 @@
 #   5. Electron 44.4.5, the desktop app's runtime (official zip, pinned SHA-256)
 #   6. The server as a systemd user service (phosphor-os-server.service), on at every login
 #   7. Tailscale serve for the phone (or the steps, when Tailscale is not logged in)
-#   8. Desktop mode: app menu entries (Phosphor-OS, and Phosphor Docs, which opens it on DOCS), Hyprland starts
+#   8. Desktop mode: app menu entries (Phosphor-OS, and Phosphor Docs, which opens it on DOCS and is the default
+#      app for Markdown files: a double-click opens the file in DOCS where it is), Hyprland starts
 #      Phosphor-OS maximized at login, the Super key opens its launcher (os/hyprland/phosphor-os.lua); then the
 #      look: theme, font, the bar at the bottom with a taskbar (os/omarchy/desktop.sh, which also runs alone;
 #      docs/OMARCHY.md lists every change)
@@ -141,6 +142,11 @@ HYPR_MARK='-- phosphor-os-desktop'
 BAR_FLAG="$HOME/.local/state/omarchy/toggles/bar-off"
 DESKTOP_FILE="$DATA_HOME/applications/phosphor-os.desktop"
 DOCS_FILE="$DATA_HOME/applications/phosphor-docs.desktop" # app menu: "Phosphor Docs" opens the app on DOCS
+DOCS_APP="${DOCS_FILE##*/}"
+# Markdown files open in DOCS on a double-click. Not text/plain: every text file would, and on some PCs
+# `xdg-mime query filetype` calls .md files text/plain while the file manager (gio) says text/markdown.
+DOCS_TYPES=(text/markdown text/x-markdown)
+MIMEAPPS="$CONFIG_HOME/mimeapps.list"
 LOOK="$PROJECT/os/omarchy/desktop.sh"
 LAUNCH="$PROJECT/scripts/phosphor-os.sh"
 ICON="$PROJECT/web/public/icons/icon-192.png"
@@ -175,6 +181,18 @@ forget() { # a part was taken back; the note file goes when nothing is left in i
   local rest
   rest="$(grep -vx "$1=1" "$STATE_FILE" || true)"
   if [[ -n $rest ]]; then printf '%s\n' "$rest" >"$STATE_FILE"; else rm -f "$STATE_FILE"; fi
+}
+
+# Default apps this script set, with the one before it ('' = none of your own), so --undo puts that back.
+mime_noted() { grep -q "^mime_was:$1=" "$STATE_FILE" 2>/dev/null; }
+mime_was() { sed -n "s|^mime_was:$1=||p" "$STATE_FILE" 2>/dev/null | head -n 1; }
+mime_note() { # type old-default
+  if ((DRY)); then
+    say "  [dry-run] note in $STATE_FILE: $1 opened with ${2:-the system default}"
+    return 0
+  fi
+  mkdir -p "$(dirname "$STATE_FILE")"
+  printf 'mime_was:%s=%s\n' "$1" "$2" >>"$STATE_FILE"
 }
 
 # .env settings are PHOSPHOR_<KEY>. RETRO_<KEY> is the name from before the rename and still counts.
@@ -563,12 +581,61 @@ docs_entry() {
 Type=Application
 Name=Phosphor Docs
 Comment=Phosphor-OS's documents: notes, letters, lists
-Exec=bash "$LAUNCH" --docs
+Exec=bash "$LAUNCH" --docs %f
 Icon=$ICON
 Terminal=false
 Categories=Office;TextEditor;
 Keywords=docs;documents;notes;markdown;writer;
+MimeType=text/markdown;text/x-markdown;
 EOF
+}
+
+# A double-clicked Markdown file opens in DOCS, edited where it is (shell/main.mjs, server/docs.ts OPEN FILES).
+# Only the first time: a default you pick after this stays.
+docs_default_step() {
+  command -v xdg-mime >/dev/null || return 0
+  local t cur changed=0
+  for t in "${DOCS_TYPES[@]}"; do
+    cur="$(xdg-mime query default "$t" 2>/dev/null || true)"
+    [[ $cur == "$DOCS_APP" ]] && continue
+    if mime_noted "$t"; then
+      say "  $t opens with ${cur:-the system default} (you changed it after setup), so it stays."
+      continue
+    fi
+    mime_note "$t" "$cur"
+    run xdg-mime default "$DOCS_APP" "$t"
+    changed=1
+  done
+  if ((changed)); then ((DRY)) || say "  Markdown files (.md) now open in Phosphor Docs on a double-click."; fi
+}
+
+docs_default_undo() {
+  grep -q '^mime_was:' "$STATE_FILE" 2>/dev/null || return 0
+  local t was
+  for t in "${DOCS_TYPES[@]}"; do
+    mime_noted "$t" || continue
+    grep -qx "$t=$DOCS_APP;\?" "$MIMEAPPS" 2>/dev/null || continue # you picked another one since: it stays
+    was="$(mime_was "$t")"
+    if [[ -n $was ]]; then
+      run xdg-mime default "$was" "$t"
+    elif ((DRY)); then
+      say "  [dry-run] remove the line $t=$DOCS_APP from $MIMEAPPS"
+    else
+      local tmp
+      tmp="$(mktemp)"
+      TMPS+=("$tmp")
+      grep -vx "$t=$DOCS_APP;\?" "$MIMEAPPS" >"$tmp" || true
+      cat "$tmp" >"$MIMEAPPS" # keeps the file's owner, mode and any symlink
+    fi
+  done
+  if ((DRY)); then
+    say "  [dry-run] drop the default-app notes from $STATE_FILE"
+  else
+    local rest
+    rest="$(grep -v '^mime_was:' "$STATE_FILE" || true)"
+    if [[ -n $rest ]]; then printf '%s\n' "$rest" >"$STATE_FILE"; else rm -f "$STATE_FILE"; fi
+    say "  Markdown files open with what they opened with before."
+  fi
 }
 
 menu_entry() { # file entry: write it unless it is already exactly that
@@ -585,6 +652,7 @@ desktop_step() {
   # shell/main.mjs). The second opens the same app straight on DOCS (Super+Space, "doc").
   menu_entry "$DESKTOP_FILE" "$(desktop_entry)"
   menu_entry "$DOCS_FILE" "$(docs_entry)"
+  docs_default_step
   if [[ -f $OLD_DESKTOP_FILE ]]; then run rm -f "$OLD_DESKTOP_FILE"; fi
 
   if [[ ! -f $HYPR_LUA ]]; then
@@ -662,6 +730,7 @@ undo() {
     say "  Top bar shown again."
     forget bar_hidden
   fi
+  docs_default_undo
   if [[ -f $DESKTOP_FILE ]]; then run rm -f "$DESKTOP_FILE"; fi
   if [[ -f $DOCS_FILE ]]; then run rm -f "$DOCS_FILE"; fi
   if [[ -f $OLD_DESKTOP_FILE ]]; then run rm -f "$OLD_DESKTOP_FILE"; fi

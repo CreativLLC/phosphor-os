@@ -5,6 +5,8 @@
 #   phosphor-os.sh --desktop    as the desktop: full screen, closing does nothing (Hyprland starts it so at login)
 #   phosphor-os.sh --launcher   bring it to the front and open its launcher (the Super key); starts it if needed
 #   phosphor-os.sh --docs       bring it to the front on DOCS (the "Phosphor Docs" app menu entry); starts it if needed
+#   phosphor-os.sh --docs FILE  the same, and open FILE (.md, .markdown, .mdown, .txt) in DOCS where it is
+#                               (a double-clicked Markdown file runs this: the "Phosphor Docs" entry from setup-linux.sh)
 #   phosphor-os.sh --restart    stop the running app and start it again as the desktop (the server keeps running)
 #
 # Only one app runs at a time: a second start hands its request to the running one and exits.
@@ -42,6 +44,20 @@ if [[ ${1:-} == --restart ]]; then
   fi
   set -- --desktop
 fi
+
+# --docs FILE: the app gets the full path (a running app has another working folder).
+args=()
+while (($#)); do
+  args+=("$1")
+  if [[ $1 == --docs && $# -gt 1 && $2 != -* ]]; then
+    f="$2"
+    [[ $f == /* ]] || f="$PWD/$f"
+    args+=("$f")
+    shift
+  fi
+  shift
+done
+set -- "${args[@]}"
 
 # Native Wayland under Hyprland (Electron picks X11 or Wayland itself with this hint).
 exec "$electron" --ozone-platform-hint=auto "$project/shell/main.mjs" "$@"

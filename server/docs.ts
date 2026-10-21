@@ -1,10 +1,10 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { promises as fsp, type Dirent, type Stats } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
-import { delimiter, dirname, extname, join, resolve, sep } from 'node:path';
-import type { DocConflict, DocEntry, DocFile, DocFormat, DocKind, DocStat, DocsHit, DocsInfo, DocsList, DocsSearch, TrashItem } from '../shared/docs.ts';
-import { ROOT } from './config.ts';
+import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import type { DocConflict, DocEntry, DocFile, DocFormat, DocKind, DocStat, DocsHit, DocsInfo, DocsList, DocsSearch, OpenFile, TrashItem } from '../shared/docs.ts';
+import { DATA_DIR, ROOT } from './config.ts';
 
 // DOCS: the document program's file API (shapes in shared/docs.ts). Called only for authed /api/docs/ requests.
 //
@@ -21,6 +21,7 @@ import { ROOT } from './config.ts';
 //   change, another program) is refused with 409 and both versions go back to the page. Saves are atomic
 //   (temp file + rename), so a crash never leaves half a file.
 // - Only plain text is edited (UTF-8, or UTF-16 LE with its mark), up to MAX_EDIT bytes.
+// - OPEN FILES (files outside the root, opened from the PC): only those the desktop app on this PC added; see below.
 
 export const MAX_EDIT = 2 * 1024 * 1024;
 const MAX_BODY = 10 * 1024 * 1024; // JSON-escaped text runs larger than the file
@@ -69,7 +70,8 @@ export class HttpError extends Error {
 
 // ---------------------------------------------------------------- config
 
-export type Ctx = { root: string; readonly: string[] };
+// opened: the OPEN FILES list (data/docs-open.json); without it there are none.
+export type Ctx = { root: string; readonly: string[]; opened?: string };
 
 const expand = (p: string) => resolve(ROOT, p.trim().replace(/^~(?=$|[\\/])/, homedir()));
 
@@ -78,7 +80,7 @@ export function docsConfig(): Ctx & { fromEnv: boolean } {
   const root = raw ? expand(raw) : join(homedir(), 'Documents');
   const ro = process.env.PHOSPHOR_DOCS_READONLY?.trim();
   const list = ro ? ro.split(delimiter) : [];
-  return { root, fromEnv: !!raw, readonly: list.filter((s) => s.trim()).map(expand) };
+  return { root, fromEnv: !!raw, readonly: list.filter((s) => s.trim()).map(expand), opened: join(DATA_DIR, 'docs-open.json') };
 }
 
 // ---------------------------------------------------------------- paths
@@ -362,23 +364,35 @@ async function readCapped(file: string, cap: number): Promise<Buffer | null> {
 }
 
 export async function readDoc(ctx: Ctx, relIn: unknown): Promise<DocFile> {
+  if (isExt(relIn)) return readOpened(ctx, relIn);
   const rel = cleanRel(relIn);
   const root = await realRoot(ctx);
   const real = await resolveExisting(root, rel);
+  return readAt(rel, real, () => isReadonly(ctx, root, real));
+}
+
+async function readAt(path: string, real: string, readonly: () => Promise<boolean>): Promise<DocFile> {
   const st = await fsp.stat(real);
   if (!st.isFile()) throw new HttpError(400, 'Not a file.');
-  if (kindOf(rel, false) === 'other') throw new HttpError(415, "Not a plain text file. Open it in Nextcloud or with the PC's own program.", { kind: 'other' });
+  if (kindOf(path, false) === 'other') throw new HttpError(415, "Not a plain text file. Open it in Nextcloud or with the PC's own program.", { kind: 'other' });
   const buf = await readCapped(real, MAX_EDIT);
   if (!buf) throw new HttpError(413, `Too big to edit here (${mb(st.size)}). DOCS edits files up to ${mb(MAX_EDIT)}.`, { size: st.size });
   const d = decodeText(buf);
   if (!d.ok) throw new HttpError(415, `${d.why} Open it in Nextcloud or with the PC's own program.`, { kind: 'other' });
-  return { path: rel, text: d.text, eol: d.eol, bom: d.bom, encoding: d.encoding, etag: etagOf(buf), mtime: st.mtimeMs, size: buf.length, readonly: await isReadonly(ctx, root, real) };
+  return { path, text: d.text, eol: d.eol, bom: d.bom, encoding: d.encoding, etag: etagOf(buf), mtime: st.mtimeMs, size: buf.length, readonly: await readonly() };
 }
 
 export async function statDoc(ctx: Ctx, relIn: unknown): Promise<DocStat> {
+  if (isExt(relIn)) {
+    const o = await findOpened(ctx, relIn);
+    return statAt(o.path, await checkOpened(o.real));
+  }
   const rel = cleanRel(relIn);
   const root = await realRoot(ctx);
-  const real = await resolveExisting(root, rel);
+  return statAt(rel, await resolveExisting(root, rel));
+}
+
+async function statAt(rel: string, real: string): Promise<DocStat> {
   const buf = await readCapped(real, 64 * 1024 * 1024);
   const st = await fsp.stat(real);
   return { path: rel, etag: buf ? etagOf(buf) : `big-${st.size}-${st.mtimeMs}`, mtime: st.mtimeMs, size: st.size };
@@ -418,14 +432,21 @@ async function atomicWrite(file: string, data: Buffer, mode?: number): Promise<v
   }
 }
 
-export async function writeDoc(ctx: Ctx, body: Record<string, unknown>): Promise<DocStat> {
-  const rel = cleanRel(body.path);
-  if (!rel) throw new HttpError(400, 'Missing name.');
+// The text to write and the etag it was based on (null = the file must not exist yet).
+function writeBody(body: Record<string, unknown>): { data: Buffer; etag: string | null } {
   if (typeof body.text !== 'string') throw new HttpError(400, 'Missing text.');
   const etag = body.etag === null ? null : typeof body.etag === 'string' ? body.etag : undefined;
   if (etag === undefined) throw new HttpError(400, 'Missing etag.');
   const data = encodeText(body.text, formatOf(body));
   if (data.length > MAX_EDIT) throw new HttpError(413, `Too big to save here (${mb(data.length)}). DOCS saves files up to ${mb(MAX_EDIT)}.`);
+  return { data, etag };
+}
+
+export async function writeDoc(ctx: Ctx, body: Record<string, unknown>): Promise<DocStat> {
+  if (isExt(body.path)) return writeOpened(ctx, body);
+  const rel = cleanRel(body.path);
+  if (!rel) throw new HttpError(400, 'Missing name.');
+  const { data, etag } = writeBody(body);
 
   if (etag === null) {
     // Must not exist yet (a new file, or KEEP MINE after the file vanished from disk).
@@ -450,13 +471,18 @@ export async function writeDoc(ctx: Ctx, body: Record<string, unknown>): Promise
     throw e;
   }
   await assertWritable(ctx, root, real);
+  return replaceAt(rel, real, data, etag);
+}
+
+// Write over the file at real, if it is still the version with that etag.
+async function replaceAt(path: string, real: string, data: Buffer, etag: string): Promise<DocStat> {
   const st = await fsp.stat(real);
   if (!st.isFile()) throw new HttpError(400, 'Not a file.');
   const cur = await readCapped(real, 64 * 1024 * 1024);
   const curTag = cur ? etagOf(cur) : `big-${st.size}-${st.mtimeMs}`;
   if (curTag !== etag) throw await conflict(real, 'The file changed on disk since you opened it.');
   await atomicWrite(real, data, st.mode);
-  return statOf(rel, real, data);
+  return statOf(path, real, data);
 }
 
 async function statOf(rel: string, file: string, data: Buffer): Promise<DocStat> {
@@ -689,6 +715,172 @@ export async function search(ctx: Ctx, qIn: unknown, relIn: unknown): Promise<Do
   return out;
 }
 
+// ---------------------------------------------------------------- OPEN FILES (outside the root)
+
+// A Markdown or text file opened from the PC (double-clicked in the file manager) is edited where it is; nothing
+// is copied into the root. The page names it 'ext:<id>/<file name>' and never sees a path it could change: the
+// real path stays here, in ctx.opened (data/docs-open.json, so the list survives a restart).
+// Who may add one: only the desktop app on this PC (handleOpenLocal): a direct loopback request (no proxy headers,
+// so not through `tailscale serve`) with the key in data/docs-open.key, a file only this user can read. The page
+// can list them and take them off the list (that only removes access), never add one.
+// Every read and write resolves the path again and needs the same real path (a file swapped for a link is
+// refused), a regular file, and one of OPEN_EXT.
+const OPEN_EXT = new Set(['.md', '.markdown', '.mdown', '.txt']);
+const OPEN_MAX = 50;
+const EXT_PATH = /^ext:([A-Za-z0-9_-]{22})(?:\/|$)/;
+export const LOCAL_KEY = join(DATA_DIR, 'docs-open.key');
+type Opened = { id: string; real: string };
+const openedCache = new Map<string, Opened[]>();
+let openedSaving: Promise<void> = Promise.resolve();
+
+export const isExt = (p: unknown): p is string => typeof p === 'string' && p.startsWith('ext:');
+const openedPath = (o: Opened) => `ext:${o.id}/${basename(o.real)}`;
+const openedId = (real: string) => createHash('sha256').update(real).digest('base64url').slice(0, 22);
+const tilde = (p: string) => (inside(homedir(), p) ? `~${p.slice(homedir().length)}` : p);
+
+async function openedList(ctx: Ctx): Promise<Opened[]> {
+  if (!ctx.opened) return [];
+  const cached = openedCache.get(ctx.opened);
+  if (cached) return cached;
+  let list: Opened[] = [];
+  try {
+    const v: unknown = JSON.parse(await fsp.readFile(ctx.opened, 'utf8'));
+    if (Array.isArray(v)) list = v.filter((o): o is Opened => typeof o?.id === 'string' && typeof o?.real === 'string' && isAbsolute(o.real) && o.id === openedId(o.real));
+  } catch (e) {
+    if (code(e) !== 'ENOENT') console.warn('docs: OPEN FILES list unreadable, starting empty:', e);
+  }
+  openedCache.set(ctx.opened, list);
+  return list;
+}
+
+// One write at a time, always the newest list.
+function saveOpened(ctx: Ctx, list: Opened[]): Promise<void> {
+  const file = ctx.opened!;
+  openedCache.set(file, list);
+  openedSaving = openedSaving.catch(() => {}).then(() => atomicWrite(file, Buffer.from(JSON.stringify(openedCache.get(file)))));
+  return openedSaving;
+}
+
+async function findOpened(ctx: Ctx, p: string): Promise<Opened & { path: string }> {
+  const m = EXT_PATH.exec(p);
+  const o = m && (await openedList(ctx)).find((x) => x.id === m[1]);
+  if (!o) throw new HttpError(404, 'Not in OPEN FILES any more. Open it again from the PC.');
+  return { ...o, path: openedPath(o) };
+}
+
+// The file must still be at the real path it was added with: a regular file of an allowed type.
+async function checkOpened(real: string): Promise<string> {
+  if ((await fsp.realpath(real)) !== real) throw new HttpError(403, 'That file is now a link to somewhere else. Open it again from the PC.');
+  if (!OPEN_EXT.has(extname(real).toLowerCase())) throw new HttpError(415, 'DOCS opens only .md, .markdown, .mdown and .txt files from outside its folder.');
+  if (!(await fsp.lstat(real)).isFile()) throw new HttpError(400, 'Not a file.');
+  return real;
+}
+
+const openedReadonly = async (ctx: Ctx, real: string) => {
+  const root = (await realRootOrNull(ctx)) ?? ctx.root;
+  return (await readonlyRoots(ctx, root)).some((ro) => inside(ro, real));
+};
+
+// Add a file to OPEN FILES (desktop app only: handleOpenLocal). Returns the path the page opens: a normal docs
+// path when the file is inside the root anyway.
+export async function addOpened(ctx: Ctx, input: unknown): Promise<{ path: string }> {
+  if (typeof input !== 'string' || !isAbsolute(input) || input.length > 4096 || /[\x00]/.test(input)) throw new HttpError(400, 'Send the full path of a file.');
+  if (!ctx.opened) throw new HttpError(404, 'OPEN FILES is off.');
+  const real = await fsp.realpath(input);
+  await checkOpened(real);
+  const root = await realRootOrNull(ctx);
+  if (root && inside(root, real)) {
+    try {
+      return { path: cleanRel(relative(root, real).split(sep).join('/')) };
+    } catch {
+      /* a name DOCS would not list (trash, .git): open it as an outside file */
+    }
+  }
+  const o: Opened = { id: openedId(real), real };
+  await saveOpened(ctx, [o, ...(await openedList(ctx)).filter((x) => x.id !== o.id)].slice(0, OPEN_MAX));
+  return { path: openedPath(o) };
+}
+
+export async function listOpened(ctx: Ctx): Promise<OpenFile[]> {
+  return (await openedList(ctx)).map((o) => ({ path: openedPath(o), name: basename(o.real), folder: tilde(dirname(o.real)) }));
+}
+
+// Take a file off the list (the file itself is not touched).
+export async function removeOpened(ctx: Ctx, body: Record<string, unknown>): Promise<{ ok: true }> {
+  const m = typeof body.path === 'string' ? EXT_PATH.exec(body.path) : null;
+  if (!m) throw new HttpError(400, 'Not an OPEN FILES path.');
+  const list = await openedList(ctx);
+  if (list.some((o) => o.id === m[1])) await saveOpened(ctx, list.filter((o) => o.id !== m[1]));
+  return { ok: true };
+}
+
+async function readOpened(ctx: Ctx, p: string): Promise<DocFile> {
+  const o = await findOpened(ctx, p);
+  const real = await checkOpened(o.real);
+  return { ...(await readAt(o.path, real, () => openedReadonly(ctx, real))), abs: real };
+}
+
+async function writeOpened(ctx: Ctx, body: Record<string, unknown>): Promise<DocStat> {
+  const o = await findOpened(ctx, body.path as string);
+  const { data, etag } = writeBody(body);
+  if (await openedReadonly(ctx, o.real)) throw new HttpError(403, 'That folder is read-only in DOCS (PHOSPHOR_DOCS_READONLY in .env).');
+  if (etag === null) {
+    // Gone from disk and saved again (KEEP MINE): only at the same place, in the same real folder.
+    if ((await fsp.realpath(dirname(o.real))) !== dirname(o.real)) throw new HttpError(403, 'That folder is now a link to somewhere else.');
+    try {
+      await fsp.writeFile(o.real, data, { flag: 'wx' });
+    } catch (e) {
+      if (code(e) !== 'EEXIST') throw e;
+      await checkOpened(o.real); // a link there: refused, its target never goes to the page
+      throw await conflict(o.real, 'A file with that name appeared on disk.');
+    }
+    return statOf(o.path, o.real, data);
+  }
+  let real: string;
+  try {
+    real = await checkOpened(o.real);
+  } catch (e) {
+    if (code(e) === 'ENOENT') throw new HttpError(409, 'The file was moved or deleted on disk.', { conflict: { missing: true } });
+    throw e;
+  }
+  return replaceAt(o.path, real, data, etag);
+}
+
+// The key the desktop app sends with POST /api/docs/open-local. Made at server start, readable by this user only.
+export async function localKey(file = LOCAL_KEY): Promise<string> {
+  try {
+    return (await fsp.readFile(file, 'utf8')).trim();
+  } catch (e) {
+    if (code(e) !== 'ENOENT') throw e;
+  }
+  try {
+    await fsp.writeFile(file, randomBytes(32).toString('base64url'), { flag: 'wx', mode: 0o600 });
+  } catch (e) {
+    if (code(e) !== 'EEXIST') throw e;
+  }
+  return (await fsp.readFile(file, 'utf8')).trim();
+}
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+// POST /api/docs/open-local {path}: the desktop app (shell/main.mjs) opens a file from the PC. Not behind the login
+// cookie: the app's main process has none. Instead: loopback, no proxy headers, and the key file's content.
+export async function handleOpenLocal(req: IncomingMessage, res: ServerResponse, ctx: Ctx = docsConfig(), keyFile = LOCAL_KEY): Promise<void> {
+  try {
+    if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
+    const h = req.headers;
+    const proxied = !!(h['x-forwarded-for'] || h.forwarded || h.via || Object.keys(h).some((k) => k.startsWith('tailscale-')));
+    if (!LOOPBACK.has(req.socket.remoteAddress ?? '') || proxied) throw new HttpError(403, 'Only the desktop app on this PC can open files.');
+    const sent = Buffer.from(String(h['x-phosphor-key'] ?? ''));
+    const key = Buffer.from(await localKey(keyFile));
+    if (key.length < 32 || sent.length !== key.length || !timingSafeEqual(sent, key)) throw new HttpError(403, 'Only the desktop app on this PC can open files.');
+    if (!/^application\/json\b/i.test(h['content-type'] ?? '')) throw new HttpError(415, 'Send JSON.');
+    sendJson(res, await addOpened(ctx, (await readJson(req)).path));
+  } catch (e) {
+    sendError(res, e);
+  }
+}
+
 // ---------------------------------------------------------------- HTTP
 
 export async function handleDocs(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
@@ -703,6 +895,7 @@ export async function handleDocs(req: IncomingMessage, res: ServerResponse, url:
       if (action === 'stat') return sendJson(res, await statDoc(ctx, q.get('path')));
       if (action === 'search') return sendJson(res, await search(ctx, q.get('q'), q.get('path') ?? ''));
       if (action === 'trash') return sendJson(res, await listTrash(ctx));
+      if (action === 'opened') return sendJson(res, await listOpened(ctx));
       throw new HttpError(404, 'not found');
     }
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
@@ -714,13 +907,18 @@ export async function handleDocs(req: IncomingMessage, res: ServerResponse, url:
     if (action === 'move') return sendJson(res, await moveItem(ctx, body));
     if (action === 'delete') return sendJson(res, await trashItem(ctx, body));
     if (action === 'restore') return sendJson(res, await restoreItem(ctx, body));
+    if (action === 'unopen') return sendJson(res, await removeOpened(ctx, body));
     throw new HttpError(404, 'not found');
   } catch (e) {
-    if (res.headersSent) return void res.destroy();
-    const [status, error, extra] = toHttp(e);
-    if (status >= 500) console.warn('docs api:', e);
-    sendJson(res, { error, ...extra }, status);
+    sendError(res, e);
   }
+}
+
+function sendError(res: ServerResponse, e: unknown): void {
+  if (res.headersSent) return void res.destroy();
+  const [status, error, extra] = toHttp(e);
+  if (status >= 500) console.warn('docs api:', e);
+  sendJson(res, { error, ...extra }, status);
 }
 
 function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {

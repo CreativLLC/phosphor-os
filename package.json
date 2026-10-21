@@ -10,7 +10,7 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:web": "vite",
     "typecheck": "tsc --noEmit",
-    "test:docs": "tsx tests/docs-roundtrip.ts",
+    "test:docs": "tsx tests/docs-roundtrip.ts && tsx tests/docs-open.ts",
     "test:router": "tsx tests/router.ts",
     "test:sdkversion": "tsx tests/sdkversion.ts",
     "test:calendar": "tsx tests/calendar.ts"

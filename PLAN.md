@@ -131,7 +131,7 @@ This file is the build record: what exists and how it works. Install and use: `R
   `os/hyprland/phosphor-os.lua` (start full screen on workspace 1, Super tap = launcher, Super+Alt+R restart,
   Super+Alt+T terminal); the top bar is hidden with Omarchy's own `omarchy-toggle-bar on`. Desktop app: `--desktop`
   (close does nothing), `--launcher` (also as a second start; Windows: Ctrl+Alt+Space; `PHOSPHOR_NO_GLOBAL_KEYS=1`
-  for tests), `--docs` (the same, but on DOCS: the "Phosphor Docs" app menu entry). The app folder must be outside Nextcloud on Linux. Owner steps: `docs/LINUX.md`.
+  for tests), `--docs [file]` (the same, but on DOCS: the "Phosphor Docs" app menu entry; with a file, that file opens in DOCS). The app folder must be outside Nextcloud on Linux. Owner steps: `docs/LINUX.md`.
 - **Themes** (built 2026-10-12): SETTINGS > THEME: AMBER / GREEN / LCARS (`html[data-theme]`; an old saved
   `phosphor` still loads). LCARS: flat black panel, orange elbows joining the top bar to the side columns,
   pill buttons, Antonio font (vendored, OFL), LCARS boot screen, sine chirps instead of blips, its own
@@ -179,6 +179,14 @@ This file is the build record: what exists and how it works. Install and use: `R
   Drag and drop in the list (mouse only): a row onto a folder row moves it there, onto the empty list or the folder
   name moves it to the top; a closed folder opens after 0.7 s of hovering. Refused: a folder into itself, read-only
   items or folders, a name already there (any case). Rules: `web/src/docsmove.ts`, test `npx tsx tests/docs-move.ts`.
+  OPEN FILES (2026-10-21): a `.md` double-clicked anywhere on the PC opens in DOCS where it is (`phosphor-os.sh --docs
+  <file>`, the "Phosphor Docs" entry is the default app for Markdown, docs/OMARCHY.md row 12b). The desktop app's main
+  process adds it with `POST /api/docs/open-local` (no cookie: loopback, no proxy headers, the key in
+  `data/docs-open.key`, mode 600), then sends the page `docs-open:<path>`; a second start hands the file to the running
+  window (single-instance `additionalData`). The page names such files `ext:<id>/<file name>` and can only open them or
+  take them off the list (`GET opened`, `POST unopen`), never add one. Each read and save resolves the real path again:
+  same path, a regular .md/.markdown/.mdown/.txt file, PHOSPHOR_DOCS_READONLY respected. No rename, move, delete or
+  KEEP BOTH for them. List: `data/docs-open.json`. Test: `npx tsx tests/docs-open.ts` (in `npm run test:docs`).
 - **STATION** (2026-10-12): homelab hub. STATION button (MENU on phones), launcher `STATION` / `OPEN <name>`. A wide
   drawer of your services (`data/station.json`: name, address, kind, SELF-SIGNED, SKIN; edited in the app):
   UP / SLOW (2 s+) / DOWN lamp, response time, last seen, sparkline of the last 40 checks; OPEN (desktop app: a
@@ -359,7 +367,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | SYS panel | `server/system.ts`, `server/localmeter.ts` (local model speed), `shell/sysmon.cs`, `shell/volume.cs`, `web/src/system.ts`, `system.css` |
 | OS theme pack | `os/` (`os/tools/palettes.mjs` is the color source; `build-themes.mjs`, `wallpapers.mjs` regenerate) |
 | Themes | `web/src/themes.ts` (registry, how to add one), `web/src/themes/*.css` (LCARS: `lcars.css`), `boot-lcars.ts`, `fonts/antonio/` |
-| DOCS | `server/docs.ts`, `shared/docs.ts`, `web/src/docs.ts`, `docs.css`, `docs-editor.ts` (DOC view), `mdkeep.ts` (Markdown blocks), `docsmove.ts` (rename/drop rules), `tests/docs-roundtrip.ts`, `tests/docs-move.ts` |
+| DOCS | `server/docs.ts` (OPEN FILES too), `shared/docs.ts`, `web/src/docs.ts`, `docs.css`, `docs-editor.ts` (DOC view), `mdkeep.ts` (Markdown blocks), `docsmove.ts` (rename/drop rules), `openDocsFile` in `shell/main.mjs`, `tests/docs-roundtrip.ts`, `tests/docs-move.ts`, `tests/docs-open.ts` |
 | Fun pack | `web/src/fun.ts` (start, launcher commands), `funsettings.ts`, `funsection.ts`, `fun.css`, `saver.ts/.css` (the OS screensaver page, own build `vite.saver.config.ts`), `shipvoice.ts`, `speech.ts`, `gamemode.ts`, `bootchecks.ts`, `server/bootcheck.ts` |
 | AUTO model | `shared/router.ts` (parse the pick, stickiness rule), `server/router.ts` (Haiku call), `Tab.send/route` in `server/tab.ts` (applies, tags, logs to `data/auto-router.jsonl`), `web/src/pickers.ts`, `scripts/auto-eval.ts` (router only, on recent chats), `tests/router.ts` |
 | HISTORY drawer | `Tabs.history/searchHistory` in `server/tabs.ts` (`GET /api/history[?all=1]`, `GET /api/history/search?q=`), `server/transcripts.ts` (entrypoint filter: this app's chats are `sdk-ts`; chat text, match, snippet, cache), tab name saved to its session in `Tab.saveSessionTitle`, `web/src/history.ts` (ALL CHATS toggle), `tests/history.ts` (`npx tsx tests/history.ts`) |

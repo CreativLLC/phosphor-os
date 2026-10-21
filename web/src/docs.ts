@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import type { DocEditor, LoadResult } from './docs-editor.ts';
-import type { DocConflict, DocEntry, DocFile, DocStat, DocsHit, DocsInfo, DocsList, DocsSearch, TrashItem } from '../../shared/docs.ts';
+import type { DocConflict, DocEntry, DocFile, DocStat, DocsHit, DocsInfo, DocsList, DocsSearch, OpenFile, TrashItem } from '../../shared/docs.ts';
 import './docs.css';
 import './md.ts'; // its DOMPurify hook: links in the print copy open in a new tab
 import { type DropItem, dropProblem, dropTarget, isMd, movedPath, nameOf, parentOf, titleOf, titleRename } from './docsmove.ts';
@@ -18,6 +18,9 @@ import { button, confirmBox, el, shortPath, timeAgo, toast } from './ui.ts';
 // edit from the phone, another program), both versions show and the owner keeps one. DELETE moves to TRASH.
 // A Markdown file named after its title line ("# Title") is renamed when the title changes; rows drag onto
 // folders to move them (rules: docsmove.ts).
+// OPEN FILES, above the tree: files outside the docs folder that were double-clicked on the PC (the desktop app
+// adds them; this page can only open them or take them off the list). They are saved where they are; no rename,
+// move or delete here. Their paths are 'ext:<id>/<file name>'.
 // Keys while open: Ctrl+S save now, Ctrl+F find and replace, Ctrl+P print, Esc closes the innermost panel
 // (in the editor it first leaves the editor; Esc again closes DOCS).
 // Speed: SOURCE is a plain textarea (smooth with 1 MB); DOC view writes Markdown and counts after typing pauses;
@@ -35,7 +38,7 @@ type Dir = { status: 'loading' } | { status: 'ok'; list: DocsList } | { status: 
 type View = 'doc' | 'source';
 type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error' | 'readonly';
 // title: the title line the file name was last matched against (docsmove.ts titleRename).
-type Doc = Pick<DocFile, 'eol' | 'bom' | 'encoding' | 'readonly'> & { path: string; etag: string | null; saved: string; size: number; md: boolean; state: SaveState; title: string };
+type Doc = Pick<DocFile, 'eol' | 'bom' | 'encoding' | 'readonly' | 'abs'> & { path: string; etag: string | null; saved: string; size: number; md: boolean; state: SaveState; title: string };
 type Template = { id: string; label: string; name: () => string; text: () => string };
 
 const VIEW_KEY = 'phosphor.docs.view';
@@ -63,6 +66,7 @@ let mode: 'tree' | 'search' | 'trash' = 'tree';
 let searchRes: DocsSearch | null = null;
 let searchBusy = false;
 let trashItems: TrashItem[] | null = null;
+let openFiles: OpenFile[] = [];
 let openToken = 0;
 let editGen = 0;
 let saving: Promise<void> | null = null;
@@ -405,6 +409,7 @@ async function api<T>(action: string, params?: Record<string, string>, body?: un
 }
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const isExt = (path: string) => path.startsWith('ext:'); // OPEN FILES
 
 async function loadInfo(): Promise<void> {
   try {
@@ -465,6 +470,16 @@ function refreshTree(): void {
   dirGen++;
   for (const p of keep) void loadDir(p, true);
   if (mode === 'trash') void loadTrash();
+  void loadOpenFiles();
+}
+
+async function loadOpenFiles(): Promise<void> {
+  try {
+    openFiles = await api<OpenFile[]>('opened');
+  } catch {
+    return; // an older server, or no connection: keep what is shown
+  }
+  renderList();
 }
 
 function renderList(): void {
@@ -476,6 +491,7 @@ function renderList(): void {
   if (info && !info.exists) {
     frag.append(el('div', 'dc-msg', "This folder is not there yet. It is made when you save your first document. Press NEW."));
   } else renderDir(frag, '', 0);
+  if (openFiles.length) frag.prepend(openGroup());
   const keep = listEl.scrollTop;
   listEl.replaceChildren(frag);
   listEl.scrollTop = keep;
@@ -524,6 +540,49 @@ function row(e: DocEntry, depth: number): HTMLElement {
   return r;
 }
 
+// OPEN FILES: name, its folder dimmed, and X to take it off the list.
+function openGroup(): HTMLElement {
+  const box = el('div', 'dc-open');
+  box.append(el('div', 'dc-list-head dc-open-head', 'OPEN FILES'));
+  for (const f of openFiles) {
+    const line = el('div', 'dc-orow');
+    const r = el('button', 'dc-row');
+    r.type = 'button';
+    r.dataset.path = f.path;
+    r.dataset.kind = 'text';
+    r.classList.toggle('sel', selected === f.path);
+    r.classList.toggle('on', doc?.path === f.path);
+    r.append(el('span', 'dc-glyph', ' · '), el('span', 'dc-nm', f.name), el('span', 'dc-where', f.folder));
+    r.title = `${f.folder}${info?.sep ?? '/'}${f.name}\nOpened from the PC. Saved where it is.`;
+    const x = button('X', () => {}, 'dc-unopen');
+    x.dataset.unopen = f.path;
+    x.title = 'Take it off this list (the file stays where it is)';
+    x.setAttribute('aria-label', `Take ${f.name} off OPEN FILES`);
+    line.append(r, x);
+    box.append(line);
+  }
+  return box;
+}
+
+// X on an OPEN FILES row: save and close it if it is open, then the page loses access to it. The file stays.
+async function unopen(path: string): Promise<void> {
+  if (doc?.path === path) {
+    if (!(await leaveDoc())) return;
+    doc = null;
+    delete emptyEl.dataset.path;
+    showEmpty();
+  }
+  try {
+    await api('unopen', undefined, { path });
+  } catch (e) {
+    return void toast(errText(e), 6000);
+  }
+  if (selected === path) selected = null;
+  dropRecent(path);
+  openFiles = openFiles.filter((f) => f.path !== path);
+  renderList();
+}
+
 function note(text: string, depth: number, cls = ''): HTMLElement {
   const n = el('div', `dc-note-row ${cls}`, text);
   n.style.setProperty('--d', String(depth));
@@ -534,6 +593,8 @@ function onListClick(e: MouseEvent): void {
   const t = e.target as HTMLElement;
   const restore = t.closest<HTMLElement>('[data-restore]');
   if (restore) return void restoreItem(restore.dataset.restore!);
+  const unopenBtn = t.closest<HTMLElement>('[data-unopen]');
+  if (unopenBtn) return void unopen(unopenBtn.dataset.unopen!);
   if (t.closest('.dc-back')) return backToTree();
   const r = t.closest<HTMLElement>('.dc-row');
   if (!r) return;
@@ -573,8 +634,8 @@ function updateFoot(): void {
   const target = selected ?? doc?.path ?? null;
   selEl.textContent = target ? nameOf(target) : 'NOTHING PICKED';
   selEl.title = target ?? '';
-  renameBtn.disabled = !target || mode === 'trash';
-  deleteBtn.disabled = !target || mode === 'trash';
+  renameBtn.disabled = !target || mode === 'trash' || isExt(target);
+  deleteBtn.disabled = !target || mode === 'trash' || isExt(target);
   trashBtn.classList.toggle('on', mode === 'trash');
 }
 
@@ -586,6 +647,7 @@ function onDragStart(e: DragEvent): void {
   const r = (e.target as HTMLElement).closest<HTMLElement>('.dc-row');
   if (mode !== 'tree' || !r || !e.dataTransfer) return;
   const path = r.dataset.path!;
+  if (isExt(path)) return e.preventDefault();
   drag = { item: { path, dir: r.dataset.kind === 'dir', readonly: isRo(path) }, over: null, ok: false };
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData(DRAG_TYPE, path);
@@ -827,7 +889,8 @@ async function openDoc(path: string, at?: { line: number; q: string }, quiet = f
     if (token !== openToken) return;
     loadIntoEditor(f);
     pushRecent(path);
-    revealPath(path);
+    if (!isExt(path)) revealPath(path);
+    else if (!openFiles.some((o) => o.path === path)) void loadOpenFiles();
     renderList();
     if (at) gotoLine(at.line, at.q);
   } catch (e) {
@@ -846,7 +909,7 @@ async function openDoc(path: string, at?: { line: number; q: string }, quiet = f
 function loadIntoEditor(f: DocFile): void {
   closeFind(false);
   conflictEl.hidden = true;
-  doc = { path: f.path, etag: f.etag, saved: f.text, eol: f.eol, bom: f.bom, encoding: f.encoding, size: f.size, readonly: f.readonly, md: isMd(f.path), state: f.readonly ? 'readonly' : 'saved', title: titleOf(f.text) };
+  doc = { path: f.path, abs: f.abs, etag: f.etag, saved: f.text, eol: f.eol, bom: f.bom, encoding: f.encoding, size: f.size, readonly: f.readonly, md: isMd(f.path), state: f.readonly ? 'readonly' : 'saved', title: titleOf(f.text) };
   ed.value = f.text;
   forgetRich();
   ed.readOnly = f.readonly;
@@ -1049,7 +1112,7 @@ async function leaveDoc(): Promise<boolean> {
 // there is never overwritten: the file keeps its name, a note says so, and it is not tried again for that title.
 async function followTitle(d: Doc): Promise<void> {
   clearTimeout(nameTimer);
-  if (doc !== d || saving || d.readonly || d.state !== 'saved' || d.etag === null) return;
+  if (doc !== d || saving || d.readonly || d.state !== 'saved' || d.etag === null || isExt(d.path)) return; // OPEN FILES keep their names
   const to = titleRename(d.path, d.title, d.saved);
   d.title = titleOf(d.saved);
   if (!to) return;
@@ -1098,11 +1161,13 @@ function showConflict(d: Doc, c: DocConflict): void {
   mineBtn.title = disk.missing ? 'Save your version at the same place again' : 'Save your version over the one on disk';
   btns.append(mineBtn);
   if (!disk.missing) {
+    // KEEP BOTH puts a copy next to it, which DOCS may only do inside its folder.
     const diskBtn = button('KEEP DISK VERSION', () => void keepDisk(d, disk.etag, diskText));
     diskBtn.title = 'Drop your changes and load the version on disk';
     const both = button('KEEP BOTH', () => void keepBoth(d, mine, disk.etag, diskText));
     both.title = 'Save your version as a copy next to it, then load the version on disk';
-    btns.append(diskBtn, both);
+    btns.append(diskBtn);
+    if (!isExt(d.path)) btns.append(both);
   } else {
     const drop = button('DROP MINE', () => {
       conflictEl.hidden = true;
@@ -1893,7 +1958,7 @@ function endPrint(): void {
 async function askClaude(): Promise<void> {
   if (!doc || !info) return void toast('Open a document first.');
   await save();
-  const abs = info.root.replace(/[\\/]+$/, '') + info.sep + doc.path.split('/').join(info.sep);
+  const abs = doc.abs ?? info.root.replace(/[\\/]+$/, '') + info.sep + doc.path.split('/').join(info.sep);
   const cwd = store.current()?.info.cwd;
   const p = cwd ? shortPath(abs, cwd) : abs.replaceAll('\\', '/');
   const ref = /\s/.test(p) ? `@"${p}"` : `@${p}`;
@@ -1999,7 +2064,7 @@ function syncRecentCommands(): void {
     list.map((p) => ({
       id: `docs-recent:${p}`,
       label: nameOf(p),
-      hint: `DOC · ${parentOf(p) || 'DOCS FOLDER'}`,
+      hint: `DOC · ${isExt(p) ? 'OPEN FILE' : parentOf(p) || 'DOCS FOLDER'}`,
       keywords: ['docs', 'document', p],
       run: () => openDocs(p),
     })),

@@ -290,6 +290,57 @@ body.has-shell #btn-docs {
   text-shadow: none;
 }
 
+/* OPEN FILES: files opened from the PC, above the docs folder's tree. Name, then its folder dimmed, then X. */
+.dc-open {
+  margin-bottom: 6px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.dc-open-head {
+  font-size: var(--fs-sm);
+}
+
+.dc-orow {
+  display: flex;
+  align-items: stretch;
+}
+
+.dc-orow .dc-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.dc-orow .dc-nm {
+  flex: 0 1 auto;
+}
+
+.dc-where {
+  flex: 1 1 0;
+  min-width: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.docs .dc-unopen {
+  flex: 0 0 auto;
+  min-width: var(--tap);
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ph-dim);
+}
+
+@media (hover: hover) {
+  .docs .dc-unopen:hover {
+    background: rgb(var(--ph-rgb) / 0.1);
+    color: var(--ph-bright);
+  }
+}
+
 .dc-note-row {
   padding: 4px 10px 4px calc(10px + var(--d, 0) * 1.2em + 2.2em);
   color: var(--ph-dim);

@@ -7,7 +7,7 @@ import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPasswor
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
 import { WEB_DIST, config } from './config.ts';
-import { handleDocs } from './docs.ts';
+import { handleDocs, handleOpenLocal, localKey } from './docs.ts';
 import { handleFiles } from './files.ts';
 import { serveImage } from './imagegen.ts';
 import { startLocalRelay } from './localrelay.ts';
@@ -128,6 +128,9 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  // The desktop app opens a file from the PC in DOCS. Guarded by a key file instead of the cookie (server/docs.ts).
+  if (url.pathname === '/api/docs/open-local') return await handleOpenLocal(req, res);
+
   // Only the login page and its assets are public. Everything else needs the cookie.
   const publicPath = url.pathname === '/login.html' || url.pathname.startsWith('/assets/') || url.pathname === '/manifest.webmanifest' || url.pathname === '/sw.js' || url.pathname === '/favicon.svg' || url.pathname.startsWith('/icons/');
   if (!publicPath && !isAuthed(req)) {
@@ -207,6 +210,7 @@ server.on('upgrade', (req, socket, head) => {
 
 startLocalRelay();
 startCalendar();
+localKey().catch((e) => console.warn('docs: could not make the key for opening files from the PC:', e));
 server.listen(config.port, config.host, () => {
   console.log(`\n  PHOSPHOR-OS is running.`);
   console.log(`  Open:     http://localhost:${config.port}`);
