@@ -8,6 +8,7 @@ import { send } from './net.ts';
 import { store, watchActive } from './store.ts';
 import { shellApi } from './shellapi.ts';
 import { button, el, toast } from './ui.ts';
+import { whenFull, whenText } from './when.ts';
 
 const MODE_LABELS: Record<string, string> = {
   default: 'ASK FIRST',
@@ -286,7 +287,14 @@ function render(item: Item): HTMLElement {
     case 'claude': {
       const body = el('div', 'body md');
       setMarkdown(body, item.text);
-      box.append(el('div', 'who', `> ${item.who?.toUpperCase() ?? 'CLAUDE'}`), body);
+      const who = el('div', 'who', `> ${item.who?.toUpperCase() ?? 'CLAUDE'}`);
+      if (item.at) {
+        const when = el('span', 'when', whenText(item.at));
+        when.dataset.at = String(item.at);
+        when.title = whenFull(item.at);
+        who.append(when);
+      }
+      box.append(who, body);
       break;
     }
     case 'tool': {
@@ -357,6 +365,11 @@ function showPicture(url: string, alt: string, path?: string): void {
   document.body.append(dlg);
   dlg.showModal();
 }
+
+// Reply times ("5 MIN AGO") move on once a minute.
+setInterval(() => {
+  for (const t of document.querySelectorAll<HTMLElement>('.when[data-at]')) t.textContent = whenText(Number(t.dataset.at));
+}, 30_000);
 
 // The time on pictures being painted moves every second, between the server's updates.
 setInterval(() => {

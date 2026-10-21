@@ -24,7 +24,8 @@ export type Item =
   // paint: a prompt for the local image model (no UNDO: it changed no files).
   | { id: string; kind: 'user'; text: string; attachments?: Attachment[]; auto?: boolean; route?: RouteTag; paint?: boolean }
   // who: the speaker's name when it is not Claude (a local model's label, e.g. "Qwen3.6 35B MoE").
-  | { id: string; kind: 'claude'; text: string; who?: string }
+  // at: when the reply came (ms since 1970). Old saved items have none.
+  | { id: string; kind: 'claude'; text: string; who?: string; at?: number }
   // body: longer text shown when the line is expanded (full command, diff).
   | { id: string; kind: 'tool'; name: string; detail: string; body?: string; error?: boolean }
   | { id: string; kind: 'note'; text: string }

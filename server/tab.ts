@@ -686,7 +686,7 @@ export class Tab {
           this.streamedMsgs.add(ev.message.id);
         } else if (ev.type === 'content_block_start' && ev.content_block.type === 'text') {
           this.textId = randomUUID();
-          this.add({ id: this.textId, kind: 'claude', text: '', ...(this.textWho ? { who: this.textWho } : {}) });
+          this.add({ id: this.textId, kind: 'claude', text: '', at: Date.now(), ...(this.textWho ? { who: this.textWho } : {}) });
           this.setActivity('Writing a reply');
         } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta' && this.textId) {
           const item = this.state.items.find((i) => i.id === this.textId);
@@ -719,7 +719,7 @@ export class Tab {
         for (const block of m.message.content) {
           if (block.type === 'text' && !sub && !this.streamedMsgs.has(m.message.id) && block.text.trim()) {
             const who = speakerFor(m.message.model);
-            this.add({ id: randomUUID(), kind: 'claude', text: block.text, ...(who ? { who } : {}) });
+            this.add({ id: randomUUID(), kind: 'claude', text: block.text, at: Date.now(), ...(who ? { who } : {}) });
           }
           if (block.type === 'tool_use') this.onToolUse(block.id, block.name, (block.input ?? {}) as Record<string, unknown>, sub);
         }
@@ -1124,7 +1124,9 @@ function historyToItems(msgs: SessionMessage[]): { items: Item[]; mission: Missi
         } else {
           const text = b.text.trim();
           const who = speakerFor(msg?.model);
-          if (text) items.push({ id: randomUUID(), kind: 'claude', text, ...(who ? { who } : {}) });
+          // The transcript has a time on each line; the SDK passes it on but does not type it.
+          const at = Date.parse(String((m as { timestamp?: string }).timestamp ?? ''));
+          if (text) items.push({ id: randomUUID(), kind: 'claude', text, ...(at ? { at } : {}), ...(who ? { who } : {}) });
         }
       } else if (b.type === 'image' && m.type === 'user') {
         const src = (b.source ?? {}) as { media_type?: string };
