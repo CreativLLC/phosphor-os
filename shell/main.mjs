@@ -6,7 +6,7 @@
 //
 // Run: <electron.exe> shell/main.mjs [--hidden] [--desktop] [--launcher | --docs [file]]
 //   (Windows: scripts/setup-shell.ps1 installs Electron + shortcut. Linux: scripts/setup-linux.sh, and
-//   scripts/phosphor-os.sh starts it.)
+//   scripts/phosphor-os.sh starts it. Mac: scripts/setup-mac.sh, an app in ~/Applications starts it.)
 //   --hidden: start in the tray only (used by "Start with Windows").
 //   --desktop: Phosphor-OS is the desktop (Hyprland starts it this way on Linux): always full screen (Linux:
 //     maximized under the bar), and
@@ -37,6 +37,7 @@ import { mountWeb } from './web.mjs';
 
 const WIN = process.platform === 'win32';
 const LINUX = process.platform === 'linux';
+const MAC = process.platform === 'darwin';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MAIN = fileURLToPath(import.meta.url);
 const ICON = WIN ? join(ROOT, 'assets', 'phosphor-os.ico') : join(ROOT, 'web', 'public', 'icons', 'icon-192.png');
@@ -59,8 +60,11 @@ const ALLOWED_PERMISSIONS = new Set(['media', 'fullscreen', 'clipboard-sanitized
 const HOME_KEY = 'Control+Alt+R';
 // From anywhere: Phosphor-OS in front, with its launcher open. (Linux: Hyprland's Super key does this.)
 const LAUNCHER_KEY = 'Control+Alt+Space';
-// Global keys: Windows only (Hyprland binds the keys on Linux), and never in tests.
-const GLOBAL_KEYS = WIN && process.env.PHOSPHOR_NO_GLOBAL_KEYS !== '1';
+// Global keys: Windows and Mac (Hyprland binds the keys on Linux), and never in tests.
+const GLOBAL_KEYS = (WIN || MAC) && process.env.PHOSPHOR_NO_GLOBAL_KEYS !== '1';
+// Mac: the launchd agent that runs the server (scripts/setup-mac.sh makes it).
+const MAC_AGENT = 'os.phosphor.server';
+const MAC_AGENT_FILE = join(homedir(), 'Library', 'LaunchAgents', `${MAC_AGENT}.plist`);
 const DESKTOP = process.argv.includes('--desktop');
 // What a start asks the page to do (sent as a preload onCommand command): open the launcher, or show DOCS.
 const wantedCommand = (argv) => (argv.includes('--docs') ? 'docs' : argv.includes('--launcher') ? 'launcher' : '');
@@ -106,7 +110,7 @@ let web = null;
 let quitting = false;
 let pendingCommand = ''; // 'launcher', 'docs', 'docs-open:<path>' or 'docs-error:<text>', until the app page can take it
 let shownUrl = '';
-let prefs = { fullscreen: true, trayTipShown: false };
+let prefs = { fullscreen: !MAC, trayTipShown: false }; // Mac: a normal window, not a full-screen Space
 try {
   prefs = { ...prefs, ...JSON.parse(readFileSync(PREFS, 'utf8')) };
 } catch {
@@ -166,9 +170,17 @@ function startServer() {
     execFile('systemctl', ['--user', 'start', SERVER_UNIT], { timeout: 15000 }, () => {});
     return;
   }
-  const node = existsSync('C:\\Program Files\\nodejs\\node.exe') ? 'C:\\Program Files\\nodejs\\node.exe' : 'node';
+  // Mac: the same with its launchd agent.
+  if (MAC && existsSync(MAC_AGENT_FILE)) {
+    execFile('launchctl', ['kickstart', `gui/${process.getuid()}/${MAC_AGENT}`], { timeout: 15000 }, () => {});
+    return;
+  }
+  // An app opened from the Mac Dock gets no shell PATH, so look where Homebrew puts Node too.
+  const nodes = WIN ? ['C:\\Program Files\\nodejs\\node.exe'] : MAC ? ['/opt/homebrew/bin/node', '/usr/local/bin/node'] : [];
+  const node = nodes.find((n) => existsSync(n)) ?? 'node';
   const log = openSync(SERVER_LOG, 'a');
   const child = spawn(node, ['scripts/serve.mjs'], { cwd: ROOT, detached: true, windowsHide: true, stdio: ['ignore', log, log] });
+  child.on('error', (e) => writeFileSync(SERVER_LOG, `Could not start the server with ${node}: ${e.message}\n`, { flag: 'a' })); // NO SIGNAL shows the log path
   child.unref();
 }
 
@@ -458,9 +470,12 @@ app.on('will-quit', () => {
 app.on('window-all-closed', () => {
   /* stay in the tray */
 });
+// Mac: a click on the Dock icon brings the hidden window back.
+app.on('activate', () => showWindow());
 
 app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null);
+  // Mac: no menu would also mean no Cmd+C, Cmd+V or Cmd+Q, so keep the app and edit menus there.
+  Menu.setApplicationMenu(MAC ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]) : null);
   const ses = session.fromPartition(PARTITION);
   ses.setPermissionRequestHandler((wc, permission, done, details) => {
     const fromApp = isApp(details.requestingUrl || wc.getURL());
@@ -472,7 +487,8 @@ app.whenReady().then(async () => {
   // Linux: the tray needs a tray host in the bar (Omarchy's bar may be hidden in desktop mode). Without one
   // the icon just does not show; if Electron refuses outright, the app runs without a tray.
   try {
-    tray = new Tray(WIN ? ICON : nativeImage.createFromPath(ICON).resize({ width: 32, height: 32 }));
+    const size = MAC ? 18 : 32; // the Mac menu bar is 22 px high
+    tray = new Tray(WIN ? ICON : nativeImage.createFromPath(ICON).resize({ width: size, height: size }));
   } catch {
     tray = null;
   }

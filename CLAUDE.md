@@ -21,7 +21,7 @@ files to carry on.
 | Source of truth | this git repo (`git push` to GitHub after each finished change) |
 | Linux install | this repo's folder itself; `data/`, `.env`, `private/`, `node_modules`, `web/dist` are gitignored |
 | Add-on pack (OS changes) | `os/`: `hyprland/phosphor-os.lua`, `omarchy/` (desktop.sh, themes, bar, screensaver, fonts), `firefox/` |
-| Installers | `scripts/setup-linux.sh` (Linux), `scripts/setup-shell.ps1` (Windows); all with dry-run and undo |
+| Installers | `scripts/setup-linux.sh` (Linux), `scripts/setup-shell.ps1` (Windows), `scripts/setup-mac.sh` (Mac, app only, untested: `docs/MAC.md`); all with dry-run and undo |
 | Tests | `tests/pack.sh` (fake HOME, stubs; never touches the live system), `npm run test:docs`, `npm run test:router`, `npx tsc --noEmit -p .`, `npm run build` |
 | Server | `systemctl --user restart phosphor-os-server` (port 7337, 127.0.0.1); log `data/server.log` |
 

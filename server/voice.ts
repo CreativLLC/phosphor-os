@@ -99,8 +99,9 @@ function start(): Promise<void> {
     serialization: 'advanced', // audio goes over the pipe as raw bytes
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     windowsHide: true,
-    // Linux: the addon's libraries sit next to it. Its RPATH already says so; this is a second way in.
+    // Linux and Mac: the addon's libraries sit next to it. Its RPATH already says so; this is a second way in.
     ...(process.platform === 'linux' && { env: { ...process.env, LD_LIBRARY_PATH: [join(VOICE_DIR, 'node_modules', `sherpa-onnx-linux-${process.arch}`), process.env.LD_LIBRARY_PATH].filter(Boolean).join(':') } }),
+    ...(process.platform === 'darwin' && { env: { ...process.env, DYLD_LIBRARY_PATH: [join(VOICE_DIR, 'node_modules', `sherpa-onnx-darwin-${process.arch}`), process.env.DYLD_LIBRARY_PATH].filter(Boolean).join(':') } }),
   });
   child = proc;
   ready = new Promise<void>((resolve, reject) => {

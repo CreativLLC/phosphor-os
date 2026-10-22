@@ -53,7 +53,7 @@ const BOOT = Math.round((Date.now() - uptime() * 1000) / 60_000) * 60_000;
 // Both Windows and Linux hand out the same pids again after a reboot, so an old lock can name some other live
 // process. That stopped the server from starting after a restart (2026-10-12: the lock named pid 9872, some
 // other program had that pid at boot, and the supervisor quietly exited). So the lock holds the boot time too,
-// and the pid only counts if it is a Node process (Windows) or runs this script (Linux).
+// and the pid only counts if it is a Node process (Windows) or runs this script (Linux, Mac).
 function isSupervisor(pid, boot) {
   if (!alive(pid)) return false;
   if (!boot || Math.abs(boot - BOOT) > 120_000) return false; // from an earlier boot, or an old-style lock
@@ -62,6 +62,7 @@ function isSupervisor(pid, boot) {
       const row = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
       return /^"node\.exe"/i.test(row.trim());
     }
+    if (process.platform === 'darwin') return execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', timeout: 5000 }).includes('serve.mjs'); // no /proc on a Mac
     return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes('serve.mjs');
   } catch {
     return false;

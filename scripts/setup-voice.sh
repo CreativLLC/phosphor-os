@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Installs the DICTATE speech engine for Phosphor-OS on Linux (local, private, free).
-# The Linux twin of scripts/setup-voice.ps1: same engine, model and VAD, same pinned hashes.
+# Installs the DICTATE speech engine for Phosphor-OS on Linux or a Mac (local, private, free).
+# The Linux and Mac twin of scripts/setup-voice.ps1: same engine, model and VAD, same pinned hashes.
 #
-#   Engine: sherpa-onnx 1.13.8 (k2-fsa), Node addon from npm (sherpa-onnx-node + sherpa-onnx-linux-x64)
+#   Engine: sherpa-onnx 1.13.8 (k2-fsa), Node addon from npm (sherpa-onnx-node + sherpa-onnx-linux-x64 or
+#           sherpa-onnx-darwin-arm64 on an Apple Silicon Mac)
 #   Model:  NVIDIA Parakeet TDT 0.6B v2, int8 (English, with punctuation and capitals)
 #   VAD:    Silero VAD (finds the pauses that end a phrase, for live dictation)
 #   Where:  ${XDG_DATA_HOME:-~/.local/share}/PhosphorOS/voice  (outside any synced folder: about 0.7 GB)
@@ -25,7 +26,7 @@ for arg in "$@"; do
     --force) FORCE=1 ;;
     --dry-run) DRY=1 ;;
     -h | --help)
-      sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -39,11 +40,24 @@ VERSION=1.13.8
 MODEL_NAME=parakeet-tdt-0.6b-v2-int8
 
 # Pinned downloads. npm: the registry's sha512 "integrity" value. GitHub: the release's sha256 digest.
-PKG_NAMES=(sherpa-onnx-node sherpa-onnx-linux-x64)
-PKG_SHA512=(
-  'MsDMBdhLFTZ1GwvcGSSQhnS7g/EA8OMH6IYysCVUOM7j8Icty9KRc0E6YT1A5fWBsZwRfKOeh88QC95aRvS8ag=='
-  '6plnhjagsSeTntCgnlag86hWbs/uZE9Crms1LgOb68/1nKsIQjMd+WG519m+aPwT6TrsBOiEMzrx41t8sL5L5g=='
-)
+# The addon package is the one for this OS (the name server/voice-worker.mjs loads: sherpa-onnx-<os>-<arch>).
+ENGINE_SHA512='MsDMBdhLFTZ1GwvcGSSQhnS7g/EA8OMH6IYysCVUOM7j8Icty9KRc0E6YT1A5fWBsZwRfKOeh88QC95aRvS8ag=='
+case "$(uname -s)/$(uname -m)" in
+  Linux/x86_64)
+    ADDON=sherpa-onnx-linux-x64
+    ADDON_SHA512='6plnhjagsSeTntCgnlag86hWbs/uZE9Crms1LgOb68/1nKsIQjMd+WG519m+aPwT6TrsBOiEMzrx41t8sL5L5g=='
+    ;;
+  Darwin/arm64)
+    ADDON=sherpa-onnx-darwin-arm64
+    ADDON_SHA512='FPNgJMgnWVl/KhRTIhG3KL3A4Om63Rn4YKXc9/uHY7SzLcvqLJLc/h7UBWJwduXvv7K18t5NpxHR6XgXn4sjWw=='
+    ;;
+  *)
+    echo "STOP: Only x86-64 Linux and Apple Silicon Macs are supported here. On Windows run scripts/setup-voice.ps1." >&2
+    exit 1
+    ;;
+esac
+PKG_NAMES=(sherpa-onnx-node "$ADDON")
+PKG_SHA512=("$ENGINE_SHA512" "$ADDON_SHA512")
 MODEL_URL='https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2'
 MODEL_SHA256='157c157bc51155e03e37d2466522a3a737dd9c72bb25f36eb18912964161e1ad'
 MODEL_FOLDER='sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8'
@@ -80,13 +94,19 @@ die() {
   exit 1
 }
 
-[[ $(uname -s) == Linux ]] || die "This is the Linux setup. On Windows run scripts/setup-voice.ps1."
-[[ $(uname -m) == x86_64 ]] || die "Only x86-64 PCs are supported (the pinned engine is sherpa-onnx-linux-x64)."
-for tool in curl tar sha256sum sha512sum base64 od bzip2; do
-  command -v "$tool" >/dev/null || die "Missing the tool '$tool'. Install it with pacman, then run this again."
+for tool in curl tar base64 od bzip2; do
+  command -v "$tool" >/dev/null || die "Missing the tool '$tool'. Install it with pacman (Mac: Homebrew), then run this again."
 done
-
-sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
+# A Mac has shasum instead of sha256sum and sha512sum.
+if command -v sha256sum >/dev/null && command -v sha512sum >/dev/null; then
+  sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
+  sha512_of() { sha512sum "$1" | cut -d' ' -f1; }
+elif command -v shasum >/dev/null; then
+  sha256_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
+  sha512_of() { shasum -a 512 "$1" | cut -d' ' -f1; }
+else
+  die "Missing sha256sum and sha512sum (or shasum). Install coreutils, then run this again."
+fi
 
 check_sha256() { # file want
   local got
@@ -101,7 +121,7 @@ check_sha256() { # file want
 check_sha512_integrity() { # file want-base64
   local want got
   want="$(printf '%s' "$2" | base64 -d | od -An -v -tx1 | tr -d ' \n')"
-  got="$(sha512sum "$1" | cut -d' ' -f1)"
+  got="$(sha512_of "$1")"
   [[ $got == "$want" ]] || die "SHA-512 mismatch for $1
   want $want
   got  $got"
@@ -117,7 +137,7 @@ get_file() { # url dest
 engine_ok=0
 if [[ -f $nm/sherpa-onnx-node/package.json ]] &&
   grep -q "\"version\": *\"$VERSION\"" "$nm/sherpa-onnx-node/package.json" &&
-  [[ -f $nm/sherpa-onnx-linux-x64/sherpa-onnx.node ]]; then
+  [[ -f $nm/$ADDON/sherpa-onnx.node ]]; then
   engine_ok=1
 fi
 model_ok=1

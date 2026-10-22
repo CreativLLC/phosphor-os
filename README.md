@@ -69,7 +69,7 @@ change goes into the pack, so it can be undone (see [CONTRIBUTING.md](CONTRIBUTI
 | You want | You need |
 |---|---|
 | The full desktop | [Omarchy](https://omarchy.org) 4 on Arch (x86-64). Tested on 4.0.4 |
-| Only the app | Node 24 and a browser. Windows 10 or 11 with PowerShell is supported (desktop app via `scripts/setup-shell.ps1`). Other Linux: the app should run with `npm ci && npm start` (untested); the desktop mode and the pack do not apply |
+| Only the app | Node 24 and a browser. Windows 10 or 11 with PowerShell is supported (desktop app via `scripts/setup-shell.ps1`). Apple Silicon Mac: `scripts/setup-mac.sh`, see [docs/MAC.md](docs/MAC.md) (untested). Other Linux: the app should run with `npm ci && npm start` (untested); the desktop mode and the pack do not apply |
 | Claude | Claude Code, logged in with your Anthropic account (`claude`, once, in a terminal). An API key may work through `ANTHROPIC_API_KEY` in `.env` (untested) |
 | The phone | [Tailscale](https://tailscale.com) on the PC and the phone, same account |
 
