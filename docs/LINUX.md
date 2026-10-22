@@ -3,6 +3,7 @@
 The safety-net keys and `--undo` are there if a step goes wrong.
 Every change to Omarchy, and how to undo it: `docs/OMARCHY.md`.
 Installed under the old name (Retro Claude, `~/retro-claude`)? Move it over with `docs/MIGRATE.md`.
+Only the app, with the desktop left as it is (any x86-64 Linux)? `bash scripts/setup-linux.sh --app-only`; the steps below that set up the desktop do not apply.
 
 ## Install steps (on a fresh Omarchy)
 

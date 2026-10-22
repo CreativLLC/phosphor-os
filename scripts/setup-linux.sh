@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Sets up Phosphor-OS on Linux and makes it the desktop. Made for Omarchy 4.0.4 (Arch + Hyprland).
+# With --app-only: only the app, like on Windows or a Mac; nothing of the desktop changes (any x86-64 Linux).
 #
-# Run:  bash scripts/setup-linux.sh [--dry-run] [--undo] [--workspace DIR] [--theme NAME]
+# Run:  bash scripts/setup-linux.sh [--dry-run] [--undo] [--app-only | --full] [--workspace DIR] [--theme NAME]
 #   --dry-run         print every step it would take, change nothing
 #   --undo            take back what this script did (asks before the big parts)
+#   --app-only        the app only: steps 1 to 7 and the app menu entries, no step 8 desktop mode. Later runs
+#                     remember it (update with the same command, no flag needed)
+#   --full            the full desktop again after an --app-only install
 #   --workspace DIR   the folder Claude works in (PHOSPHOR_CWD in .env). Otherwise taken from .env, or asked.
 #   --theme NAME      the desktop look: retro-amber (default), retro-green or lcars
 #
@@ -32,10 +36,12 @@ set -euo pipefail
 
 DRY=0
 UNDO=0
+APP_ONLY=0
+FULL=0
 WORKSPACE=""
 THEME=""
 
-usage() { sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 warn() { printf '  NOTE: %s\n' "$*"; }
@@ -94,6 +100,8 @@ for ((i = 1; i <= $#; i++)); do
   case "$arg" in
     --dry-run) DRY=1 ;;
     --undo) UNDO=1 ;;
+    --app-only) APP_ONLY=1 ;;
+    --full) FULL=1 ;;
     --workspace)
       i=$((i + 1))
       WORKSPACE="${!i:-}"
@@ -325,8 +333,11 @@ node_step() {
     NODE="$dir/bin/node"
   elif node_is_24 /usr/bin/node; then
     NODE=/usr/bin/node
+  elif node_is_24 "$(command -v node || true)"; then
+    NODE="$(command -v node)"
   else
     say "  Node 24 is not installed, and mise is not here."
+    command -v pacman >/dev/null || die "Install Node 24 (nodejs.org, your distribution's package, or mise), then run this again."
     if ask "Needs sudo: install Node 24 LTS from Arch (sudo pacman -S --needed nodejs-lts-krypton npm)?"; then
       run sudo pacman -S --needed nodejs-lts-krypton npm || die "pacman did not install Node 24."
     else
@@ -649,6 +660,17 @@ menu_entry() { # file entry: write it unless it is already exactly that
   fi
 }
 
+# --app-only: the app menu entries, nothing else. No default app for Markdown, no Hyprland line, no look.
+app_menu_step() {
+  step "8. App menu entries (app only: the desktop is left as it is)"
+  menu_entry "$DESKTOP_FILE" "$(desktop_entry)"
+  menu_entry "$DOCS_FILE" "$(docs_entry)"
+  if [[ -f $OLD_DESKTOP_FILE ]]; then run rm -f "$OLD_DESKTOP_FILE"; fi
+  if [[ -f $HYPR_LUA ]] && grep -qF -e "$HYPR_MARK" "$HYPR_LUA"; then
+    warn "Desktop mode from an earlier run is still on. To take it off: bash $LOOK --undo, and remove the line with '$HYPR_MARK' from $HYPR_LUA (or run --undo, then this again)."
+  fi
+}
+
 desktop_step() {
   step "8. Desktop mode (Hyprland)"
   # Omarchy's app menu entries. The first one's name also gives the window its class, phosphor-os (see
@@ -722,6 +744,7 @@ drop_hypr_line() { # mark: take out the line that carries it
 
 undo() {
   step "Undo"
+  forget app_only
   local args=()
   if ((DRY)); then args+=(--dry-run); fi
   bash "$LOOK" --undo "${args[@]}"
@@ -781,6 +804,17 @@ if ((UNDO)); then
   exit 0
 fi
 
+# --app-only is remembered, so an update (the same command, no flags) keeps it. --full ends it.
+if ((FULL)); then
+  ((!APP_ONLY)) || die "--app-only and --full: pick one."
+  forget app_only
+elif ((APP_ONLY)); then
+  remember app_only
+elif did app_only; then
+  APP_ONLY=1
+  say "  App only (from an earlier run). For the full desktop: --full"
+fi
+
 synced_check
 claude_login_check
 workspace_step
@@ -790,10 +824,10 @@ voice_step
 electron_step
 service_step
 tailscale_step
-desktop_step
+if ((APP_ONLY)); then app_menu_step; else desktop_step; fi
 
 step "Done"
-if [[ -f $HYPR_LUA ]]; then
+if ((!APP_ONLY)) && [[ -f $HYPR_LUA ]]; then
   say "  Log out and back in (or reboot): Phosphor-OS starts maximized as the desktop, under the bar."
   say "  Keys: Super + Space = open apps.  Super + Alt + R = restart Phosphor-OS.  Super + Alt + T = a plain terminal."
   say "  Super + T = full size under the bar.  Super + F = real full screen.  Super + Shift + T = floating on/off."

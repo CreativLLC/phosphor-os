@@ -412,6 +412,18 @@ check "Electron in the old folder removed (asked)" test ! -e "$h/.local/share/Re
 check "notes gone" test ! -e "$h/.local/state/RetroClaude/setup-linux.state" -a ! -e "$h/.local/state/RetroClaude/desktop.state"
 check "look back: theme and font as before" bash -c "[[ \$(cat '$h/.local/state/omarchy/current/theme.name') == tokyo-night && \$(cat '$h/.fakefont') == 'JetBrainsMono Nerd Font' ]]"
 
+echo "== L: setup-linux.sh --app-only (dry run): the app's steps, no desktop mode, and later runs remember it"
+mkhome L; h=$T/L; mkdir -p "$h/.config/hypr" "$h/ws"; echo '-- hyprland' >"$h/.config/hypr/hyprland.lua"; snap L >"$T/L.before"
+tenv L bash "$R/scripts/setup-linux.sh" --dry-run --app-only --workspace "$h/ws" </dev/null >"$T/L.out" 2>&1
+check "app only: step 8 is the menu entries" grep -q '8. App menu entries' "$T/L.out"
+check "app only: no desktop mode, no look, no Markdown default" bash -c "! grep -qE 'Desktop mode|hyprland.lua|desktop.sh|xdg-mime' '$T/L.out'"
+snap L >"$T/L.after"; check "app only: dry run changes nothing" cmp -s "$T/L.before" "$T/L.after"
+mkdir -p "$h/.local/state/PhosphorOS" && echo app_only=1 >"$h/.local/state/PhosphorOS/setup-linux.state"
+tenv L bash "$R/scripts/setup-linux.sh" --dry-run --workspace "$h/ws" </dev/null >"$T/L.out2" 2>&1
+check "app only remembered: no flag, still no desktop mode" bash -c "grep -q 'App only (from an earlier run)' '$T/L.out2' && ! grep -q 'Desktop mode' '$T/L.out2'"
+tenv L bash "$R/scripts/setup-linux.sh" --dry-run --full --workspace "$h/ws" </dev/null >"$T/L.out3" 2>&1
+check "--full: desktop mode again" grep -q 'Desktop mode (Hyprland)' "$T/L.out3"
+
 echo "== M: scripts/migrate-from-retro-claude.sh on a fake home"
 mkhome M; h=$T/M; NEW=$h/phosphor-os OLDP=$h/retro-claude
 rsync -a --exclude .git --exclude node_modules --exclude data --exclude .env --exclude web/dist "$R/" "$NEW/"

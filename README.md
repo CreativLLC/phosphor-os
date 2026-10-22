@@ -9,9 +9,9 @@
 
 **The agent OS.** A retro CRT desktop and app to live in while you work with Claude Code agents.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-f5a623?style=flat-square)](LICENSE) [![Claude Code](https://img.shields.io/badge/powered%20by-Claude%20Code-d97757?style=flat-square)](https://code.claude.com) [![Omarchy](https://img.shields.io/badge/built%20on-Omarchy%20%2F%20Arch-1793d1?style=flat-square)](https://omarchy.org) [![Linux](https://img.shields.io/badge/Linux-x86--64-222222?style=flat-square&logo=linux&logoColor=white)](#requirements) [![Local models](https://img.shields.io/badge/local%20models-optional-555555?style=flat-square)](docs/LOCAL-MODEL.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-f5a623?style=flat-square)](LICENSE) [![Claude Code](https://img.shields.io/badge/powered%20by-Claude%20Code-d97757?style=flat-square)](https://code.claude.com) [![Omarchy](https://img.shields.io/badge/built%20on-Omarchy%20%2F%20Arch-1793d1?style=flat-square)](https://omarchy.org) [![Runs on](https://img.shields.io/badge/app-Windows%20%7C%20macOS%20%7C%20Linux-222222?style=flat-square)](#two-flavors) [![Local models](https://img.shields.io/badge/local%20models-optional-555555?style=flat-square)](docs/LOCAL-MODEL.md)
 
-[**Website**](https://phosphor.creativllc.net) &nbsp;·&nbsp; [**Trailer**](https://phosphor.creativllc.net/#trailer) &nbsp;·&nbsp; [**Install**](#install-omarchy) &nbsp;·&nbsp; [**Docs**](docs/LINUX.md)
+[**Website**](https://phosphor.creativllc.net) &nbsp;·&nbsp; [**Trailer**](https://phosphor.creativllc.net/#trailer) &nbsp;·&nbsp; [**Install**](#two-flavors) &nbsp;·&nbsp; [**Docs**](docs/LINUX.md)
 
 <table>
   <tr>
@@ -30,8 +30,26 @@
 
 </div>
 
-Amber (or green, or LCARS) phosphor on black. Built on [Omarchy](https://omarchy.org), powered by
-[Claude Code](https://code.claude.com) with your own Anthropic login or API key.
+Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://code.claude.com) with your own
+Anthropic login or API key. Run **the app** on any computer, or make it **the whole desktop** on
+[Omarchy](https://omarchy.org) Linux.
+
+## Two flavors
+
+| | The app | The desktop |
+|---|---|---|
+| Runs on | Windows 10 or 11, Apple Silicon Mac (untested), any x86-64 Linux | [Omarchy](https://omarchy.org) 4 (Arch + Hyprland) |
+| What it changes on your computer | Nothing of the OS: a folder, a shortcut or menu entry, and a background server you can remove | The whole desktop, through the add-on pack in `os/`. Every change is listed in [docs/OMARCHY.md](docs/OMARCHY.md) and comes back off with `--undo` |
+| The session HUD, chat tabs, AUTO, UNDO | yes | yes |
+| DOCS, TODAY, the phone over Tailscale | yes | yes |
+| Dictation inside the app | yes | yes |
+| Dictation in any app (`Ctrl + Space`) | | yes |
+| Theme, font and bar for the whole OS; taskbar; launcher on the Super key | | yes |
+| Notifications that wait in the bar; clock popup with your events; night light | | yes |
+| The screensaver for the whole computer | | yes |
+| Markdown files open in DOCS on a double-click | | yes |
+| Local models and the local image generator (optional) | Linux with an AMD card only, so far | yes (AMD card) |
+| Install | [Linux](#install-the-app-on-linux), [Windows](#install-the-app-on-windows), [Mac](docs/MAC.md) | [Omarchy](#install-the-desktop-omarchy) |
 
 ## What you get
 
@@ -53,7 +71,7 @@ Amber (or green, or LCARS) phosphor on black. Built on [Omarchy](https://omarchy
 - Local models (optional, bring your own): Qwen and Gemma through llama.cpp, from the same model picker
 - Phone access over Tailscale, private to your own devices
 
-**The Omarchy add-on pack** (`os/`)
+**The Omarchy add-on pack** (`os/`, the desktop flavor only)
 - Amber theme (also green and LCARS) with the VT323 font
 - Taskbar at the bottom of the bar, one button per window
 - Launcher on the Super key
@@ -68,14 +86,14 @@ change goes into the pack, so it can be undone (see [CONTRIBUTING.md](CONTRIBUTI
 
 | You want | You need |
 |---|---|
-| The full desktop | [Omarchy](https://omarchy.org) 4 on Arch (x86-64). Tested on 4.0.4 |
-| Only the app | Node 24 and a browser. Windows 10 or 11 with PowerShell is supported (desktop app via `scripts/setup-shell.ps1`). Apple Silicon Mac: `scripts/setup-mac.sh`, see [docs/MAC.md](docs/MAC.md) (untested). Other Linux: the app should run with `npm ci && npm start` (untested); the desktop mode and the pack do not apply |
+| The desktop | [Omarchy](https://omarchy.org) 4 on Arch (x86-64). Tested on 4.0.4 |
+| The app | Node 24. Linux: x86-64 (`setup-linux.sh --app-only`; tested on Omarchy only). Windows 10 or 11 with PowerShell. Mac: Apple Silicon and Homebrew (untested) |
 | Claude | Claude Code, logged in with your Anthropic account (`claude`, once, in a terminal). An API key may work through `ANTHROPIC_API_KEY` in `.env` (untested) |
 | The phone | [Tailscale](https://tailscale.com) on the PC and the phone, same account |
 
 Other agents (GPT, open models) are planned, not built. See [docs/AGENTS-PLAN.md](docs/AGENTS-PLAN.md).
 
-## Install (Omarchy)
+## Install the desktop (Omarchy)
 
 1. Log in to Claude Code once. Open a terminal and run `claude`, log in, quit it.
 2. Get the code into a normal local folder (not a folder a sync client such as Nextcloud or Dropbox syncs to
@@ -113,7 +131,28 @@ still turns off after 30 minutes idle); undo puts the old value back.
 
 Full walk-through with keys: [docs/LINUX.md](docs/LINUX.md).
 
-## Install (Windows, app only)
+## Install the app on Linux
+
+The same setup as the desktop, without the desktop part: it changes nothing of the OS but an app menu entry. Steps 1
+to 3 of the desktop install, then:
+
+```
+bash ~/phosphor-os/scripts/setup-linux.sh --app-only
+```
+
+Later runs remember the choice. `--full` turns it into the desktop flavor on Omarchy. Start it from the app menu
+(Phosphor-OS), or open http://localhost:7337 in a browser.
+
+## Install the app on Mac
+
+Apple Silicon only, and untested on a real Mac so far: [docs/MAC.md](docs/MAC.md). In short:
+
+```
+git clone https://github.com/CreativLLC/phosphor-os.git ~/phosphor-os
+bash ~/phosphor-os/scripts/setup-mac.sh
+```
+
+## Install the app on Windows
 
 ```
 git clone https://github.com/CreativLLC/phosphor-os.git
@@ -128,10 +167,10 @@ Dictation on Windows: `scripts\setup-voice.ps1`.
 
 ## First run
 
-- Open the app (Linux: it starts by itself at login, or use the "Phosphor-OS" menu entry; any OS:
-  http://localhost:7337 in a browser) and log in.
+- Open the app (the desktop: it starts by itself at login; the app: the "Phosphor-OS" menu entry, shortcut or
+  Spotlight; any OS: http://localhost:7337 in a browser) and log in.
 - Open a chat tab and say what you want done. The HUD fills as the agent works.
-- `Super + Space` opens Omarchy's menu; type "doc" for DOCS. `Super + Alt + T` opens a plain terminal that works even
+- The desktop: `Super + Space` opens Omarchy's menu; type "doc" for DOCS. `Super + Alt + T` opens a plain terminal that works even
   when Phosphor-OS does not. All keys: [docs/LINUX.md](docs/LINUX.md).
 
 ## Phone
@@ -164,6 +203,7 @@ bash ~/phosphor-os/scripts/setup-linux.sh
 Setup rebuilds the page and changes only what differs. New server code loads at the next server restart:
 `systemctl --user restart phosphor-os-server`. Do that when no chat is working: it cuts off a reply in progress.
 After an update of the bar parts, `omarchy restart shell`. Windows: `git pull`, `npm ci`, run `npm start` again.
+Mac: see [docs/MAC.md](docs/MAC.md#update).
 
 ## Uninstall
 
@@ -171,6 +211,7 @@ After an update of the bar parts, `omarchy restart shell`. Windows: `git pull`, 
   Hyprland line it added, and asks before removing the service, Tailscale serve, Electron and the dictation engine.
   Only the look: `bash ~/phosphor-os/os/omarchy/desktop.sh --undo`.
 - Windows: delete the "Phosphor-OS" desktop shortcut and `%LOCALAPPDATA%\PhosphorOS`.
+- Mac: `bash ~/phosphor-os/scripts/setup-mac.sh --undo`.
 - Add `--dry-run` to see first what would be undone.
 
 ## Troubleshooting
