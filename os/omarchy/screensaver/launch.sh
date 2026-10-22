@@ -38,8 +38,14 @@ esac
 
 profile=${XDG_RUNTIME_DIR:-/tmp}/phosphor-os-saver.$$
 pid=
+# Focusing the other monitor (to open its window there) warps the pointer, and the page closes on a pointer move:
+# with two monitors the saver closed itself seconds after it showed, every time, so the displays never went off
+# (2026-10-19 to 10-21). So no pointer warps while the windows open; the setting goes back afterwards.
+warps=$(hyprctl getoption cursor:no_warps 2>/dev/null | sed -n 's/^bool: //p' | head -n 1)
+warps() { [[ -n $warps ]] && hyprctl eval "hl.config({ cursor = { no_warps = $1 } })" >/dev/null 2>&1; }
 cleanup() {
   trap - EXIT TERM INT HUP
+  warps "$warps"
   if [[ -n $pid ]]; then
     kill "$pid" 2>/dev/null
     for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
@@ -55,6 +61,7 @@ focus() { hyprctl dispatch "hl.dsp.focus({ monitor = \"$1\" })" >/dev/null 2>&1;
 windows() { hyprctl clients -j | jq --arg c "$class" '[.[]|select(.class==$c)]|length'; }
 
 focused=$(hyprctl monitors -j | jq -r '.[]|select(.focused).name')
+warps true
 for m in $(hyprctl monitors -j | jq -r '.[].name'); do
   focus "$m"
   have=$(windows)
@@ -69,6 +76,7 @@ for m in $(hyprctl monitors -j | jq -r '.[].name'); do
   done
 done
 [[ -n $focused ]] && focus "$focused"
+warps "$warps"
 
 # Stay until told to stop (SIGTERM), or until the browser is gone, the shell that started us is gone, a window of
 # ours was closed (the page closes itself on input) or focus left the saver (Alt+Tab, a click elsewhere).
