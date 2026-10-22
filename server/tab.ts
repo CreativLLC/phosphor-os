@@ -19,10 +19,11 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { IMAGE_MODEL, type Agent, type AskQuestion, type Attachment, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
+import { IMAGE_MODEL, isImageModel, type Agent, type AskQuestion, type Attachment, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
 import { ttlFromUsage } from '../shared/cache.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
-import { DATA_DIR, imageModel, localChoice, localModel } from './config.ts';
+import { DATA_DIR, geminiImage, imageModel, localChoice, localModel } from './config.ts';
+import { GeminiPainter } from './geminiimage.ts';
 import { painter, type Painter } from './imagegen.ts';
 import { editSize, imageSize, parseImageOptions, STEPS } from './imageopts.ts';
 import { LOCAL_RELAY_PORT, localLoaded } from './localrelay.ts';
@@ -101,6 +102,9 @@ const slowCheck = (model?: string) => {
   return !!local && !!localModel?.urls[local.name];
 };
 const sdkMode = (mode: Mode | undefined, model?: string): Mode | undefined => (mode === 'auto' && slowCheck(model) ? 'acceptEdits' : mode);
+
+// A picture model in the picker: who paints, and what the chat says about it.
+type Imager = { painter: Pick<Painter, 'paint'>; model: Pick<NonNullable<typeof imageModel>, 'label' | 'edit' | 'turbo'> };
 
 export class Tab {
   state: TabState;
@@ -184,7 +188,9 @@ export class Tab {
   }
 
   // The local image model and its painter (server/imagegen.ts); tests hand in fakes.
-  static images: { painter: Pick<Painter, 'paint'>; model: Pick<NonNullable<typeof imageModel>, 'label' | 'edit' | 'turbo'> } | undefined = painter && imageModel ? { painter, model: imageModel } : undefined;
+  static images: Imager | undefined = painter && imageModel ? { painter, model: imageModel } : undefined;
+  // The Gemini picture models (server/geminiimage.ts), by picker value. They can change an attached picture.
+  static gemini = new Map<string, Imager>(geminiImage.models.map((m) => [m.value, { painter: new GeminiPainter(m.model), model: { label: m.label, edit: true, turbo: '' } }]));
 
   // For the AUTO tag: the model's name as the picker shows it.
   static models?: () => Promise<ModelsResponse>;
@@ -234,7 +240,8 @@ export class Tab {
 
   send(text: string, files: StoredUpload[] = [], auto = false): void {
     if (!auto) this.clearResume(); // the owner took over
-    if (this.pendingModel === IMAGE_MODEL && Tab.images && !auto) return this.paint(text, files);
+    const imager = this.pendingModel === IMAGE_MODEL ? Tab.images : Tab.gemini.get(this.pendingModel ?? '');
+    if (imager && !auto) return this.paint(text, files, imager);
     const first = this.state.items.every((i) => i.kind !== 'user' || i.paint);
     this.firstWordsTitle(text, files);
     const attachments = files.map(({ path: _p, ...a }) => a);
@@ -305,8 +312,9 @@ export class Tab {
 
   // The tab's model is the image model: the text is a picture's description (server/imagegen.ts). Pictures wait
   // their turn; the chat shows each one as it is painted.
-  private paint(text: string, files: StoredUpload[]): void {
-    const { painter: p, model: im } = Tab.images!;
+  private paint(text: string, files: StoredUpload[], imager: Imager): void {
+    const { painter: p, model: im } = imager;
+    const cloud = imager !== Tab.images; // Gemini: no seed, steps or GPU
     this.firstWordsTitle(text, files);
     const after = [...this.state.items].reverse().find((i) => i.kind === 'user' && !i.paint)?.id ?? null;
     const log = (item: Item) => {
@@ -338,13 +346,13 @@ export class Tab {
       return log({ id: randomUUID(), kind: 'note', text: 'Nothing to paint: write what the picture should show.' });
     }
     const id = randomUUID();
-    const item: ImageItem = { id, kind: 'image', status: 'queued', prompt: opts.prompt, model: im.label, width: opts.width, height: opts.height, seed: opts.seed, steps: opts.steps, ...(opts.fast ? { fast: true } : {}), ...(ref ? { edit: true } : {}) };
+    const item: ImageItem = { id, kind: 'image', status: 'queued', prompt: opts.prompt, model: im.label, width: opts.width, height: opts.height, seed: cloud ? 0 : opts.seed, steps: cloud ? 0 : opts.steps, ...(opts.fast && !cloud ? { fast: true } : {}), ...(ref ? { edit: true } : {}) };
     log(item);
     this.onPersist?.();
     const epoch = this.paintEpoch;
     this.painting++;
     this.setBusy(true);
-    this.setActivity('Waiting for the GPU');
+    this.setActivity(cloud ? 'Gemini is painting' : 'Waiting for the GPU');
     void p
       .paint({
         opts,
@@ -467,7 +475,7 @@ export class Tab {
       await this.q?.interrupt().catch(() => {}); // not stop(): a message waiting for the router is the one being sent
       this.close(true);
       this.setBusy(false);
-    } else if (this.q && model !== IMAGE_MODEL) await this.q.setModel(model).catch(() => {}); // pictures do not use Claude's process
+    } else if (this.q && !isImageModel(model)) await this.q.setModel(model).catch(() => {}); // pictures do not use Claude's process
     this.state.info.model = model;
     this.state.info.auto = this.auto;
     this.patch('info');

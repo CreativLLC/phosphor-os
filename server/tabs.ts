@@ -1,8 +1,8 @@
 import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, IMAGE_MODEL, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
-import { DATA_DIR, config, imageModel, localChoice, localModel } from './config.ts';
+import { EFFORTS, IMAGE_MODEL, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import { Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
@@ -37,7 +37,7 @@ export class Tabs {
     for (const init of saved) {
       // The local model is gone (not configured now): Claude would be handed the name "local" and fail.
       const missingLocal =
-        !!init.model && (((init.model === LOCAL_MODEL || init.model.startsWith(`${LOCAL_MODEL}:`)) && !localChoice(init.model)) || (init.model === IMAGE_MODEL && !imageModel));
+        !!init.model && (((init.model === LOCAL_MODEL || init.model.startsWith(`${LOCAL_MODEL}:`)) && !localChoice(init.model)) || (init.model === IMAGE_MODEL && !imageModel) || (isImageModel(init.model) && init.model !== IMAGE_MODEL && !Tab.gemini.has(init.model)));
       const tab = this.make(missingLocal ? { ...init, model: undefined, effort: undefined, auto: true } : init);
       await tab.loadHistory().catch((e) => console.warn(`Could not load history for tab ${init.title}:`, e));
     }
@@ -163,7 +163,8 @@ export class Tabs {
             resolved: m.resolvedModel,
             efforts: m.supportsEffort === false ? [] : (m.supportedEffortLevels ?? [...EFFORTS]),
           })), ...(localModel?.models ?? []).map((m) => ({ value: m.value, label: m.label, description: 'Runs on this PC, no plan limits.', efforts: ['low', 'medium', 'xhigh'] as Effort[] })),
-            ...(imageModel ? [{ value: IMAGE_MODEL, label: imageModel.label, description: 'Makes pictures on this PC. Your message is the picture\'s description.', efforts: [] as Effort[] }] : [])],
+            ...(imageModel ? [{ value: IMAGE_MODEL, label: imageModel.label, description: 'Makes pictures on this PC. Your message is the picture\'s description.', efforts: [] as Effort[] }] : []),
+            ...geminiImage.models.map((m) => ({ value: m.value, label: m.label, description: 'Makes pictures with Gemini (your Google AI Pro sign-in). Your message is the picture\'s description.', efforts: [] as Effort[] }))],
         };
       } finally {
         q.close();

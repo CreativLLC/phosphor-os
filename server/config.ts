@@ -92,6 +92,23 @@ export const imageModel = imageUrl
     }
   : undefined;
 
+// Where pictures are saved (the local model's and Gemini's), served at /api/images/<file>.
+export const imagesDir = imageModel?.dir ?? resolve(process.env.PHOSPHOR_IMAGE_DIR || join(DATA_DIR, 'images'));
+
+// Gemini pictures (server/geminiimage.ts) through Google's Antigravity CLI, signed in with a Google AI Pro or Ultra
+// account. On when `agy` is installed (PHOSPHOR_AGY, default ~/.local/bin/agy). PHOSPHOR_GEMINI_IMAGE lists the picker
+// entries as "Label=model,Label=model" (`agy models` lists the models; the model runs the job, the picture tool is
+// the same), or "off".
+const agyBin = process.env.PHOSPHOR_AGY || join(homedir(), '.local', 'bin', 'agy');
+const geminiList = process.env.PHOSPHOR_GEMINI_IMAGE || 'Gemini Image (Argon)=gemini-4-argon-medium,Gemini Image (Flash)=gemini-3.8-flash-medium';
+export const geminiImage = {
+  bin: agyBin,
+  models:
+    geminiList === 'off' || !existsSync(agyBin)
+      ? []
+      : Object.entries(nameMap(geminiList)).map(([label, model]) => ({ value: `image:gemini:${model}`, label, model })),
+};
+
 // Keep the password out of the environment, so the Claude processes this server starts
 // (and every command they run) do not inherit it.
 delete process.env.PHOSPHOR_PASSWORD;

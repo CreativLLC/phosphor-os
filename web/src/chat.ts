@@ -1,4 +1,4 @@
-import { IMAGE_MODEL, MODES, type Attachment, type ImageItem, type Item, type Mode } from '../../shared/protocol.ts';
+import { IMAGE_MODEL, isImageModel, MODES, type Attachment, type ImageItem, type Item, type Mode } from '../../shared/protocol.ts';
 import { takeAttachments } from './attach.ts';
 import { runAppCommand } from './slash.ts';
 import { askUndo } from './undo.ts';
@@ -101,7 +101,8 @@ export function mountChat(logEl: HTMLElement, composer: HTMLElement): void {
     stopBtn.hidden = !tab?.meta.busy;
     composer.classList.toggle('busy', !!tab?.meta.busy);
     mode.value = PICKER_MODES.includes(tab?.info.permissionMode ?? '') ? tab!.info.permissionMode : 'auto';
-    input.placeholder = tab?.info.model === IMAGE_MODEL && !tab.info.auto ? 'Describe a picture… (--wide --tall --best --seed N)' : 'Message Claude…';
+    const model = tab?.info.auto ? '' : tab?.info.model;
+    input.placeholder = model === IMAGE_MODEL ? 'Describe a picture… (--wide --tall --best --seed N)' : isImageModel(model) ? 'Describe a picture, or attach one to change… (--wide --tall)' : 'Message Claude…';
     mode.classList.toggle('bypass', mode.value === 'bypassPermissions');
     if (tab?.meta.id !== shownTab) {
       shownTab = tab?.meta.id ?? null;
@@ -378,7 +379,8 @@ setInterval(() => {
 
 function renderImage(box: HTMLElement, item: ImageItem): void {
   box.append(el('div', 'who', `> ${item.model.replace(/\s*\(local\)\s*$/i, '').toUpperCase()}`));
-  const facts = [`${item.width}x${item.height}`, `seed ${item.seed}`, `${item.steps} steps${item.fast ? '' : ' (best)'}`, item.edit ? 'edit' : ''];
+  // A cloud picture (Gemini) has no seed or steps (0).
+  const facts = [`${item.width}x${item.height}`, item.seed ? `seed ${item.seed}` : '', item.steps ? `${item.steps} steps${item.fast ? '' : ' (best)'}` : '', item.edit ? 'edit' : ''];
   if (item.status === 'done' && item.file) {
     const url = `/api/images/${encodeURIComponent(item.file)}`;
     const link = el('a', 'img-full');

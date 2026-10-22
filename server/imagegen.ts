@@ -4,7 +4,7 @@ import type { ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ImageItem, Painting } from '../shared/protocol.ts';
-import { DATA_DIR, imageModel } from './config.ts';
+import { DATA_DIR, imageModel, imagesDir } from './config.ts';
 import { Gpu, type GpuUser } from './gpu.ts';
 import { FAST_STEPS, type ImageOptions } from './imageopts.ts';
 import { freeChatModels, setChatTurn } from './localrelay.ts';
@@ -211,7 +211,7 @@ export const painting = (): Painting | null | undefined => painter?.painting();
 
 // GET /api/images/<file>: a saved picture (the chat shows it; SAVE downloads it). Names as fileName makes them only.
 export function serveImage(res: ServerResponse, file: string): void {
-  const path = imageModel && /^[\w.-]+\.png$/.test(file) && !file.startsWith('.') ? join(imageModel.dir, file) : '';
+  const path = /^[\w.-]+\.png$/.test(file) && !file.startsWith('.') ? join(imagesDir, file) : '';
   const size = path ? statSync(path, { throwIfNoEntry: false })?.size : undefined;
   if (!size) {
     res.writeHead(404).end('Not found');

@@ -194,6 +194,7 @@ own tailnet. More: [SECURITY.md](SECURITY.md).
   Phosphor-OS. Follow docs/LOCAL-MODEL.md." It checks your GPU, runs the setup with you and asks before anything
   that needs sudo. Then the local models show up in the model picker next to Claude.
 - Local image generator on your own GPU (AMD, about 19 GB of disk): [docs/IMAGE-MODEL.md](docs/IMAGE-MODEL.md)
+- Gemini pictures with a Google AI Pro or Ultra account (no API key, no GPU): [docs/IMAGE-MODEL.md](docs/IMAGE-MODEL.md#gemini-pictures-cloud-optional)
 - Settings (`PHOSPHOR_*`) are listed in `.env.example`
 
 ## Update

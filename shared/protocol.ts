@@ -182,6 +182,8 @@ export const LOCAL_MODEL = 'local';
 export const AUTO_MODEL = 'auto';
 // Model picker value for the local image model (scripts/setup-image-model.sh): messages become pictures.
 export const IMAGE_MODEL = 'image';
+// The local image model is IMAGE_MODEL; a cloud one is "image:<engine>:<model>" (Gemini: server/geminiimage.ts).
+export const isImageModel = (v?: string): boolean => v === IMAGE_MODEL || !!v?.startsWith(`${IMAGE_MODEL}:`);
 export type ModelChoice = { value: string; label: string; description: string; resolved?: string; efforts: Effort[] };
 export type ModelsResponse = { models: ModelChoice[] };
 

@@ -98,3 +98,11 @@ full RAM ends the engine, not the desktop.
   the latents) to show "PAINTING 12/30".
 - Changing the engine version: set `SD_VERSION` (a commit) and run the setup again; it recompiles.
 - Another GPU: change the `cmake` line in the setup script (`-DSD_VULKAN=ON` or `-DSD_CUDA=ON`).
+
+## Gemini pictures (cloud, optional)
+
+Two more entries in the picker, "Gemini Image (Argon)" and "Gemini Image (Flash)", make pictures with Google's Gemini picture tool. They use Google's **Antigravity CLI** (`agy`), signed in with a Google AI Pro or Ultra account: no API key, no cost per picture, no GPU. Google publishes no daily picture limit for these plans.
+
+Set up: install it with Google's installer (`curl -fsSL https://antigravity.google/cli/install.sh | bash`, read it first; it puts `agy` in `~/.local/bin`), run `agy` once in a terminal and sign in with the Google account, then restart the server. The entries show when `agy` is there. (Gemini CLI's Google sign-in stopped working for personal accounts in June 2026; Antigravity CLI replaced it.)
+
+How it works (`server/geminiimage.ts`): each picture is one `agy -p` run in an empty folder, with an attached picture as `ref-1.png`; the agent saves the picture in its own folder (`~/.gemini/antigravity-cli/brain/`) and answers with the path, and the picture is cut to the asked size (`--wide`, `--tall`, `--size`, `--hd` work; `--best`, `--steps` and `--seed` do nothing) and saved with the others. One picture at a time per server. Argon and Flash are the agent that runs the job; the picture tool is the same, Flash is faster. About 40 to 70 s a picture (tested 2026-10-22). Other entries: `PHOSPHOR_GEMINI_IMAGE="Label=model,Label=model"` (`agy models` lists them), or `off`.
