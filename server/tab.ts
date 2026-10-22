@@ -340,6 +340,16 @@ export class Tab {
       opts.fast = false;
       if (!opts.stepsSet) opts.steps = STEPS;
     }
+    // Gemini follow-up ("the same picture, but...") with no shape asked: the last picture's shape.
+    // The last picture goes along too: Gemini changes it when the words ask for that, else ignores it.
+    const last = cloud && !ref ? ([...this.state.items].reverse().find((i) => i.kind === 'image' && i.model === im.label && i.status === 'done') as ImageItem | undefined) : undefined;
+    if (last && !opts.shaped) [opts.width, opts.height] = [last.width, last.height];
+    let previous: Buffer | undefined;
+    try {
+      previous = last?.path ? readFileSync(last.path) : undefined;
+    } catch {
+      /* the file was moved or deleted: the words alone */
+    }
     if (notes.length) log({ id: randomUUID(), kind: 'note', text: notes.join(' ') });
     if (!opts.prompt) {
       this.onPersist?.();
@@ -357,6 +367,8 @@ export class Tab {
       .paint({
         opts,
         ref,
+        thread: this.id,
+        previous,
         cancelled: () => this.gone || epoch !== this.paintEpoch,
         update: (fields) => {
           if (this.gone) return;

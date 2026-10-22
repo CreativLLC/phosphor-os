@@ -332,20 +332,29 @@ const cfg = { url: 'http://img.test', label: 'Fake Image (local)', dir, idleMs: 
   check('gemini: no attached picture, no ref file named', !/ref-1/.test(geminiAsk('x', 896, 1120, false)) && /portrait, aspect ratio 4:5/.test(geminiAsk('x', 896, 1120, false)));
   const home = homedir();
   const pic = `${home}/.gemini/antigravity-cli/brain/abc/kite_1.jpg`;
-  const out = [JSON.stringify({ event: 'tool', text: 'saved /etc/passwd.png' }), JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: `Done.\n${pic}\n` } })].join('\n');
+  const out = [JSON.stringify({ event: 'tool', text: 'saved /etc/passwd.png' }), JSON.stringify({ event: 'result', result: { status: 'SUCCESS', conversation_id: 'chat-1234-abcd', response: `Done.\n${pic}\n` } })].join('\n');
   const got = pictureFrom(out, (f) => f === pic);
-  check('gemini: the picture path from the answer', got.file === pic && /Done/.test(got.answer ?? ''), JSON.stringify(got));
+  check('gemini: the picture path from the answer, and its chat', got.file === pic && /Done/.test(got.answer ?? '') && got.chat === 'chat-1234-abcd', JSON.stringify(got));
+  check('gemini: asks it to wait for the picture in this turn', /wait for its result in this turn/.test(ask));
+  check('gemini: the last picture: change it only when asked', /last\.png/.test(geminiAsk('x', 512, 512, false, true)) && /If the request is a new picture, do not use last\.png/.test(geminiAsk('x', 512, 512, false, true)) && !/last\.png/.test(ask));
   check('gemini: a path outside its own folder is never taken', pictureFrom(JSON.stringify({ event: 'result', result: { response: '/home/x/secret.png' } }), () => true).file === undefined);
   check('gemini: no picture: the answer is kept for the message', pictureFrom(JSON.stringify({ event: 'result', result: { response: 'Your daily limit is used up.' } })).answer === 'Your daily limit is used up.');
 
-  const jobs: { prompt: string; ref: boolean }[] = [];
-  Tab.gemini = new Map([['image:gemini:fake', { model: { label: 'Gemini Image (Fake)', edit: true, turbo: '' }, painter: { paint: async (job) => (jobs.push({ prompt: job.opts.prompt, ref: !!job.ref }), { status: 'done', file: 'g.png', path: '/pics/g.png', ms: 50 }) } }]]);
+  const jobs: { prompt: string; ref: boolean; thread?: string; w: number; h: number }[] = [];
+  Tab.gemini = new Map([['image:gemini:fake', { model: { label: 'Gemini Image (Fake)', edit: true, turbo: '' }, painter: { paint: async (job) => (jobs.push({ prompt: job.opts.prompt, ref: !!job.ref, thread: job.thread, w: job.opts.width, h: job.opts.height }), { status: 'done', file: 'g.png', path: '/pics/g.png', ms: 50 }) } }]]);
   const t = new Tab(() => {}, { cwd: '/tmp', model: 'image:gemini:fake' });
   t.send('a lighthouse --wide');
   await tick(1);
   const item = t.state.items.find((i) => i.kind === 'image') as ImageItem | undefined;
   check('gemini tab: the message becomes a Gemini picture, no Claude process', jobs[0]?.prompt === 'a lighthouse' && t.query === undefined, JSON.stringify(jobs));
   check('gemini tab: no seed or steps on the card; done', item?.seed === 0 && item.steps === 0 && item.status === 'done' && item.model === 'Gemini Image (Fake)', JSON.stringify(item));
+  check('gemini tab: the tab is the thread (one Gemini chat per tab)', jobs[0]?.thread === t.id, JSON.stringify(jobs[0]));
+  t.send('the same, but at night');
+  await tick(1);
+  check('gemini tab: a follow-up keeps the last picture\'s shape', jobs[1]?.w === jobs[0].w && jobs[1].h === jobs[0].h && jobs[0].w > jobs[0].h, JSON.stringify(jobs));
+  t.send('a tall tower --tall');
+  await tick(1);
+  check('gemini tab: a shape asked wins', jobs[2]?.h > jobs[2]?.w, JSON.stringify(jobs[2]));
 }
 
 rmSync(dir, { recursive: true, force: true });

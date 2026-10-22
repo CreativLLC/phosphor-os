@@ -25,6 +25,8 @@ export type Engine = {
 export type PaintJob = {
   opts: ImageOptions;
   ref?: Buffer; // the picture to edit
+  thread?: string; // the tab: a cloud model keeps one chat per tab, so "the same picture, but..." works
+  previous?: Buffer; // a cloud model: the tab's last picture, to change when the words ask for that
   update: (fields: Partial<ImageItem>) => void;
   cancelled: () => boolean; // asked before it starts; a picture being painted cannot be stopped (the engine has no cancel for it)
 };
