@@ -91,6 +91,16 @@ Scope {
     }
   }
 
+  // An HDMI monitor that loses its signal can drop off and come back a moment later (a hotplug); Hyprland then
+  // turns it on again, so the second monitor showed the screensaver all night (2026-10-22). While the displays
+  // should be off, any one that is on goes off again.
+  Timer {
+    running: root.screensOff
+    interval: 30 * 1000
+    repeat: true
+    onTriggered: Quickshell.execDetached(["bash", "-c", "hyprctl monitors -j | jq -e 'all(.[]; .dpmsStatus | not)' >/dev/null || omarchy-brightness-display off"])
+  }
+
   // The media stopped while nobody is at the PC: the full 30 min again from then.
   Timer {
     id: offAfterMedia
