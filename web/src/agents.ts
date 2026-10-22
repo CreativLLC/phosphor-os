@@ -6,12 +6,12 @@ import { send } from './net.ts';
 import { watchActive } from './store.ts';
 import { mountIdeas } from './ideas.ts';
 import { mountToday } from './today.ts';
-import { button, el, fmtDuration } from './ui.ts';
+import { el, fmtDuration } from './ui.ts';
 
 // Left sidebar (owner: art team): the main operator card on top, then one animated card per
 // subagent. Running crew first (oldest first, so cards don't jump), then crew that finished in the
-// last RECENT_MS, newest first. Older finished crew fold into one "N DONE" line (owner's ask
-// 2026-10-11: only active crew on screen); tapping it shows them again. Nothing is deleted.
+// last RECENT_MS, newest first. Older finished crew leave the panel (owner's ask 2026-10-21: the chat
+// already shows each helper's work), except a failed or stopped one: it stays until the next turn starts.
 // Cards are keyed by tab + agent id and updated in place; canvases are never rebuilt.
 
 const RECENT_MS = 2 * 60_000;
@@ -204,17 +204,11 @@ export function mountAgents(root: HTMLElement): void {
   const list = el('div', 'crew-list');
   const empty = el('div', 'crew-empty');
   empty.append(el('div', 'crew-empty-title', 'NO CREW ON DUTY'), el('div', 'crew-empty-sub', 'Subagents report in here.'));
-  let expanded = false;
-  let tabId: string | undefined;
-  const more = button('', () => {
-    expanded = !expanded;
-    render(current);
-  }, 'crew-more');
   const todayHead = heading('TODAY');
   const todayBox = el('section', 'today');
   const ideasHead = heading('IDEAS');
   const ideasBox = el('section', 'ideas');
-  root.replaceChildren(opHead.el, op.el, crewHead.el, list, empty, more, todayBox, ideasBox);
+  root.replaceChildren(opHead.el, op.el, crewHead.el, list, empty, todayBox, ideasBox);
   mountToday(todayBox, todayHead);
   mountIdeas(ideasBox, ideasHead);
 
@@ -224,10 +218,7 @@ export function mountAgents(root: HTMLElement): void {
 
   function render(tab: TabState | undefined): void {
     current = tab;
-    if (tab?.meta.id !== tabId) {
-      tabId = tab?.meta.id;
-      expanded = false;
-    }
+    const tabId = tab?.meta.id;
     op.update(tab);
 
     const now = Date.now();
@@ -236,8 +227,9 @@ export function mountAgents(root: HTMLElement): void {
     const finished = agents.filter((a) => a.status !== 'running').sort((a, b) => (b.endedAt ?? b.startedAt) - (a.endedAt ?? a.startedAt));
     const recent = finished.filter((a) => now - (a.endedAt ?? a.startedAt) < RECENT_MS);
     nextFold = Math.min(Infinity, ...recent.map((a) => (a.endedAt ?? a.startedAt) + RECENT_MS));
-    const shownDone = expanded ? finished : recent;
-    const shown = [...running, ...shownDone];
+    const turn = tab?.stats.turnStartedAt;
+    const failedThisTurn = (a: (typeof agents)[number]) => a.status !== 'completed' && (!turn || (a.endedAt ?? a.startedAt) >= turn);
+    const shown = [...running, ...finished.filter((a) => recent.includes(a) || failedThisTurn(a))];
 
     const keys = shown.map((a) => `${tabId}:${a.id}`);
     const keep = new Set(keys);
@@ -254,11 +246,8 @@ export function mountAgents(root: HTMLElement): void {
       if (list.children[i] !== c.el) list.insertBefore(c.el, list.children[i] ?? null);
     });
 
-    setText(crewHead.extra, agents.length ? `${running.length} ACTIVE / ${agents.length}` : '');
+    setText(crewHead.extra, running.length ? `${running.length} ACTIVE` : '');
     empty.hidden = shown.length > 0;
-    const folded = finished.length - recent.length;
-    more.hidden = folded === 0;
-    setText(more, expanded ? 'HIDE DONE' : `▸ ${folded} DONE`);
   }
 
   watchActive(['agents', 'meta', 'activity', 'stats'], render);

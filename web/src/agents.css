@@ -410,13 +410,6 @@ html[data-crt='off'] .crew .sprite {
   color: var(--ph-dim);
 }
 
-.crew-more {
-  width: 100%;
-  margin-top: 8px;
-  color: var(--ph-dim);
-  letter-spacing: 2px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .agent.fresh,
   .agent.flash,
