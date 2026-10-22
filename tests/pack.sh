@@ -169,7 +169,7 @@ snap B >"$T/B.before"
 q B bash "$D"
 check "files created" test -f "$T/B/.config/omarchy/shell.json" -a "$(cat "$T/B/.config/omarchy/shell.toml")" == $'[font]\nbase-size = 16'
 check "left order" jq -e '.bar.layout.left|map(.id)==["omarchy.menu","omarchy.workspaces","omarchy.spacer","taskbar"]' "$T/B/.config/omarchy/shell.json"
-check "clock bottom right, 12-hour, then the counter" jq -e '(.bar.layout.center|length)==0 and (.bar.layout.right[-3:]|map(.id))==["omarchy.weather","phosphor-os.clock","phosphor-os.notifications"] and .bar.layout.right[-2].format=="dddd h:mm AP"' "$T/B/.config/omarchy/shell.json"
+check "clock bottom right, 12-hour and the date, then the counter" jq -e '(.bar.layout.center|length)==0 and (.bar.layout.right[-3:]|map(.id))==["omarchy.weather","phosphor-os.clock","phosphor-os.notifications"] and .bar.layout.right[-2].format=="dddd h:mm AP MM/dd/yy"' "$T/B/.config/omarchy/shell.json"
 snap B >"$T/B.r1"; q B bash "$D"; snap B >"$T/B.r2"; check "run 2 no-op" cmp -s "$T/B.r1" "$T/B.r2"
 q B bash "$D" --undo; snap B >"$T/B.u"; check "undo: as before" cmp -s "$T/B.before" "$T/B.u"
 

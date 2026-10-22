@@ -151,9 +151,10 @@ if (mode.startsWith("json")) {
   };
   const oldSaver = (e) => e?.id === "retro-claude.screensaver"; // the plugin id before the rename
   // Clock, weather and indicators sit bottom right like Windows; the middle of the bar stays empty.
-  const lay = bar.layout, CLOCK = "dddd h:mm AP";
+  // The clock: day, 12-hour time, then the date ("Thursday 2:14 PM 10/22/26"). OURS: every format the pack has set.
+  const lay = bar.layout, CLOCK = "dddd h:mm AP MM/dd/yy", OURS = [CLOCK, "dddd h:mm AP"];
   const FRONT = ["omarchy.indicators", "omarchy.system-update", "omarchy.keyboard-layout"], END = ["omarchy.weather", "omarchy.clock"];
-  const clock = () => [...(lay.right ?? []), ...(lay.center ?? [])].find((e) => e?.id === "omarchy.clock");
+  const clock = () => [...(lay.right ?? []), ...(lay.center ?? [])].find((e) => e?.id === "omarchy.clock" || e?.id === CLK);
   if (mode === "json-apply") {
     if (c.plugins?.some(oldSaver)) { c.plugins = c.plugins.filter((e) => !oldSaver(e)); notes.push("saver=1"); }
     if (bar.position !== "bottom") { notes.push(`position=${bar.position ?? ""}`); bar.position = "bottom"; }
@@ -175,7 +176,10 @@ if (mode.startsWith("json")) {
       lay.center = [];
     }
     const k = clock();
-    if (k && k.format !== CLOCK) { notes.push(`clock=${k.format ?? ""}`); k.format = CLOCK; }
+    if (k && k.format !== CLOCK) {
+      if (!("clock" in old)) notes.push(`clock=${k.format ?? ""}`); // the format from before the pack, kept once
+      k.format = CLOCK;
+    }
     if (!(c.plugins ??= []).some(notif)) { c.plugins.push({ id: NOTIF }); notes.push("notif=1"); }
     if (!c.disabledPlugins?.includes(BUILTIN)) {
       (c.disabledPlugins ??= []).push(BUILTIN);
@@ -218,7 +222,7 @@ if (mode.startsWith("json")) {
       lay.right = (lay.right ?? []).filter((e) => !ids.has(e?.id));
       lay.center = back.map((e) => now.get(e?.id) ?? e);
     }
-    if ("clock" in old && clock()?.format === CLOCK) old.clock ? (clock().format = old.clock) : delete clock().format;
+    if ("clock" in old && OURS.includes(clock()?.format)) old.clock ? (clock().format = old.clock) : delete clock().format;
     if ("position" in old && bar.position === "bottom") old.position ? (bar.position = old.position) : delete bar.position;
     if ("lock" in old && idle.lock === 2000000) old.lock ? (idle.lock = Number(old.lock)) : delete idle.lock;
     // 300 was the value of the pack before the OS screensaver

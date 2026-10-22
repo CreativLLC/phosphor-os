@@ -1,5 +1,6 @@
 import type { TranscribeResponse, VoiceLiveEvent } from '../../shared/protocol.ts';
 import { toast } from './ui.ts';
+import { shellApi } from './shellapi.ts';
 
 // DICTATE: press the button or Ctrl+Space, talk, press again. Esc cancels. Nothing is sent on its own.
 //
@@ -245,8 +246,7 @@ function begin(ev?: Event): void {
     toast("The mic didn't start. Allow the microphone for this site in the browser (Firefox: open the site in a normal tab, tap the shield or lock by the address, set Microphone to Allow), then try again.", 12000);
   }, 12000);
 
-  navigator.mediaDevices
-    .getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+  openMic()
     .then(async (stream) => {
       clearTimeout(stuck);
       mark(t, 'mic');
@@ -525,11 +525,29 @@ function serverError(status: number, msg?: string): string {
   return msg || `Dictation failed (error ${status}).`;
 }
 
+// A USB mic that dropped off and came back (a USB switch, 2026-10-22) can read as "no microphone" while the
+// browser still lists the old device. Asking for the device list again and retrying once picks up the new one.
+async function openMic(): Promise<MediaStream> {
+  const want = { audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+  try {
+    return await navigator.mediaDevices.getUserMedia(want);
+  } catch (e) {
+    const name = e instanceof DOMException ? e.name : '';
+    if (name !== 'NotFoundError' && name !== 'NotReadableError' && name !== 'OverconstrainedError') throw e;
+    await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    await new Promise((r) => setTimeout(r, 300));
+    return navigator.mediaDevices.getUserMedia(want);
+  }
+}
+
 function micError(e: unknown): string {
   const name = e instanceof DOMException ? e.name : '';
   if (name === 'NotAllowedError' || name === 'SecurityError')
     return 'Microphone blocked. Allow it for this site (lock icon next to the address), then try again.';
-  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No microphone found. Plug one in and try again.';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError')
+    return shellApi
+      ? 'No microphone found. If it was unplugged and plugged back in, restart the window (Super + Alt + R on Linux), then try again.'
+      : 'No microphone found. Plug one in and try again.';
   if (name === 'NotReadableError' || name === 'AbortError') return 'The microphone is busy in another app. Close that app and try again.';
   return `Could not start the microphone${e instanceof Error && e.message ? `: ${e.message}` : '.'}`;
 }
