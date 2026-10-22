@@ -30,9 +30,9 @@
 
 </div>
 
-Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://code.claude.com) with your own
-Anthropic login or API key. Run **the app** on any computer, or make it **the whole desktop** on
-[Omarchy](https://omarchy.org) Linux.
+Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://code.claude.com), running Claude
+(your own Anthropic login or API key) or a local model on your own GPU. Run **the app** on any computer, or make it
+**the whole desktop** on [Omarchy](https://omarchy.org) Linux.
 
 ## Two flavors
 
@@ -189,7 +189,10 @@ own tailnet. More: [SECURITY.md](SECURITY.md).
 ## Optional extras
 
 - Calendar in TODAY and the clock popup: [docs/CALENDAR.md](docs/CALENDAR.md)
-- Local models on your own GPU (AMD, about 27 GB of disk): [docs/LOCAL-MODEL.md](docs/LOCAL-MODEL.md)
+- Local models on your own GPU (AMD, about 27 GB of disk): [docs/LOCAL-MODEL.md](docs/LOCAL-MODEL.md). The easy way:
+  Phosphor-OS is made for Claude Code, so let your agent do it. In a chat, ask: "Set up a local model for
+  Phosphor-OS. Follow docs/LOCAL-MODEL.md." It checks your GPU, runs the setup with you and asks before anything
+  that needs sudo. Then the local models show up in the model picker next to Claude.
 - Local image generator on your own GPU (AMD, about 19 GB of disk): [docs/IMAGE-MODEL.md](docs/IMAGE-MODEL.md)
 - Settings (`PHOSPHOR_*`) are listed in `.env.example`
 
