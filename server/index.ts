@@ -6,7 +6,7 @@ import { AUTO_MODEL, EFFORTS, MODES, type ClientEvent, type ServerEvent } from '
 import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPassword } from './auth.ts';
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
-import { handleIdeas } from './ideas.ts';
+import { handleIdeas, startIdeas } from './ideas.ts';
 import { WEB_DIST, config } from './config.ts';
 import { handleDocs, handleOpenLocal, localKey } from './docs.ts';
 import { handleFiles } from './files.ts';
@@ -212,6 +212,7 @@ server.on('upgrade', (req, socket, head) => {
 
 startLocalRelay();
 startCalendar();
+startIdeas();
 localKey().catch((e) => console.warn('docs: could not make the key for opening files from the PC:', e));
 server.listen(config.port, config.host, () => {
   console.log(`\n  PHOSPHOR-OS is running.`);

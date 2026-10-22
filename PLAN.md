@@ -352,7 +352,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | Page core | `web/src/main.ts`, `store.ts`, `net.ts`, `chat.ts`, `tabs.ts`, `history.ts`, `md.ts` (+ `mdlists.ts`: numbered lists after a text line, `tests/mdlists.ts`), `demo.ts`, `layout.css` |
 | Look | `theme.css` (token contract at top), `chat.css`, `settings.ts`, `sound.ts`, `boot.ts`, login page |
 | HUD | `mission.ts`, `mission.css` |
-| IDEAS panel | `shared/ideas.ts` (file format, parse, drop, the DO message), `server/ideas.ts` (`GET /api/ideas`, `POST /api/ideas/drop`, `PHOSPHOR_IDEAS_FILE`), `web/src/ideas.ts`, `ideas.css` (under TODAY, mounted by `agents.ts`), `newReq(then)` in `net.ts` (DO: new tab, then send), `tests/ideas.ts` |
+| IDEAS panel | `shared/ideas.ts` (file format, parse, drop, the DO message), `server/ideas.ts` (`GET /api/ideas`, `POST /api/ideas/drop`, `PHOSPHOR_IDEAS_FILE`), `web/src/ideas.ts`, `ideas.css` (under TODAY, mounted by `agents.ts`), `newReq(then)` in `net.ts` (DO: new tab, then send), `tests/ideas.ts`; weekly suggestions `server/ideasweekly.ts` (Friday 07:00+, catch-up after 8 days, `PHOSPHOR_IDEAS_NOTES`, `POST /api/ideas/suggest`, log `data/ideas-weekly.log`), `tests/ideasweekly.ts` |
 | Cache clock | `shared/cache.ts` (TTL from usage, time left), `noteCache` in `server/tab.ts` (live replies + reopened chats), `cacheOf`/`watchCache` in `web/src/context.ts` (CTX gauge suffix), CACHE row in `mission.ts`, `tests/cache.ts` |
 | Agents | `agents.ts`, `agents.css`, `sprites/` |
 | TODAY panel (calendar + reminders) | `server/calendar.ts` (`GET /api/today`, 10-min fetch, cache file), `server/icsexpand.ts` (pure ICS expansion), `web/src/today.ts`, `today.css`, `docs/CALENDAR.md`, `tests/calendar.ts` |

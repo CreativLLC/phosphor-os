@@ -4,12 +4,15 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join, resolve } from 'node:path';
 import { dropIdeas, parseIdeas, type IdeasResponse } from '../shared/ideas.ts';
 import { config } from './config.ts';
+import { startIdeasWeekly, suggestNow } from './ideasweekly.ts';
 
 // IDEAS panel (web/src/ideas.ts): the "do this later" file, format in shared/ideas.ts.
 // PHOSPHOR_IDEAS_FILE in .env, else parked.md in the workspace folder (PHOSPHOR_CWD).
 // GET /api/ideas -> IdeasResponse. POST /api/ideas/drop { lines: string[] } removes those lines, answers the same.
+// POST /api/ideas/suggest: the weekly suggestions now (server/ideasweekly.ts) -> WeeklyResult.
 
 const FILE = resolve(process.env.PHOSPHOR_IDEAS_FILE || join(config.cwd, 'parked.md'));
+export const startIdeas = () => startIdeasWeekly(FILE);
 const MAX_BODY = 64 * 1024;
 
 async function read(): Promise<IdeasResponse> {
@@ -51,6 +54,10 @@ export async function handleIdeas(req: IncomingMessage, res: ServerResponse, url
     const next = dropIdeas(md, lines);
     if (next !== md) await writeFile(FILE, next);
     return json(res, await read());
+  }
+  if (url.pathname === '/api/ideas/suggest') {
+    if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return json(res, { error: 'POST JSON only.' }, 405);
+    return json(res, await suggestNow(FILE));
   }
   return json(res, { error: 'not found' }, 404);
 }

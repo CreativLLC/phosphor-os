@@ -70,3 +70,42 @@ export function ideasPrompt(ideas: Idea[], file: string): string {
     'Take them one at a time. Ask me first if one is unclear or needs a decision. When one is done, or I drop it, delete its line from that file.',
   ].join('\n');
 }
+
+// Weekly suggestions (server/ideasweekly.ts): the model's answer -> valid idea lines, dated `today`, at most `max`,
+// none that repeat an idea already in the file (same text, case and spaces aside).
+const SUGGESTION = /^\s*[-*]\s+(?:\[ \]\s+)?(?:\d{4}-\d{2}-\d{2}\s+·\s+)?([^·\n]{1,40}?)\s+·\s+([^·\n]{8,300})$/;
+const same = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+export function pickSuggestions(raw: string, today: string, existing: Idea[], max = 5): string[] {
+  const seen = new Set(existing.map((i) => same(i.text)));
+  const out: string[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const m = SUGGESTION.exec(line);
+    if (!m) continue;
+    const project = m[1].trim().toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '') || 'general';
+    const text = m[2].replace(/\s+/g, ' ').trim();
+    if (seen.has(same(text))) continue;
+    seen.add(same(text));
+    out.push(`- [ ] ${today} · ${project} · ${text}`);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+// The file with `lines` added at the end of its ## Suggested section (made at the end of the file if missing).
+export function addSuggested(md: string, lines: string[]): string {
+  if (!lines.length) return md;
+  const eol = md.includes('\r\n') ? '\r\n' : '\n';
+  const rows = md.split(/\r?\n/);
+  const start = rows.findIndex((l) => /^#{2,6}\s+suggested/i.test(l));
+  if (start < 0) {
+    while (rows.length && rows[rows.length - 1].trim() === '') rows.pop();
+    return [...rows, '', '## Suggested', ...lines, ''].join(eol);
+  }
+  let end = rows.findIndex((l, i) => i > start && /^#{1,6}\s/.test(l));
+  if (end < 0) end = rows.length;
+  let at = end; // after the section's last non-blank line
+  while (at > start + 1 && rows[at - 1].trim() === '') at--;
+  rows.splice(at, 0, ...lines);
+  return rows.join(eol);
+}
