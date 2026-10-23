@@ -269,6 +269,7 @@ function begin(ev?: Event): void {
       });
       startedAt = performance.now();
       setState('rec');
+      if (ctx.state === 'suspended') wakeOnTap(t, ctx);
       clock = window.setInterval(() => {
         if (performance.now() - startedAt >= MAX_MS) {
           toast('10-minute limit reached. Finishing now.');
@@ -285,6 +286,29 @@ function begin(ev?: Event): void {
       setState('idle');
       toast(micError(e), 7000);
     });
+}
+
+// Firefox on Android sometimes keeps the audio engine paused even after the DICTATE tap: the mic is open but no
+// sound arrives (5 takes 2026-10-19 to 10-23 heard nothing, "ctx suspended"). A second tap wakes it, so ask for
+// one and wake it on any tap or key until it runs.
+function wakeOnTap(t: Take, ctx: AudioContext): void {
+  const kinds = ['pointerdown', 'touchend', 'click', 'keydown'];
+  const wake = () => void ctx.resume().catch(() => {});
+  const done = () => {
+    for (const k of kinds) document.removeEventListener(k, wake, true);
+    ctx.removeEventListener('statechange', onState);
+  };
+  const onState = () => {
+    if (ctx.state === 'running') {
+      mark(t, 'woke');
+      if (take === t) setLive('');
+      done();
+    } else if (ctx.state === 'closed') done();
+  };
+  for (const k of kinds) document.addEventListener(k, wake, true);
+  ctx.addEventListener('statechange', onState);
+  setLive('Tap the chat once to start the mic.');
+  toast('The mic is paused by the browser. Tap the chat once (not DICTATE) to start it.', 6000);
 }
 
 // ---- Live socket ----
