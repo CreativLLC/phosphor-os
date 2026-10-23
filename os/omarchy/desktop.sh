@@ -561,6 +561,36 @@ viewer_undo() {
   drop viewer_dir
 }
 
+# mpv: YouTube's speed keys (Shift+> faster, Shift+< slower, up to 3x), a script linked into mpv's scripts folder.
+MPV_SPEED="$config_home/mpv/scripts/phosphor-os-speed.lua"
+mpv_step() {
+  command -v mpv >/dev/null || return 0
+  local target="$REPO/os/mpv/speed.lua"
+  [[ -L $MPV_SPEED && $(readlink "$MPV_SPEED") == "$target" ]] && return 0
+  if [[ -e $MPV_SPEED || -L $MPV_SPEED ]]; then
+    say "  mpv: $MPV_SPEED is someone else's file; speed keys not added."
+    return 0
+  fi
+  [[ -d ${MPV_SPEED%/*} ]] || keep mpv_dir "$([[ -d ${MPV_SPEED%/*/*} ]] && echo 1 || echo 2)"
+  run mkdir -p "${MPV_SPEED%/*}"
+  run ln -s "$target" "$MPV_SPEED"
+  put mpv_speed 1
+  ((DRY)) || say "  mpv: Shift+> and Shift+< change the speed like YouTube."
+}
+
+mpv_undo() {
+  noted mpv_speed || return 0
+  [[ -L $MPV_SPEED ]] && run rm -f "$MPV_SPEED"
+  if ! ((DRY)); then
+    case $(recall mpv_dir) in
+      1) rmdir "${MPV_SPEED%/*}" 2>/dev/null || true ;;
+      2) rmdir "${MPV_SPEED%/*}" "${MPV_SPEED%/*/*}" 2>/dev/null || true ;;
+    esac
+  fi
+  drop mpv_speed
+  drop mpv_dir
+}
+
 nightlight_undo() {
   noted nl_units || return 0
   local u
@@ -599,6 +629,7 @@ undo() {
   nightlight_undo
   dictate_undo
   viewer_undo
+  mpv_undo
   plugin_undo "$CLOCK" clock_dir
   if noted plugin_dir; then
     run rm -rf "$SAVER"
@@ -662,5 +693,6 @@ plugin_step Clock "$PACK/clock" "$CLOCK" clock_dir
 nightlight_step # after the clock: the timer runs the script in its folder
 dictate_step
 viewer_step
+mpv_step
 apply_edit json "$SHELL_JSON" "$DEFAULT_JSON" # last: it names the taskbar and the plugins, now in place
 ((DRY)) || say "  The Phosphor-OS look is on. Undo: bash $(printf '%q' "$PACK/desktop.sh") --undo"
