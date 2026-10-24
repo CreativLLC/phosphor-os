@@ -47,6 +47,8 @@ export interface LabResultFull extends LabResult {
   reply: string;
   files: LabFile[];
   page: string; // a web page it made, to show in a frame (path inside files/), or ''
+  build: '' | 'building' | 'done' | 'failed'; // `npm run build` for a project that needs one (server/labrun.ts)
+  canBuild: boolean; // it has a package.json with a build script
 }
 
 export interface LabTest {

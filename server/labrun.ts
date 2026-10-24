@@ -1,5 +1,5 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -94,6 +94,12 @@ function findBin(name: string): Promise<Bin | null> {
 
 const hasBox = () => existsSync('/usr/bin/bwrap');
 
+// Node.js for the box (models build web projects with npm): its folder goes on PATH, its install tree is shown.
+async function tools(): Promise<{ path: string; roots: string[] }> {
+  const node = await findBin('node');
+  return node ? { path: `${dirname(node.path)}:/usr/bin:/bin`, roots: [node.root] } : { path: '/usr/bin:/bin', roots: [] };
+}
+
 async function catalog(): Promise<Record<string, { name?: string; models?: Record<string, { name?: string }> }>> {
   const old = existsSync(CATALOG) ? Date.now() - statSync(CATALOG).mtimeMs : Infinity;
   if (old > 6 * 3600_000) {
@@ -178,12 +184,12 @@ function systemDirs(): string[] {
 
 type BoxSpec = { env: Record<string, string>; bind?: [string, string][]; ro?: [string, string][] };
 
-function boxArgs(home: string, work: string, roots: string[], spec: BoxSpec): string[] {
+function boxArgs(home: string, work: string, roots: string[], spec: BoxSpec, cwd = WORK): string[] {
   const a = ['--unshare-all', '--share-net', '--die-with-parent', '--new-session', '--clearenv', '--ro-bind', '/usr', '/usr', ...systemDirs(), '--ro-bind', '/etc', '/etc'];
   if (existsSync('/run/systemd/resolve')) a.push('--ro-bind', '/run/systemd/resolve', '/run/systemd/resolve'); // DNS
   a.push('--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--bind', home, HOME);
   for (const r of new Set(roots)) if (!r.startsWith('/usr/')) a.push('--ro-bind', r, r);
-  a.push('--bind', work, WORK, '--chdir', WORK);
+  a.push('--bind', work, WORK, '--chdir', cwd);
   for (const [s, d] of spec.bind ?? []) a.push('--bind', s, d);
   for (const [s, d] of spec.ro ?? []) a.push('--ro-bind', s, d);
   const env = { HOME, USER: userInfo().username, PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', TERM: 'dumb', ...spec.env };
@@ -382,6 +388,9 @@ async function start(job: Job, r: LabResult): Promise<void> {
     mkdirSync(files, { recursive: true });
     const model = r.model.slice(r.model.indexOf(':') + 1);
     const p = await plan(r.app, model, job.prompt, home);
+    const t = await tools();
+    p.spec.env.PATH ??= t.path;
+    p.roots.push(...t.roots);
     const b = await findBin(APPS[r.app].bin);
     writeJson(resultFile(job), { ...r, state: 'running', startedAt, appVersion: b?.version ?? '' });
     if (!hasBox()) throw new Error('bubblewrap (bwrap) is not installed.');
@@ -427,7 +436,7 @@ async function start(job: Job, r: LabResult): Promise<void> {
     state = 'stopped';
     error = 'Stopped by you.';
   } else if (live.limit) state = 'limit';
-  else if (error || exitCode !== 0) {
+  else if (error || (exitCode !== 0 && !live.reply.trim())) {
     state = 'failed';
     error ||= lastErr || `The app stopped with code ${exitCode}.`;
   }
@@ -439,6 +448,116 @@ async function start(job: Job, r: LabResult): Promise<void> {
   running.delete(key);
   if (r.app === 'local') localBusy = false;
   pump();
+  if (state === 'done') {
+    const site = pickPage(files, listFiles(files));
+    if (!site.page && site.buildDir !== null) void buildPage(resultDir, site.buildDir);
+  }
+}
+
+// ------------------------------------------------------------ the page to show, and building it
+
+// Build junk: big, made again by one install or build. Never listed, REMOVE JUNK deletes it.
+export const JUNK = new Set(['node_modules', '.cache', '__pycache__', '.venv', 'venv', '.pnpm-store', '.parcel-cache', '.turbo', '.next', '.nuxt', '.svelte-kit']);
+
+// The files a model made (junk folders and symlinks left out: a link could point anywhere on the PC).
+export function listFiles(root: string): { path: string; bytes: number }[] {
+  const files: { path: string; bytes: number }[] = [];
+  const walk = (dir: string, rel: string, depth: number) => {
+    if (depth > 6 || files.length >= 400) return;
+    let names: string[] = [];
+    try {
+      names = readdirSync(dir).sort();
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      if (JUNK.has(n) || n === '.git') continue;
+      const p = join(dir, n);
+      const st = lstatSync(p, { throwIfNoEntry: false });
+      if (!st || st.isSymbolicLink()) continue;
+      if (st.isDirectory()) walk(p, `${rel}${n}/`, depth + 1);
+      else if (st.isFile()) files.push({ path: `${rel}${n}`, bytes: st.size });
+    }
+  };
+  walk(root, '', 0);
+  return files;
+}
+
+// Which web page to show. A built one first (dist/, build/, out/), then any page that runs as it is. A page that
+// only loads source (/src/main.tsx) needs `npm run build`: buildDir says where (null: nothing to build).
+export function pickPage(root: string, files: { path: string }[]): { page: string; buildDir: string | null } {
+  const paths = files.map((f) => f.path);
+  const html = paths.filter((p) => /\.html?$/i.test(p) && !/(^|\/)(public|src)\//.test(p));
+  const depth = (p: string) => p.split('/').length;
+  const built = html.filter((p) => /(^|\/)(dist|build|out)\/index\.html$/i.test(p)).sort((a, b) => depth(a) - depth(b));
+  const index = html.filter((p) => /(^|\/)index\.html$/i.test(p)).sort((a, b) => depth(a) - depth(b));
+  const source = (p: string) => {
+    try {
+      return /<script[^>]+src=["'][^"']*\.(jsx|tsx|ts|mts|vue|svelte)["']|<script[^>]+src=["']\/src\//i.test(readFileSync(join(root, p), 'utf8'));
+    } catch {
+      return false;
+    }
+  };
+  const ready = [...built, ...index.filter((p) => !source(p)), ...html.filter((p) => !source(p))];
+  if (ready.length) return { page: ready[0], buildDir: null };
+  for (const p of paths.filter((x) => /(^|\/)package\.json$/.test(x)).sort((a, b) => depth(a) - depth(b))) {
+    if (readJson<{ scripts?: Record<string, string> }>(join(root, p))?.scripts?.build) return { page: '', buildDir: p.includes('/') ? dirname(p) : '' };
+  }
+  return { page: html[0] ?? '', buildDir: null };
+}
+
+export type BuildState = '' | 'building' | 'done' | 'failed';
+const building = new Set<string>();
+
+export function buildState(resultDir: string): BuildState {
+  if (building.has(resultDir)) return 'building';
+  const b = readJson<{ state?: BuildState }>(join(resultDir, 'build.json'))?.state ?? '';
+  return b === 'building' ? 'failed' : b; // 'building' on disk but not here: the server restarted during it
+}
+
+// `npm install && npm run build` in the box, in the project's folder. Vite gets --base=./ so the built page works
+// from its own folder (the lab serves it under /lab/v/...). Output in build.log.
+export async function buildPage(resultDir: string, projectRel: string): Promise<void> {
+  if (building.has(resultDir) || !hasBox()) return;
+  building.add(resultDir);
+  const files = join(resultDir, 'files');
+  const home = join(BOX_DIR, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const at = Date.now();
+  let ok = false;
+  try {
+    writeJson(join(resultDir, 'build.json'), { state: 'building', at });
+    mkdirSync(home, { recursive: true });
+    const script = readJson<{ scripts?: Record<string, string> }>(join(files, projectRel, 'package.json'))?.scripts?.build ?? '';
+    const t = await tools();
+    const sh = `npm install --no-audit --no-fund --loglevel=error && npm run build${/\bvite\b/.test(script) ? ' -- --base=./' : ''}`;
+    const box = ['bwrap', ...boxArgs(home, files, t.roots, { env: { PATH: t.path, PUBLIC_URL: '.' } }, join(WORK, projectRel)), '/bin/sh', '-c', sh];
+    const scoped = existsSync('/usr/bin/systemd-run');
+    const [cmd, ...args] = scoped ? ['systemd-run', '--user', '--scope', '--quiet', '--collect', '-p', 'MemoryMax=4G', '--', ...box] : box;
+    const log = createWriteStream(join(resultDir, 'build.log'));
+    log.write(`$ ${sh}\n`);
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    child.stdout.pipe(log, { end: false });
+    child.stderr.pipe(log, { end: false });
+    const timer = setTimeout(() => {
+      try {
+        process.kill(-child.pid!, 'SIGKILL');
+      } catch {
+        /* gone */
+      }
+    }, 8 * 60_000);
+    const code = await new Promise<number | null>((res) => {
+      child.on('error', () => res(-1));
+      child.on('close', (c) => res(c));
+    });
+    clearTimeout(timer);
+    await new Promise<void>((res) => log.end(res));
+    ok = code === 0 && !!pickPage(files, listFiles(files)).page;
+  } catch {
+    ok = false;
+  }
+  writeJson(join(resultDir, 'build.json'), { state: ok ? 'done' : 'failed', at, ms: Date.now() - at });
+  rmSync(home, { recursive: true, force: true });
+  building.delete(resultDir);
 }
 
 // After a restart: runs that were going are gone (the server held their output). Say so in their result.json.

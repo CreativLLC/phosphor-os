@@ -209,6 +209,7 @@ const topStars = (t: LabTest | LabTestFull) => Math.max(0, ...t.results.map((r) 
 const rated = (t: LabTest) => t.results.filter((r) => r.stars > 0);
 const avgStars = (rs: LabResult[]) => (rs.length ? rs.reduce((a, r) => a + r.stars, 0) / rs.length : 0);
 const busy = (r: LabResult) => r.state === 'running' || r.state === 'queued';
+const working = (r: LabResultFull) => busy(r) || r.build === 'building'; // keep polling while true
 const pageUrl = (t: LabTestFull, r: LabResultFull, path = r.page) => `${t.view}${encodeURIComponent(r.dir)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${r.endedAt}`;
 
 function stateLabel(r: LabResult): string {
@@ -420,7 +421,7 @@ async function testView(id: string): Promise<HTMLElement> {
 
   w.append(head, meta, prompt, body, more);
   blindBtn.disabled = isBlind(t) && t.results.some((r) => busy(r) || (r.state === 'done' && r.stars === 0));
-  if (t.results.some(busy)) schedulePoll(t.id);
+  if (t.results.some(working)) schedulePoll(t.id);
   if (t.results[openAfterLoad]) setTimeout((i: number) => openFull(t, i), 0, openAfterLoad);
   openAfterLoad = -1;
   return w;
@@ -451,7 +452,7 @@ function schedulePoll(id: string): void {
     t.results.forEach((r, i) => {
       const o = old.results[i];
       if (!o) return;
-      if (o.state !== r.state || o.page !== r.page || o.files.length !== r.files.length) {
+      if (o.state !== r.state || o.page !== r.page || o.files.length !== r.files.length || o.build !== r.build) {
         main.querySelector(`.lab-card[data-i="${i}"]`)?.replaceWith(card(t, i));
         const row = main.querySelector(`tr[data-i="${i}"]`);
         if (row) row.replaceWith(resultRow(t, i));
@@ -462,7 +463,7 @@ function schedulePoll(id: string): void {
     afterRate(t);
     const stop = main.querySelector<HTMLElement>('.lab-stop');
     if (stop) stop.hidden = !t.results.some(busy);
-    if (t.results.some(busy)) schedulePoll(id);
+    if (t.results.some(working)) schedulePoll(id);
   }, 2000);
 }
 
@@ -495,6 +496,17 @@ function card(t: LabTestFull, i: number): HTMLElement {
     pane.onclick = () => openFull(t, i);
   } else if (busy(r)) {
     pane.append(el('div', 'lab-wait', r.state === 'queued' ? 'WAITING FOR ITS TURN' : 'WORKING…'));
+  } else if (r.build === 'building') {
+    pane.append(el('div', 'lab-wait', 'BUILDING THE PAGE…'));
+  } else if (r.canBuild) {
+    // A project whose page only runs after `npm run build` (React, Vite, TypeScript...).
+    const box = el('div', 'lab-needs');
+    box.append(
+      el('p', '', r.build === 'failed' ? 'THE BUILD FAILED. LOG shows why.' : 'THIS PROJECT MUST BE BUILT BEFORE ITS PAGE CAN SHOW.'),
+      button(r.build === 'failed' ? 'TRY THE BUILD AGAIN' : 'BUILD THE PAGE', () => void act(`tests/${t.id}/results/${r.dir}/build`, 'Building: npm install, then npm run build.')),
+    );
+    pane.append(box);
+    if (r.reply) pane.append(el('p', 'lab-reply-line', r.reply));
   } else {
     pane.append(el('pre', `lab-reply${r.error ? ' lab-err' : ''}`, r.reply || r.error || '(no reply)'));
   }
@@ -709,6 +721,7 @@ function openFull(t: LabTestFull, i: number): void {
   };
   document.body.append(d);
   document.body.classList.add('lab-full-open');
+  document.documentElement.classList.add('lab-noscan'); // the CRT scanlines would sit on top of the site
   try {
     history.pushState({ phosphorLab: true, full: true }, '');
   } catch {
@@ -722,6 +735,7 @@ function closeFull(quiet = false): void {
   if (!d) return;
   d.remove();
   document.body.classList.remove('lab-full-open');
+  document.documentElement.classList.remove('lab-noscan');
   if (!quiet && (history.state as { full?: boolean } | null)?.full) {
     pendingBack++;
     history.back();
@@ -763,8 +777,10 @@ async function openLog(t: LabTestFull, i: number): Promise<void> {
   const { body } = box(`LOG · ${nameOf(t, i)}`, true);
   body.append(el('p', 'lab-dim', 'LOADING…'));
   try {
-    const { log, stderr } = await api<{ log: string; stderr: string }>(`tests/${t.id}/results/${r.dir}/log`);
-    body.replaceChildren(el('p', 'lab-dim', "The app's own output (log.jsonl), one event per line."), el('pre', 'lab-log', log || '(empty)'));
+    const { log, stderr, build } = await api<{ log: string; stderr: string; build: string }>(`tests/${t.id}/results/${r.dir}/log`);
+    body.replaceChildren();
+    if (build.trim()) body.append(el('h3', '', 'BUILD (npm install, npm run build)'), el('pre', 'lab-log', build));
+    body.append(el('h3', '', "THE APP'S OUTPUT (log.jsonl, one event per line)"), el('pre', 'lab-log', log || '(empty)'));
     if (stderr.trim()) body.append(el('h3', '', 'ERRORS AND NOTES (stderr)'), el('pre', 'lab-log', stderr));
   } catch (e) {
     body.replaceChildren(el('p', 'lab-err', e instanceof Error ? e.message : String(e)));

@@ -4,8 +4,8 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabFile, type LabNewTest, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../shared/lab.ts';
-import { LAB_DIR, labModels, liveOf, markStopped, queueRun, readJson, stopRuns, writeJson } from './labrun.ts';
+import { LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabNewTest, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../shared/lab.ts';
+import { buildPage, buildState, JUNK, LAB_DIR, labModels, listFiles, liveOf, markStopped, pickPage, queueRun, readJson, stopRuns, writeJson } from './labrun.ts';
 
 // Model Lab (docs/MODEL-LAB.md): tests and results as plain folders, the /api/lab/* routes, and the file viewer.
 // The folder is the truth: data/lab/tests/<year>/<id>/ (or archive/), each with prompt.md, test.json and one folder
@@ -15,8 +15,6 @@ const exec = promisify(execFile);
 const TESTS = join(LAB_DIR, 'tests');
 const ARCHIVE = join(LAB_DIR, 'archive');
 const SCHEMA = 1;
-// Build junk REMOVE JUNK deletes: big, made again by one install or build. Never the model's own work.
-const JUNK = new Set(['node_modules', '.cache', '__pycache__', '.venv', 'venv', '.pnpm-store', '.parcel-cache', '.turbo', '.next', '.nuxt', '.svelte-kit']);
 
 type Stored = Omit<LabTest, 'results' | 'archived'> & { schema: number; key: string; results: { dir: string }[] };
 type Found = { dir: string; archived: boolean };
@@ -60,32 +58,6 @@ function blank(dir: string, model: string): LabResult {
   return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, note: '', error: '' };
 }
 
-// The files a model made (junk folders left out), and the web page to show, if it made one.
-function listFiles(root: string): { files: LabFile[]; page: string } {
-  const files: LabFile[] = [];
-  const walk = (dir: string, rel: string, depth: number) => {
-    if (depth > 6 || files.length >= 400) return;
-    let names: string[] = [];
-    try {
-      names = readdirSync(dir).sort();
-    } catch {
-      return;
-    }
-    for (const n of names) {
-      if (JUNK.has(n) || n === '.git') continue;
-      const p = join(dir, n);
-      const s = lstatSync(p, { throwIfNoEntry: false });
-      if (!s || s.isSymbolicLink()) continue; // a link could point anywhere on the PC
-      if (s.isDirectory()) walk(p, `${rel}${n}/`, depth + 1);
-      else if (s.isFile()) files.push({ path: `${rel}${n}`, bytes: s.size });
-    }
-  };
-  walk(root, '', 0);
-  const html = files.filter((f) => /\.html?$/i.test(f.path));
-  const page = html.find((f) => f.path === 'index.html') ?? html.find((f) => /(^|\/)index\.html$/i.test(f.path)) ?? html[0];
-  return { files, page: page?.path ?? '' };
-}
-
 function full(f: Found): LabTestFull | null {
   const t = load(f);
   if (!t) return null;
@@ -96,7 +68,10 @@ function full(f: Found): LabTestFull | null {
     } catch {
       /* not finished */
     }
-    return { ...r, reply, ...listFiles(join(f.dir, r.dir, 'files')) };
+    const root = join(f.dir, r.dir, 'files');
+    const files = listFiles(root);
+    const { page, buildDir } = pickPage(root, files);
+    return { ...r, reply, files, page, build: buildState(join(f.dir, r.dir)), canBuild: buildDir !== null };
   });
   const { key, ...rest } = t;
   return { ...rest, results, folder: f.dir, view: `/lab/v/${key}/${t.id}/` };
@@ -298,6 +273,13 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
     }
     if (parts[2] === 'results' && parts[3]) {
       if (parts.length === 4 && m === 'PATCH') return (patchResult(f, parts[3], await body(req)), json(res, { ok: true }));
+      if (parts.length === 5 && parts[4] === 'build' && m === 'POST' && DIR.test(parts[3])) {
+        const root = join(f.dir, parts[3], 'files');
+        const { buildDir } = pickPage(root, listFiles(root));
+        if (buildDir === null) return json(res, { error: 'Nothing to build: no package.json with a build script.' }, 400);
+        void buildPage(join(f.dir, parts[3]), buildDir);
+        return json(res, { ok: true });
+      }
       if (parts.length === 5 && parts[4] === 'log' && m === 'GET' && DIR.test(parts[3])) {
         let log = '';
         try {
@@ -311,7 +293,13 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
         } catch {
           /* none */
         }
-        return json(res, { log: log.length > 400_000 ? `…\n${log.slice(-400_000)}` : log, stderr: err.slice(-20_000) });
+        let build = '';
+        try {
+          build = readFileSync(join(f.dir, parts[3], 'build.log'), 'utf8');
+        } catch {
+          /* never built */
+        }
+        return json(res, { log: log.length > 400_000 ? `…\n${log.slice(-400_000)}` : log, stderr: err.slice(-20_000), build: build.slice(-40_000) });
       }
     }
     return json(res, { error: 'not found' }, 404);
@@ -350,9 +338,34 @@ const TYPES: Record<string, string> = {
   '.ttf': 'font/ttf',
 };
 
+// A sandboxed page has no origin, so it cannot keep anything in localStorage: reading it throws, and many pages stop
+// right there. This puts a stand-in (kept in memory for the page's life) in front of each page.
+const STORAGE_SHIM =
+  '<script>(function(){function m(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].length}catch(e){try{Object.defineProperty(window,n,{value:m(),configurable:true})}catch(_){}}})})();</script>';
+
+// Built sites (Vite and the like) point at "/assets/...": the root of a website. Here a site lives under
+// /lab/v/<key>/<test>/<result>/<folder>/, so those paths are pointed at the site's own folder (the nearest folder
+// above the file that has an index.html). Only what is sent changes, never the file on disk.
+function rewrite(text: string, type: string, site: string): string {
+  if (type.startsWith('text/html')) {
+    text = text.replace(/(\s(?:src|href|poster|action|data-src)\s*=\s*)(["'])\/(?!\/)/gi, `$1$2${site}/`).replace(/url\(\s*(["']?)\/(?!\/)/g, `url($1${site}/`);
+    const head = text.search(/<head[^>]*>/i);
+    if (head >= 0) {
+      const end = text.indexOf('>', head) + 1;
+      return text.slice(0, end) + STORAGE_SHIM + text.slice(end);
+    }
+    return STORAGE_SHIM + text;
+  }
+  if (type.startsWith('text/css')) return text.replace(/url\(\s*(["']?)\/(?!\/)/g, `url($1${site}/`).replace(/@import\s+(["'])\/(?!\/)/g, `@import $1${site}/`);
+  if (type.startsWith('text/javascript')) return text.replace(/(["'`])\/assets\//g, `$1${site}/assets/`);
+  return text;
+}
+
 // A page a model made is unknown code. It is served sandboxed (no origin: it cannot use the login or call the API),
 // framed only by this app. The key in the path stands in for the login, because a sandboxed page's own requests
-// (its scripts, pictures) carry no cookie. One key opens one test, read-only.
+// (its scripts, pictures) carry no cookie. One key opens one test, read-only. Any origin may read the files
+// (Access-Control-Allow-Origin *): the sandboxed page itself counts as another origin, and module scripts,
+// "crossorigin" style sheets and fetch() all need that. The key is still the lock.
 export function serveLabFile(res: ServerResponse, url: URL): void {
   const [key = '', id = '', dir = '', ...rest] = url.pathname.split('/').slice(3).map(decodeURIComponent);
   const f = find(id);
@@ -371,12 +384,27 @@ export function serveLabFile(res: ServerResponse, url: URL): void {
     return void res.writeHead(404).end('Not found');
   }
   if (!inside(file, root) || !statSync(file).isFile()) return void res.writeHead(404).end('Not found');
+  const type = TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream';
+  let body: Buffer | string = readFileSync(file);
+  if (/^text\/(html|css|javascript)/.test(type)) {
+    let siteDir = file.slice(0, file.lastIndexOf(sep));
+    for (let d = siteDir; inside(d, root); d = d.slice(0, d.lastIndexOf(sep)))
+      if (existsSync(join(d, 'index.html'))) {
+        siteDir = d;
+        break;
+      }
+    if (!existsSync(join(siteDir, 'index.html'))) siteDir = root;
+    const rel = siteDir.slice(root.length).split(sep).filter(Boolean).map(encodeURIComponent);
+    const site = ['/lab/v', key, id, dir, ...rel].join('/');
+    body = rewrite(body.toString('utf8'), type, site);
+  }
   res.removeHeader('X-Frame-Options');
   res.writeHead(200, {
-    'Content-Type': TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'Content-Type': type,
     'Content-Security-Policy': "sandbox allow-scripts allow-forms allow-modals allow-pointer-lock; frame-ancestors 'self'",
+    'Access-Control-Allow-Origin': '*',
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',
   });
-  res.end(readFileSync(file));
+  res.end(body);
 }

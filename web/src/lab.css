@@ -426,6 +426,23 @@ body.has-shell #btn-lab {
   animation: lab-blink 1.2s steps(2, start) infinite;
 }
 
+.lab-needs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  aspect-ratio: 16 / 10;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  text-align: center;
+}
+
+.lab-needs p {
+  margin: 0;
+  color: var(--ph-dim);
+}
+
 .lab-stats {
   display: flex;
   gap: 14px;
@@ -864,6 +881,12 @@ dialog.lab-box-wide {
 
 body.lab-full-open {
   overflow: hidden;
+}
+
+/* No CRT scanlines or glow band over a site shown full screen (theme.css draws them on html::before/after). */
+html.lab-noscan::before,
+html.lab-noscan::after {
+  display: none;
 }
 
 .lab-full-frame {
