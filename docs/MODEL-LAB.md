@@ -53,7 +53,7 @@ Sign-in for each app (check all of this in phase 0):
 
 | App | Fresh config | Sign-in |
 |---|---|---|
-| claude | `CLAUDE_CONFIG_DIR` in the box | a long-lived token from `claude setup-token`, in `.env` as `CLAUDE_CODE_OAUTH_TOKEN`. Never copy the main credentials file: a token refresh in the box could sign out the main app. |
+| claude | `CLAUDE_CONFIG_DIR` in the box | a long-lived token from `claude setup-token`, in `.env` as `PHOSPHOR_LAB_CLAUDE_TOKEN`; the runner passes it into the box as `CLAUDE_CODE_OAUTH_TOKEN`. Its own name, so the main chats never pick it up. Never copy the main credentials file: a token refresh in the box could sign out the main app. |
 | codex | `CODEX_HOME` in the box | the real `~/.codex/auth.json` bound read-write into it, so a refresh writes back to the one file |
 | agy | fake HOME | its sign-in files bound in (find which files in phase 0) |
 | opencode | `XDG_CONFIG_HOME` and `XDG_DATA_HOME` in the box | the real `auth.json` bound in |
