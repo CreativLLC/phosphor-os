@@ -2,7 +2,7 @@
    The REC dot uses the accent color (a fourth small splash, only while recording); the level bar is
    phosphor. PERF: the bar moves by transform only; the dot blinks with steps(). */
 
-#dictate {
+.dict-btn {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -11,13 +11,13 @@
   white-space: nowrap;
 }
 
-#dictate .dict-dot {
+.dict-btn .dict-dot {
   display: none;
   color: var(--accent);
   text-shadow: 0 0 6px rgb(var(--accent-rgb) / 0.8);
 }
 
-#dictate[data-state='rec'] .dict-dot {
+.dict-btn[data-state='rec'] .dict-dot {
   display: inline;
   animation: dict-blink 1.2s steps(1, end) infinite;
 }
@@ -28,11 +28,11 @@
   }
 }
 
-#dictate .dict-short {
+.dict-btn .dict-short {
   display: none;
 }
 
-#dictate .dict-meter {
+.dict-btn .dict-meter {
   position: absolute;
   left: 5px;
   right: 5px;
@@ -45,17 +45,17 @@
   pointer-events: none;
 }
 
-#dictate[data-state='rec'] .dict-meter {
+.dict-btn[data-state='rec'] .dict-meter {
   transition: transform 0.08s linear;
 }
 
-#dictate[data-state='busy'],
-#dictate[data-state='starting'] {
+.dict-btn[data-state='busy'],
+.dict-btn[data-state='starting'] {
   cursor: progress;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #dictate[data-state='rec'] .dict-dot {
+  .dict-btn[data-state='rec'] .dict-dot {
     animation: none;
   }
 }

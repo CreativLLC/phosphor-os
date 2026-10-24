@@ -85,34 +85,61 @@ let startedAt = 0;
 let clock = 0;
 let session = 0; // bumps on every start/cancel, so a late answer from an old take is ignored
 
-export function mountVoice(button: HTMLButtonElement, box: HTMLTextAreaElement): void {
-  btn = button;
-  input = box;
-  btn.replaceChildren();
+// One button and the text box its words go into. The chat's message box is the main one; another screen (LAB's
+// prompt) can borrow dictation for its own box while it shows (useDictation).
+type Target = { btn: HTMLButtonElement; input: HTMLTextAreaElement; longLabel: HTMLElement; shortLabel: HTMLElement; meter: HTMLElement };
+let mainTarget: Target;
+
+function dress(button: HTMLButtonElement, box: HTMLTextAreaElement, where: string): Target {
+  button.replaceChildren();
+  button.classList.add('dict-btn');
   const dot = document.createElement('span');
   dot.className = 'dict-dot';
   dot.textContent = '●';
   dot.setAttribute('aria-hidden', 'true');
-  longLabel = document.createElement('span');
-  longLabel.className = 'dict-long';
-  shortLabel = document.createElement('span');
-  shortLabel.className = 'dict-short';
-  meter = document.createElement('span');
-  meter.className = 'dict-meter';
-  meter.setAttribute('aria-hidden', 'true');
-  btn.append(dot, longLabel, shortLabel, meter);
-  btn.title = `Voice to text (${HOTKEY}). Press again to stop; Esc cancels. The words go into the message box; nothing is sent.`;
-  btn.onclick = (e) => toggle(e);
+  const t: Target = { btn: button, input: box, longLabel: document.createElement('span'), shortLabel: document.createElement('span'), meter: document.createElement('span') };
+  t.longLabel.className = 'dict-long';
+  t.shortLabel.className = 'dict-short';
+  t.meter.className = 'dict-meter';
+  t.meter.setAttribute('aria-hidden', 'true');
+  button.append(dot, t.longLabel, t.shortLabel, t.meter);
+  button.title = `Voice to text (${HOTKEY}). Press again to stop; Esc cancels. The words go into ${where}; nothing is sent.`;
+  button.onclick = (e) => {
+    if (btn !== button) use(t); // a borrowed button pressed after the main one took over again
+    toggle(e);
+  };
+  return t;
+}
 
-  // The dim preview line, just above the message box. Shown only while dictating.
+function use(t: Target): void {
+  ({ btn, input, longLabel, shortLabel, meter } = t);
+  input.before(liveLine);
+  render();
+}
+
+// Dictate into another box (LAB's prompt) until the returned function is called; then the chat has it again.
+// A take still running in the other box is cancelled first.
+export function useDictation(button: HTMLButtonElement, box: HTMLTextAreaElement): () => void {
+  if (state !== 'idle') cancel();
+  const t = dress(button, box, 'the prompt');
+  use(t);
+  return () => {
+    if (btn !== button) return;
+    if (state !== 'idle') cancel();
+    use(mainTarget);
+  };
+}
+
+export function mountVoice(button: HTMLButtonElement, box: HTMLTextAreaElement): void {
+  // The dim preview line, just above the box being dictated into. Shown only while dictating.
   liveLine = document.createElement('div');
   liveLine.id = 'voice-live';
   liveLine.hidden = true;
   liveLine.setAttribute('aria-live', 'polite');
   liveText = document.createElement('span');
   liveLine.append(liveText);
-  input.before(liveLine);
-  render();
+  mainTarget = dress(button, box, 'the message box');
+  use(mainTarget);
 
   // Ctrl+Space anywhere in the app; Esc cancels while dictating. Capture phase, so it runs first.
   window.addEventListener(

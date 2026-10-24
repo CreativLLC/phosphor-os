@@ -188,6 +188,16 @@ body.has-shell #btn-lab {
   line-height: 1.25;
 }
 
+.lab .lab-dictate {
+  min-height: 40px;
+  padding: 2px 18px;
+  letter-spacing: 2px;
+}
+
+.lab-new #voice-live {
+  margin-bottom: -6px;
+}
+
 .lab-count {
   color: var(--ph-bright);
 }

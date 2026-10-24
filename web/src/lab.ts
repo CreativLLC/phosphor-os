@@ -2,6 +2,7 @@ import './lab.css';
 import { LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabModel, type LabModelsResponse, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../../shared/lab.ts';
 import { closeDocs, isDocsOpen, onDocsToggle } from './docs.ts';
 import { button, confirmBox, el, toast } from './ui.ts';
+import { useDictation } from './voice.ts';
 
 // LAB (docs/MODEL-LAB.md): one prompt to many AI models, each in its own app inside a locked box (server/labrun.ts).
 // Results are folders on the PC (server/lab.ts); this file only shows them, rates them and starts new tests.
@@ -26,6 +27,7 @@ let current: LabTestFull | null = null; // the open test
 const filt = { q: '', model: '', app: '', range: 'all', minStars: 0, rows: 'tests' as 'tests' | 'results', sort: 'date' as SortKey, dir: -1 };
 let testMode: 'cards' | 'table' = 'cards';
 let video = false;
+let releaseDictation: (() => void) | null = null; // NEW TEST borrows DICTATE for its prompt
 let openAfterLoad = -1; // ?labopen=<n>: show result n full screen once the test loads
 const PICKED_KEY = 'phosphor.lab.picked';
 const draft = { title: '', prompt: '', picked: new Set<string>(JSON.parse(localStorage.getItem(PICKED_KEY) ?? '[]') as string[]), limit: 30, blind: false, filter: '' };
@@ -104,6 +106,8 @@ export function closeLab(fromPop = false): void {
   topBtn?.classList.remove('on');
   clearInterval(ticker);
   clearTimeout(poll);
+  releaseDictation?.();
+  releaseDictation = null;
   closeFull(true);
   for (const d of document.querySelectorAll<HTMLDialogElement>('dialog.lab-box')) d.remove();
   if (!fromPop && (history.state as { phosphorLab?: boolean } | null)?.phosphorLab) {
@@ -165,6 +169,8 @@ function go(v: View): void {
 function render(): void {
   if (!rootEl) return;
   clearTimeout(poll);
+  releaseDictation?.();
+  releaseDictation = null;
   for (const b of nav.querySelectorAll<HTMLElement>('button')) b.classList.toggle('on', b.dataset.v === view.kind || (view.kind === 'test' && b.dataset.v === (current?.archived ? 'archive' : 'history')));
   rootEl.classList.toggle('lab-video', view.kind === 'test' && video);
   const v = view;
@@ -333,7 +339,11 @@ async function newView(): Promise<HTMLElement> {
   const foot = el('div', 'lab-row lab-foot');
   foot.append(startBtn, el('span', 'lab-dim', 'All models start at once, each in its own locked box and folder. Local models take turns.'));
 
-  w.append(el('h3', '', 'PROMPT'), title, prompt, modelsHead, groups, opts, foot);
+  const dictate = button('DICTATE', () => {}, 'lab-dictate');
+  const promptHead = el('div', 'lab-row');
+  promptHead.append(el('h3', '', 'PROMPT'), el('span', 'lab-grow'), dictate);
+  w.append(promptHead, title, prompt, modelsHead, groups, opts, foot);
+  if (view.kind === 'new') releaseDictation = useDictation(dictate, prompt); // not if the owner moved on while it loaded
   sync();
   applyFilter();
   setTimeout(() => (draft.prompt ? null : prompt.focus({ preventScroll: true })), 0);
