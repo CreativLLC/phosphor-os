@@ -27,6 +27,7 @@ import { mountHistory } from './history.ts';
 import { mountLauncher } from './launcher.ts';
 import { addLauncherCommands, removeLauncherCommands } from './launcher.ts';
 import { mountDocs } from './docs.ts';
+import { labCommands, mountLab } from './lab.ts';
 import { showChat } from './programs.ts';
 import { mountMcp } from './mcp.ts';
 import { mountUsage } from './usage.ts';
@@ -83,6 +84,9 @@ if (shellApi?.platform === 'linux') $('btn-launch').hidden = true;
 initAlerts(); // phone push and background alerts (alerts.ts); before connect(): it reads ?tab=
 // DOCS: documents in the docs folder (PHOSPHOR_DOCS_DIR). DOCS button, program bar, launcher commands.
 mountDocs($('btn-docs'), { insertIntoChat, showChat, addCommands: addLauncherCommands, removeCommands: removeLauncherCommands });
+// LAB: one prompt to many AI models (lab.ts). After DOCS: each closes the other.
+mountLab($('btn-lab'));
+addLauncherCommands(labCommands);
 
 // Fullscreen button (Fullscreen API). Hidden where the browser can't, or when the app already runs fullscreen.
 const fullBtn = $('btn-full');

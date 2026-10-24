@@ -1,6 +1,6 @@
 # Model Lab: plan
 
-Status: plan only, no code yet. Written 2026-10-23, changed the same day: the owner writes every prompt; the lab has no built-in tests.
+Status: screens built as a MOCKUP on sample data (2026-10-24: `web/src/lab.ts`, `labdemo.ts`, `lab.css`; LAB button, program bar, launcher). Nothing runs a model yet. Written 2026-10-23, changed the same day: the owner writes every prompt; the lab has no built-in tests.
 
 Goal: write a prompt, tick the models to send it to, and run it on all of them at once. See every result in one place, rate each one, and keep each result in its own folder. Archive or delete old ones. Look back at all of them years later. Also good for recording videos.
 
