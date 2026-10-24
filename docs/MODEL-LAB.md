@@ -1,6 +1,6 @@
 # Model Lab: plan
 
-Status: screens built as a MOCKUP on sample data (2026-10-24: `web/src/lab.ts`, `labdemo.ts`, `lab.css`; LAB button, program bar, launcher). Nothing runs a model yet. Written 2026-10-23, changed the same day: the owner writes every prompt; the lab has no built-in tests.
+Status: built 2026-10-24 (first version). Runs Claude (Claude Code), GPT (Codex), every OpenCode Go model (opencode; Gemini, Grok and Kimi included) and the local models, each in the box below. Not yet: `agy` (see Notes), OpenRouter, video mode extras, nightly backup. Live test with real models: `npx tsx tests/lab-live.ts` (private port and folder). Written 2026-10-23; the owner writes every prompt, the lab has no built-in tests.
 
 Goal: write a prompt, tick the models to send it to, and run it on all of them at once. See every result in one place, rate each one, and keep each result in its own folder. Archive or delete old ones. Look back at all of them years later. Also good for recording videos.
 
@@ -35,6 +35,8 @@ Later, "same app" tests: opencode can drive every OpenCode Go and OpenRouter mod
 Notes:
 
 - Gemini CLI's Google sign-in stopped working for personal accounts in June 2026. Use `agy`.
+- `agy` is left out for now: it keeps its Google sign-in in the desktop keyring (Secret Service over D-Bus). The box must not reach the keyring, because the keyring holds every other saved password too. Gemini runs through OpenCode Go instead.
+- opencode in the box: its sign-in lives in its own database, so the runner exports only the one provider's credential (`opencode auth export`) and imports it on stdin into the box's fresh data folder. Its bundled model list is old; the runner keeps a copy of the models.dev catalog in `data/lab/.cache/models.json` (refreshed every 6 hours) and points `OPENCODE_MODELS_PATH` at it.
 - OpenCode Go endpoints (its docs): Kimi, GLM and DeepSeek are on the OpenAI format only. The Anthropic format has only Qwen, MiniMax M3 and Claude Haiku. So "Claude Code + Kimi through Go" needs a translator. Not planned.
 - OpenCode Go terms: it is for coding agents. Direct API calls must send their own user agent and an `x-opencode-session` header. Using the opencode app avoids this.
 

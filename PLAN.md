@@ -375,6 +375,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | HISTORY drawer | `Tabs.history/searchHistory` in `server/tabs.ts` (`GET /api/history[?all=1]`, `GET /api/history/search?q=`), `server/transcripts.ts` (entrypoint filter: this app's chats are `sdk-ts`; chat text, match, snippet, cache), tab name saved to its session in `Tab.saveSessionTitle`, `web/src/history.ts` (ALL CHATS toggle), `tests/history.ts` (`npx tsx tests/history.ts`) |
 | SDK update | `server/sdkupdate.ts` (hourly npm check, bell notice, `GET/POST /api/update`, 04:00 run), `shared/sdkversion.ts` (range rules), `scripts/update-sdk.sh`, `web/src/sdkupdate.ts`, `sdkupdate.css` (UPDATE chip), `tests/sdkversion.ts` |
 | STATION | `server/station.ts`, `server/lan.ts` (allowlist, probes, DISCOVER), `shared/station.ts`, `web/src/station.ts`, `station.css`, `shell/skins.mjs`, `shell/skins/*.css` |
+| LAB (Model Lab) | `server/lab.ts` (folders, `/api/lab/*`, sandboxed `/lab/v/<key>/` file viewer), `server/labrun.ts` (apps, bubblewrap box, runs, `PHOSPHOR_LAB_CLAUDE_TOKEN`), `shared/lab.ts`, `web/src/lab.ts`, `lab.css`, `tests/lab-live.ts` (real models, private port), plan `docs/MODEL-LAB.md` |
 
 ## Design goals
 

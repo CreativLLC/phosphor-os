@@ -7,6 +7,7 @@ import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPasswor
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
 import { handleIdeas, startIdeas } from './ideas.ts';
+import { handleLab, serveLabFile, startLab } from './lab.ts';
 import { WEB_DIST, config } from './config.ts';
 import { handleDocs, handleOpenLocal, localKey } from './docs.ts';
 import { handleFiles } from './files.ts';
@@ -132,6 +133,9 @@ const server = createServer(async (req, res) => {
   // The desktop app opens a file from the PC in DOCS. Guarded by a key file instead of the cookie (server/docs.ts).
   if (url.pathname === '/api/docs/open-local') return await handleOpenLocal(req, res);
 
+  // LAB result files: sandboxed, opened by the test's key instead of the cookie (server/lab.ts).
+  if (url.pathname.startsWith('/lab/v/') && req.method === 'GET') return serveLabFile(res, url);
+
   // Only the login page and its assets are public. Everything else needs the cookie.
   const publicPath = url.pathname === '/login.html' || url.pathname.startsWith('/assets/') || url.pathname === '/manifest.webmanifest' || url.pathname === '/sw.js' || url.pathname === '/favicon.svg' || url.pathname.startsWith('/icons/');
   if (!publicPath && !isAuthed(req)) {
@@ -179,6 +183,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/bootcheck') return sendJson(res, await bootChecks(tabs));
     if (url.pathname === '/api/today') return sendJson(res, await today());
     if (url.pathname === '/api/ideas' || url.pathname.startsWith('/api/ideas/')) return await handleIdeas(req, res, url);
+    if (url.pathname.startsWith('/api/lab/')) return await handleLab(req, res, url);
     if (url.pathname === '/api/calendar') return sendJson(res, calendarRange(Number(url.searchParams.get('from') ?? NaN), Number(url.searchParams.get('to') ?? NaN)));
     if (url.pathname.startsWith('/api/')) return sendJson(res, { error: 'not found' }, 404);
   } catch (e) {
@@ -213,6 +218,7 @@ server.on('upgrade', (req, socket, head) => {
 startLocalRelay();
 startCalendar();
 startIdeas();
+startLab();
 localKey().catch((e) => console.warn('docs: could not make the key for opening files from the PC:', e));
 server.listen(config.port, config.host, () => {
   console.log(`\n  PHOSPHOR-OS is running.`);

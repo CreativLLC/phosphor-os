@@ -1,15 +1,14 @@
 import './lab.css';
+import { LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabModel, type LabModelsResponse, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../../shared/lab.ts';
 import { closeDocs, isDocsOpen, onDocsToggle } from './docs.ts';
-import { APPS, fakeFinish, MODELS, modelById, sampleTests, type Result, type Test } from './labdemo.ts';
 import { button, confirmBox, el, toast } from './ui.ts';
 
-// LAB (docs/MODEL-LAB.md): one prompt to many AI models, rate the results, look back at every test.
-// MOCKUP: the screens run on sample data (labdemo.ts). Nothing is sent to a model and nothing is saved;
-// a reload brings the sample data back.
-// Open straight to a screen with ?lab=new | history | archive | <test id> (&labview=table | video).
+// LAB (docs/MODEL-LAB.md): one prompt to many AI models, each in its own app inside a locked box (server/labrun.ts).
+// Results are folders on the PC (server/lab.ts); this file only shows them, rates them and starts new tests.
+// Open straight to a screen with ?lab=new | history | archive | <test id> (&labview=table | video, &labopen=<n>).
 
 type View = { kind: 'new' } | { kind: 'history' } | { kind: 'archive' } | { kind: 'test'; id: string };
-type SortKey = 'date' | 'test' | 'models' | 'stars' | 'size' | 'model' | 'time' | 'tokens';
+type SortKey = 'date' | 'test' | 'models' | 'stars' | 'model' | 'time' | 'tokens';
 
 let rootEl: HTMLElement | null = null;
 let main: HTMLElement;
@@ -17,19 +16,23 @@ let nav: HTMLElement;
 let topBtn: HTMLElement | null = null;
 let isOpen = false;
 let pendingBack = 0;
+let poll = 0;
 let ticker = 0;
 let view: View = { kind: 'history' };
 const toggles = new Set<() => void>();
-const tests: Test[] = sampleTests();
-const revealed = new Set<string>();
 
+let models: LabModelsResponse | null = null;
+let current: LabTestFull | null = null; // the open test
 const filt = { q: '', model: '', app: '', range: 'all', minStars: 0, rows: 'tests' as 'tests' | 'results', sort: 'date' as SortKey, dir: -1 };
 let testMode: 'cards' | 'table' = 'cards';
 let video = false;
-const draft = { title: '', prompt: '', picked: new Set(['claude-opus-5-5', 'gemini-4-argon', 'gpt-6-luna', 'kimi-k3.1-pro']), limit: 10, blind: false };
+let openAfterLoad = -1; // ?labopen=<n>: show result n full screen once the test loads
+const PICKED_KEY = 'phosphor.lab.picked';
+const draft = { title: '', prompt: '', picked: new Set<string>(JSON.parse(localStorage.getItem(PICKED_KEY) ?? '[]') as string[]), limit: 30, blind: false, filter: '' };
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 const RANGES: [string, string, number][] = [['30d', '30 DAYS', 30], ['90d', '90 DAYS', 90], ['1y', '1 YEAR', 366], ['all', 'ALL', Infinity]];
+const SANDBOX = 'allow-scripts allow-forms allow-modals allow-pointer-lock'; // same as the server's header
 
 // ------------------------------------------------------------ public
 
@@ -51,6 +54,7 @@ export function mountLab(btn: HTMLElement | null): void {
       pendingBack--;
       return;
     }
+    if (document.querySelector('.lab-full')) return void closeFull(); // back closes the full-screen view first
     if (isOpen && (history.state as { phosphorLab?: boolean } | null)?.phosphorLab !== true) closeLab(true);
   });
   const q = new URLSearchParams(location.search);
@@ -58,7 +62,8 @@ export function mountLab(btn: HTMLElement | null): void {
   if (start !== null) {
     if (q.get('labview') === 'table') testMode = 'table';
     if (q.get('labview') === 'video') video = true;
-    openLab(start === 'new' || start === 'archive' ? { kind: start } : tests.some((t) => t.id === start) ? { kind: 'test', id: start } : { kind: 'history' });
+    if (q.get('labopen')) openAfterLoad = Number(q.get('labopen'));
+    openLab(start === 'new' || start === 'archive' ? { kind: start } : !start || start === 'history' ? { kind: 'history' } : { kind: 'test', id: start });
   }
 }
 
@@ -84,7 +89,7 @@ export function openLab(v?: View): void {
     } catch {
       /* fine without the back button */
     }
-    ticker = window.setInterval(tick, 1000);
+    ticker = window.setInterval(tickClocks, 1000);
     for (const fn of toggles) fn();
   }
   render();
@@ -98,6 +103,8 @@ export function closeLab(fromPop = false): void {
   document.body.classList.remove('lab-open');
   topBtn?.classList.remove('on');
   clearInterval(ticker);
+  clearTimeout(poll);
+  closeFull(true);
   for (const d of document.querySelectorAll<HTMLDialogElement>('dialog.lab-box')) d.remove();
   if (!fromPop && (history.state as { phosphorLab?: boolean } | null)?.phosphorLab) {
     pendingBack++;
@@ -110,6 +117,21 @@ export const labCommands = [
   { id: 'lab', label: 'LAB', hint: 'One prompt, many AI models: compare and rate', keywords: ['model', 'models', 'compare', 'test', 'arena', 'benchmark', 'rate'], run: () => openLab() },
   { id: 'lab-new', label: 'NEW LAB TEST', hint: 'Send a prompt to many AI models', keywords: ['lab', 'models', 'compare', 'prompt'], run: () => openLab({ kind: 'new' }) },
 ];
+
+// ------------------------------------------------------------ server
+
+async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  const r = await fetch(`/api/lab/${path}`, {
+    method,
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = (await r.json().catch(() => ({}))) as T & { error?: string };
+  if (!r.ok) throw new Error(data.error ?? `The server said ${r.status}.`);
+  return data;
+}
+
+const fail = (e: unknown) => toast(e instanceof Error ? e.message : String(e), 6000);
 
 // ------------------------------------------------------------ frame
 
@@ -127,9 +149,7 @@ function build(): void {
     return b;
   };
   nav.append(tab('+ NEW TEST', 'new'), tab('HISTORY', 'history'), tab('ARCHIVE', 'archive'));
-  const mock = el('span', 'lab-mock', 'MOCKUP · SAMPLE DATA · NOTHING RUNS');
-  mock.title = 'These screens run on sample data so you can see and click them. The real lab comes next (docs/MODEL-LAB.md).';
-  bar.append(el('span', 'lab-tag', 'MODEL LAB'), nav, mock);
+  bar.append(el('span', 'lab-tag', 'MODEL LAB'), nav);
   main = el('div', 'lab-main');
   root.append(bar, main);
   document.body.append(root);
@@ -144,49 +164,67 @@ function go(v: View): void {
 
 function render(): void {
   if (!rootEl) return;
-  for (const b of nav.querySelectorAll<HTMLElement>('button')) b.classList.toggle('on', b.dataset.v === view.kind || (view.kind === 'test' && b.dataset.v === 'history'));
+  clearTimeout(poll);
+  for (const b of nav.querySelectorAll<HTMLElement>('button')) b.classList.toggle('on', b.dataset.v === view.kind || (view.kind === 'test' && b.dataset.v === (current?.archived ? 'archive' : 'history')));
   rootEl.classList.toggle('lab-video', view.kind === 'test' && video);
   const v = view;
-  main.replaceChildren(v.kind === 'new' ? newView() : v.kind === 'archive' ? archiveView() : v.kind === 'test' ? testView(v.id) : historyView());
+  const box = el('div', `lab-${v.kind}`);
+  box.append(el('p', 'lab-empty', 'LOADING…'));
+  main.replaceChildren(box);
+  const fill = v.kind === 'new' ? newView : v.kind === 'archive' ? archiveView : v.kind === 'test' ? () => testView(v.id) : historyView;
+  void fill()
+    .then((node) => {
+      if (view === v) box.replaceWith(node);
+    })
+    .catch((e) => {
+      if (view !== v) return;
+      box.replaceChildren(el('p', 'lab-empty', e instanceof Error ? e.message : String(e)));
+    });
 }
 
 // ------------------------------------------------------------ helpers
 
 const fmtClock = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-const fmtTok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
-const fmtMb = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : mb >= 1 ? `${Math.round(mb)} MB` : `${Math.max(1, Math.round(mb * 1024))} KB`);
-const costText = (r: Result) => (r.cost === null ? 'PLAN' : `$${r.cost.toFixed(2)}`);
-const testSize = (t: Test) => t.junkMb + t.results.reduce((a, r) => a + r.files.reduce((b, f) => b + f.kb, 0) / 1024 + 0.02, 0);
-const slug = (t: Test) => `${new Date(t.at).toISOString().slice(0, 10)}-${t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
-const folder = (t: Test) => `data/lab/${t.archived ? 'archive' : 'tests'}/${new Date(t.at).getFullYear()}/${slug(t)}`;
-const resultDir = (r: Result) => `${r.model}--${modelById(r.model).app}`;
-const isBlind = (t: Test) => t.blind && !revealed.has(t.id);
-const nameOf = (t: Test, i: number) => (isBlind(t) ? `MODEL ${LETTERS[i]}` : modelById(t.results[i].model).name);
-const appOf = (t: Test, i: number) => {
-  if (isBlind(t)) return 'hidden until you rate all';
-  const a = APPS[modelById(t.results[i].model).app];
-  return `${a.name} · ${a.account}`;
-};
-const topStars = (t: Test) => Math.max(0, ...t.results.map((r) => r.stars));
-const rated = (t: Test) => t.results.filter((r) => r.stars > 0);
-const avgStars = (rs: Result[]) => (rs.length ? rs.reduce((a, r) => a + r.stars, 0) / rs.length : 0);
-const stateLabel = (r: Result) => (r.state === 'running' ? `RUNNING ${fmtClock(Date.now() - r.startedAt)}` : r.state === 'done' ? `DONE ${fmtClock(r.ms)}` : r.state === 'limit' ? 'PLAN LIMIT' : 'FAILED');
+const fmtTime = (ms: number) => new Date(ms).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const fmtTok = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
+const fmtBytes = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : b >= 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : b >= 1024 ? `${Math.round(b / 1024)} KB` : `${b} B`);
+const fmtMoney = (v: number) => (v >= 1 ? `$${v.toFixed(2)}` : v >= 0.01 ? `$${v.toFixed(3)}` : `$${v.toFixed(4)}`);
+const costText = (r: LabResult) => (r.value === null ? 'PLAN' : `PLAN (≈${fmtMoney(r.value)})`);
+const costTip = 'Runs on your plan. In brackets: what the same run would cost at API prices, when the app reports it.';
+const runMs = (r: LabResult) => (r.state === 'running' ? Date.now() - r.startedAt : r.startedAt && r.endedAt ? r.endedAt - r.startedAt : 0);
+const isBlind = (t: LabTest | LabTestFull) => t.blind && !t.revealed;
+const nameOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? `MODEL ${LETTERS[i]}` : t.results[i].modelName);
+const appOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? 'hidden until you rate them all' : `${t.results[i].appName} · ${t.results[i].account}`);
+const topStars = (t: LabTest | LabTestFull) => Math.max(0, ...t.results.map((r) => r.stars));
+const rated = (t: LabTest) => t.results.filter((r) => r.stars > 0);
+const avgStars = (rs: LabResult[]) => (rs.length ? rs.reduce((a, r) => a + r.stars, 0) / rs.length : 0);
+const busy = (r: LabResult) => r.state === 'running' || r.state === 'queued';
+const pageUrl = (t: LabTestFull, r: LabResultFull, path = r.page) => `${t.view}${encodeURIComponent(r.dir)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${r.endedAt}`;
 
-function starText(n: number): string {
-  return n > 0 ? '★'.repeat(n) + '☆'.repeat(5 - n) : '☆☆☆☆☆';
+function stateLabel(r: LabResult): string {
+  if (r.state === 'running') return `RUNNING ${fmtClock(runMs(r))}`;
+  if (r.state === 'queued') return 'WAITING';
+  if (r.state === 'done') return `DONE ${fmtClock(runMs(r))}`;
+  return r.state === 'limit' ? 'PLAN LIMIT' : r.state === 'stopped' ? 'STOPPED' : 'FAILED';
 }
 
-function summary(t: Test): string {
-  const n = (s: Result['state']) => t.results.filter((r) => r.state === s).length;
-  const parts = [`${t.results.length} MODELS`, `${n('done')} DONE`];
+function starText(n: number): string {
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+
+function summary(t: LabTest | LabTestFull): string {
+  const n = (s: LabResult['state']) => t.results.filter((r) => r.state === s).length;
+  const parts = [`${t.results.length} MODEL${t.results.length === 1 ? '' : 'S'}`, `${n('done')} DONE`];
   if (n('running')) parts.push(`${n('running')} RUNNING`);
+  if (n('queued')) parts.push(`${n('queued')} WAITING`);
   if (n('failed')) parts.push(`${n('failed')} FAILED`);
   if (n('limit')) parts.push(`${n('limit')} AT LIMIT`);
-  parts.push(`${rated(t).length} RATED`);
+  if (n('stopped')) parts.push(`${n('stopped')} STOPPED`);
+  parts.push(`${t.results.filter((r) => r.stars > 0).length} RATED`);
   return parts.join(' · ');
 }
 
@@ -206,8 +244,13 @@ function select(label: string, options: [string, string][], value: string, chang
 
 // ------------------------------------------------------------ NEW TEST
 
-function newView(): HTMLElement {
+async function newView(): Promise<HTMLElement> {
+  models = await api<LabModelsResponse>('models');
   const w = el('div', 'lab-new');
+  for (const n of models.notes) w.append(el('p', 'lab-warn', n));
+  const available = new Set(models.models.map((m) => m.id));
+  for (const id of draft.picked) if (!available.has(id)) draft.picked.delete(id);
+
   const title = el('input', 'lab-title-in');
   title.placeholder = 'Title (optional: made from the prompt if empty)';
   title.value = draft.title;
@@ -217,30 +260,31 @@ function newView(): HTMLElement {
   prompt.value = draft.prompt;
   prompt.rows = 7;
   const count = el('span', 'lab-count');
-  const startBtn = button('', () => start(), 'primary lab-start');
+  const startBtn = button('', () => void start(startBtn), 'primary lab-start');
   const sync = () => {
     count.textContent = `${draft.picked.size} PICKED`;
     startBtn.textContent = draft.picked.size ? `START ${draft.picked.size} MODEL${draft.picked.size > 1 ? 'S' : ''}` : 'PICK SOME MODELS';
-    startBtn.disabled = !draft.picked.size || !draft.prompt.trim();
+    startBtn.disabled = !draft.picked.size || !draft.prompt.trim() || draft.picked.size > LAB_MAX_MODELS;
+    if (draft.picked.size > LAB_MAX_MODELS) startBtn.textContent = `${LAB_MAX_MODELS} MODELS AT MOST`;
+    localStorage.setItem(PICKED_KEY, JSON.stringify([...draft.picked]));
   };
   prompt.oninput = () => {
     draft.prompt = prompt.value;
     sync();
   };
 
+  // Models, one group per app and account.
   const groups = el('div', 'lab-groups');
-  const boxes: HTMLInputElement[] = [];
-  for (const app of Object.keys(APPS) as (keyof typeof APPS)[]) {
-    const ms = MODELS.filter((m) => m.app === app && !m.old);
-    if (!ms.length) continue;
+  const chips: { c: HTMLInputElement; l: HTMLLabelElement; m: LabModel }[] = [];
+  const byGroup = new Map<string, LabModel[]>();
+  for (const m of models.models) byGroup.set(`${m.appName} · ${m.account}`, [...(byGroup.get(`${m.appName} · ${m.account}`) ?? []), m]);
+  for (const [name, ms] of byGroup) {
     const g = el('fieldset', 'lab-group');
-    const leg = el('legend', '', `${APPS[app].name} · ${APPS[app].account}`);
-    g.append(leg);
+    g.append(el('legend', '', name));
     for (const m of ms) {
       const l = el('label', 'lab-chip');
       const c = el('input');
       c.type = 'checkbox';
-      c.value = m.id;
       c.checked = draft.picked.has(m.id);
       c.onchange = () => {
         if (c.checked) draft.picked.add(m.id);
@@ -249,27 +293,35 @@ function newView(): HTMLElement {
         sync();
       };
       l.classList.toggle('on', c.checked);
+      l.title = m.id;
+      if (m.app === 'local') l.title += '\nRuns on this PC. Local models take turns (one GPU).';
       l.append(c, el('span', '', m.name));
-      if (app === 'local') l.title = 'Runs on this PC. Local models run one at a time (one GPU).';
-      boxes.push(c);
+      chips.push({ c, l, m });
       g.append(l);
     }
     groups.append(g);
   }
-  const setAll = (on: boolean) => {
-    for (const c of boxes) {
-      c.checked = on;
-      c.dispatchEvent(new Event('change'));
-    }
+  if (!models.models.length) groups.append(el('p', 'lab-empty', 'No models are ready. See the notes above.'));
+  const filter = el('input', 'lab-search lab-model-filter');
+  filter.type = 'search';
+  filter.placeholder = 'Filter models';
+  filter.value = draft.filter;
+  const applyFilter = () => {
+    draft.filter = filter.value;
+    const q = filter.value.trim().toLowerCase();
+    for (const { l, m } of chips) l.hidden = !!q && !`${m.name} ${m.id} ${m.appName}`.toLowerCase().includes(q);
+    for (const g of groups.querySelectorAll<HTMLElement>('.lab-group')) g.hidden = ![...g.querySelectorAll('.lab-chip')].some((c) => !(c as HTMLElement).hidden);
+  };
+  filter.oninput = applyFilter;
+  const clear = () => {
+    for (const { c } of chips) if (c.checked) (c.checked = false), c.dispatchEvent(new Event('change'));
   };
 
   const modelsHead = el('div', 'lab-row');
-  modelsHead.append(el('h3', '', 'MODELS'), count, el('span', 'lab-grow'), button('ALL', () => setAll(true)), button('NONE', () => setAll(false)));
+  modelsHead.append(el('h3', '', 'MODELS'), count, filter, button('NONE', clear));
 
   const opts = el('div', 'lab-row lab-opts');
-  opts.append(
-    select('TIME LIMIT', [['5', '5 MIN'], ['10', '10 MIN'], ['30', '30 MIN'], ['60', '1 HOUR']], String(draft.limit), (v) => (draft.limit = Number(v))),
-  );
+  opts.append(select('TIME LIMIT', LAB_TIME_LIMITS.map((n): [string, string] => [String(n), n < 60 ? `${n} MIN` : `${n / 60} HOUR`]), String(draft.limit), (v) => (draft.limit = Number(v))));
   const blind = el('label', 'lab-check');
   const bc = el('input');
   bc.type = 'checkbox';
@@ -279,51 +331,39 @@ function newView(): HTMLElement {
   opts.append(blind);
 
   const foot = el('div', 'lab-row lab-foot');
-  foot.append(startBtn, el('span', 'lab-dim', 'All models start at once, each in its own locked folder. Local models take turns.'));
+  foot.append(startBtn, el('span', 'lab-dim', 'All models start at once, each in its own locked box and folder. Local models take turns.'));
 
   w.append(el('h3', '', 'PROMPT'), title, prompt, modelsHead, groups, opts, foot);
   sync();
+  applyFilter();
   setTimeout(() => (draft.prompt ? null : prompt.focus({ preventScroll: true })), 0);
   return w;
 }
 
-function start(): void {
-  const text = draft.prompt.trim();
-  if (!text || !draft.picked.size) return;
-  const now = Date.now();
-  const picked = MODELS.filter((m) => draft.picked.has(m.id));
-  let localWait = 0;
-  const t: Test = {
-    id: `n${now}`,
-    title: draft.title.trim() || text.split(/\s+/).slice(0, 6).join(' ').replace(/[.,:;!?]+$/, ''),
-    prompt: text,
-    at: now,
-    archived: false,
-    blind: draft.blind,
-    timeLimitMin: draft.limit,
-    junkMb: 0,
-    results: picked.map((m): Result => {
-      const ms = 7000 + Math.round(Math.random() * 18000);
-      const wait = m.app === 'local' ? localWait : 0; // one GPU: local models take turns
-      if (m.app === 'local') localWait += ms;
-      return { model: m.id, state: 'running', startedAt: now + wait, ms, tokens: 0, cost: null, stars: 0, note: '', reply: '', files: [], page: '' };
-    }),
-  };
-  tests.unshift(t);
-  draft.prompt = '';
-  draft.title = '';
-  go({ kind: 'test', id: t.id });
+async function start(btn: HTMLButtonElement): Promise<void> {
+  if (!draft.prompt.trim() || !draft.picked.size) return;
+  btn.disabled = true;
+  try {
+    const { id } = await api<{ id: string }>('tests', 'POST', { title: draft.title, prompt: draft.prompt, models: [...draft.picked], timeLimitMin: draft.limit, blind: draft.blind });
+    draft.prompt = '';
+    draft.title = '';
+    go({ kind: 'test', id });
+  } catch (e) {
+    fail(e);
+    btn.disabled = false;
+  }
 }
 
 // ------------------------------------------------------------ one TEST
 
-function testView(id: string): HTMLElement {
-  const t = tests.find((x) => x.id === id);
-  if (!t) return el('p', 'lab-empty', 'This test is gone.');
+async function testView(id: string): Promise<HTMLElement> {
+  current = await api<LabTestFull>(`tests/${encodeURIComponent(id)}`);
+  for (const b of nav.querySelectorAll<HTMLElement>('button')) b.classList.toggle('on', b.dataset.v === (current.archived ? 'archive' : 'history'));
+  const t = current;
   const w = el('div', 'lab-test');
 
   const head = el('div', 'lab-row lab-test-head');
-  const back = button('< HISTORY', () => go({ kind: t.archived ? 'archive' : 'history' }), 'lab-back');
+  const back = button(t.archived ? '< ARCHIVE' : '< HISTORY', () => go({ kind: t.archived ? 'archive' : 'history' }), 'lab-back');
   const h = el('h2', 'lab-test-title', t.title);
   const modeBtns = el('div', 'lab-seg');
   for (const m of ['cards', 'table'] as const) {
@@ -338,125 +378,173 @@ function testView(id: string): HTMLElement {
     video = !video;
     render();
   }, video ? 'on' : '');
-  videoBtn.title = 'Full screen, big text, race timers: made for recording';
-  const blindBtn = button(isBlind(t) ? 'REVEAL' : t.blind ? 'BLIND OFF' : 'BLIND', () => {
-    if (isBlind(t)) revealed.add(t.id);
-    else if (t.blind) t.blind = false;
-    else {
-      t.blind = true;
-      revealed.delete(t.id);
-    }
-    render();
-  }, isBlind(t) ? 'primary lab-reveal' : '');
-  blindBtn.title = 'BLIND hides the model names, so the brand does not change your stars';
-  const doneAll = t.results.every((r) => r.state !== 'running');
-  if (isBlind(t)) blindBtn.disabled = !doneAll || t.results.some((r) => r.state === 'done' && r.stars === 0);
-  const more = el('div', 'lab-row lab-actions');
-  more.append(
-    button('RE-RUN', () => rerun(t)),
-    button(t.archived ? 'RESTORE' : 'ARCHIVE', () => {
-      t.archived = !t.archived;
-      toast(t.archived ? 'Archived. It is kept, but hidden from HISTORY.' : 'Back in HISTORY.');
-      render();
-    }),
-    button('DELETE', () => void remove(t), 'lab-danger'),
-  );
+  videoBtn.title = 'Big cards and race timers: made for recording';
+  const blindBtn = button(isBlind(t) ? 'REVEAL' : t.blind ? 'BLIND OFF' : 'BLIND', () => void setBlind(t), isBlind(t) ? 'primary lab-reveal' : '');
+  blindBtn.title = 'BLIND hides the model names, so the brand does not change your stars. REVEAL works once every result has stars.';
   head.append(back, h, el('span', 'lab-grow'), modeBtns, blindBtn, videoBtn);
 
   const meta = el('div', 'lab-meta');
-  const sum = el('span', '', `${fmtDate(t.at)} · ${summary(t)}`);
-  sum.dataset.sum = t.id;
-  const path = el('code', 'lab-path', folder(t));
-  path.title = 'Each test is one folder: the prompt, and one folder per model with its reply, files, log and stars.';
+  const sum = el('span', 'lab-sum', `${fmtTime(t.at)} · ${summary(t)}`);
+  const path = el('code', 'lab-path', t.folder);
+  path.title = 'The test folder on the PC: the prompt, and one folder per model with its reply, files, log and stars.';
   meta.append(sum, path);
 
   const prompt = el('details', 'lab-prompt');
-  prompt.open = video || t.prompt.length < 220;
+  prompt.open = video || t.prompt.length < 400;
   prompt.append(el('summary', '', 'PROMPT'), el('pre', '', t.prompt));
 
   const body = el('div', 'lab-results');
-  body.dataset.test = t.id;
   fillResults(t, body);
 
+  const more = el('div', 'lab-row lab-actions');
+  const stop = button('STOP ALL', () => void act(`tests/${t.id}/stop`, 'Stopping.'));
+  stop.hidden = !t.results.some(busy);
+  stop.classList.add('lab-stop');
+  more.append(
+    stop,
+    button('RE-RUN', () => rerun(t)),
+    button('REMOVE JUNK', () => void act(`tests/${t.id}/junk`, 'Junk removed: node_modules and build caches.')),
+    button(t.archived ? 'RESTORE' : 'ARCHIVE', () => void act(`tests/${t.id}/${t.archived ? 'restore' : 'archive'}`, t.archived ? 'Back in HISTORY.' : 'Archived: kept, but hidden from HISTORY.')),
+    button('DELETE', () => void remove(t), 'lab-danger'),
+  );
+
   w.append(head, meta, prompt, body, more);
+  blindBtn.disabled = isBlind(t) && t.results.some((r) => busy(r) || (r.state === 'done' && r.stars === 0));
+  if (t.results.some(busy)) schedulePoll(t.id);
+  if (t.results[openAfterLoad]) setTimeout((i: number) => openFull(t, i), 0, openAfterLoad);
+  openAfterLoad = -1;
   return w;
 }
 
-function fillResults(t: Test, body: HTMLElement): void {
-  if (testMode === 'table' && !video) body.replaceChildren(resultTable(t));
-  else body.replaceChildren(el('div', 'lab-cards', '') as HTMLElement);
-  if (testMode === 'cards' || video) {
-    const grid = body.firstElementChild as HTMLElement;
-    grid.dataset.n = String(t.results.length);
-    t.results.forEach((_, i) => grid.append(card(t, i)));
+function fillResults(t: LabTestFull, body: HTMLElement): void {
+  if (testMode === 'table' && !video) return void body.replaceChildren(resultTable(t));
+  const grid = el('div', 'lab-cards');
+  grid.dataset.n = String(t.results.length);
+  t.results.forEach((_, i) => grid.append(card(t, i)));
+  body.replaceChildren(grid);
+}
+
+// While models run: fetch the test again every 2 s and redraw only what changed (pages that are showing stay put).
+function schedulePoll(id: string): void {
+  clearTimeout(poll);
+  poll = window.setTimeout(async () => {
+    if (!isOpen || view.kind !== 'test' || view.id !== id) return;
+    let t: LabTestFull;
+    try {
+      t = await api<LabTestFull>(`tests/${encodeURIComponent(id)}`);
+    } catch {
+      return schedulePoll(id);
+    }
+    if (view.kind !== 'test' || view.id !== id || !current) return;
+    const old = current;
+    current = t;
+    t.results.forEach((r, i) => {
+      const o = old.results[i];
+      if (!o) return;
+      if (o.state !== r.state || o.page !== r.page || o.files.length !== r.files.length) {
+        main.querySelector(`.lab-card[data-i="${i}"]`)?.replaceWith(card(t, i));
+        const row = main.querySelector(`tr[data-i="${i}"]`);
+        if (row) row.replaceWith(resultRow(t, i));
+      } else for (const e of main.querySelectorAll<HTMLElement>(`[data-tok="${i}"]`)) e.textContent = `${fmtTok(r.tokens)} TOK`;
+    });
+    const sum = main.querySelector('.lab-sum');
+    if (sum) sum.textContent = `${fmtTime(t.at)} · ${summary(t)}`;
+    afterRate(t);
+    const stop = main.querySelector<HTMLElement>('.lab-stop');
+    if (stop) stop.hidden = !t.results.some(busy);
+    if (t.results.some(busy)) schedulePoll(id);
+  }, 2000);
+}
+
+function tickClocks(): void {
+  if (!current || view.kind !== 'test') return;
+  for (const e of main.querySelectorAll<HTMLElement>('[data-clock]')) {
+    const r = current.results[Number(e.dataset.clock)];
+    if (r) e.textContent = stateLabel(r);
   }
 }
 
-function card(t: Test, i: number): HTMLElement {
+function card(t: LabTestFull, i: number): HTMLElement {
   const r = t.results[i];
   const c = el('article', `lab-card lab-${r.state}`);
-  c.dataset.card = String(i);
+  c.dataset.i = String(i);
   c.classList.toggle('lab-top', r.stars > 0 && r.stars === topStars(t));
   const top = el('div', 'lab-card-top');
-  const name = el('div', 'lab-name', nameOf(t, i));
   const state = el('span', 'lab-state', stateLabel(r));
-  if (r.state === 'running') state.dataset.clock = `${t.id}:${i}`;
-  top.append(name, state);
-  const app = el('div', 'lab-app', appOf(t, i));
+  if (busy(r)) state.dataset.clock = String(i);
+  top.append(el('div', 'lab-name', nameOf(t, i)), state);
 
   const pane = el('div', 'lab-view');
   if (r.page) {
     const f = el('iframe');
-    f.setAttribute('sandbox', 'allow-scripts');
+    f.setAttribute('sandbox', SANDBOX);
     f.title = `${nameOf(t, i)}: its page`;
     f.loading = 'lazy';
-    f.srcdoc = r.page;
+    f.src = pageUrl(t, r);
     pane.append(f);
-  } else if (r.state === 'running') {
-    pane.append(el('div', 'lab-wait', r.startedAt > Date.now() ? 'WAITING FOR THE GPU' : 'WORKING…'));
+    pane.onclick = () => openFull(t, i);
+  } else if (busy(r)) {
+    pane.append(el('div', 'lab-wait', r.state === 'queued' ? 'WAITING FOR ITS TURN' : 'WORKING…'));
   } else {
-    pane.append(el('pre', 'lab-reply', r.reply || '(no reply)'));
+    pane.append(el('pre', `lab-reply${r.error ? ' lab-err' : ''}`, r.reply || r.error || '(no reply)'));
   }
-  if (r.page && r.reply) pane.append(el('p', 'lab-reply-line', r.reply));
+  if (r.page && (r.reply || r.error)) pane.append(el('p', 'lab-reply-line', r.reply || r.error));
 
   const stats = el('div', 'lab-stats');
   const tok = el('span', '', `${fmtTok(r.tokens)} TOK`);
-  if (r.state === 'running') tok.dataset.tok = `${t.id}:${i}`;
-  stats.append(tok, el('span', '', costText(r)), el('span', '', `${r.files.length} FILE${r.files.length === 1 ? '' : 'S'}`));
+  tok.dataset.tok = String(i);
+  const cost = el('span', '', costText(r));
+  cost.title = costTip;
+  stats.append(tok, cost, el('span', '', `${r.files.length} FILE${r.files.length === 1 ? '' : 'S'}`));
 
   const acts = el('div', 'lab-card-acts');
-  const big = button('OPEN BIG', () => openBig(t, i));
-  big.disabled = r.state === 'running';
-  acts.append(big, button('FILES', () => openFiles(t, i)), button('LOG', () => openLog(t, i)));
+  const big = button('OPEN BIG', () => openFull(t, i));
+  big.disabled = busy(r) && !r.page;
+  acts.append(big, button('FILES', () => openFiles(t, i)), button('LOG', () => void openLog(t, i)));
 
   const rate = el('div', 'lab-rate');
   rate.append(starsWidget(t, i));
   const note = el('input', 'lab-note');
   note.placeholder = 'Note';
   note.value = r.note;
-  note.oninput = () => (r.note = note.value);
+  let noteTimer = 0;
+  note.oninput = () => {
+    clearTimeout(noteTimer);
+    noteTimer = window.setTimeout(() => {
+      r.note = note.value;
+      api(`tests/${t.id}/results/${r.dir}`, 'PATCH', { note: note.value }).catch(fail);
+    }, 600);
+  };
   rate.append(note);
   if (r.state !== 'done') rate.classList.add('lab-off');
 
-  c.append(top, app, pane, stats, acts, rate);
+  c.append(top, el('div', 'lab-app', appOf(t, i)), pane, stats, acts, rate);
   return c;
 }
 
-function starsWidget(t: Test, i: number): HTMLElement {
+function starsWidget(t: LabTestFull, i: number): HTMLElement {
   const r = t.results[i];
   const w = el('div', 'lab-stars');
   w.setAttribute('role', 'group');
   w.setAttribute('aria-label', 'Stars');
   const btns: HTMLButtonElement[] = [];
-  const paint = () => btns.forEach((b, k) => {
-    b.textContent = k < r.stars ? '★' : '☆';
-    b.classList.toggle('on', k < r.stars);
-  });
+  const paint = () =>
+    btns.forEach((b, k) => {
+      b.textContent = k < r.stars ? '★' : '☆';
+      b.classList.toggle('on', k < r.stars);
+    });
   for (let n = 1; n <= 5; n++) {
     const b = button('☆', () => {
+      const was = r.stars;
       r.stars = r.stars === n ? 0 : n;
       paint();
       afterRate(t);
+      api(`tests/${t.id}/results/${r.dir}`, 'PATCH', { stars: r.stars }).catch((e) => {
+        r.stars = was;
+        paint();
+        afterRate(t);
+        fail(e);
+      });
     }, 'lab-star');
     b.title = `${n} star${n > 1 ? 's' : ''}`;
     b.disabled = r.state !== 'done';
@@ -468,61 +556,167 @@ function starsWidget(t: Test, i: number): HTMLElement {
 }
 
 // Stars changed: move the TOP mark, refresh the counts, unlock REVEAL.
-function afterRate(t: Test): void {
+function afterRate(t: LabTestFull): void {
   const max = topStars(t);
-  for (const c of main.querySelectorAll<HTMLElement>('[data-card]')) {
-    const r = t.results[Number(c.dataset.card)];
-    c.classList.toggle('lab-top', r.stars > 0 && r.stars === max);
+  for (const c of main.querySelectorAll<HTMLElement>('[data-i]')) {
+    const r = t.results[Number(c.dataset.i)];
+    if (r) c.classList.toggle('lab-top', r.stars > 0 && r.stars === max);
   }
-  const sum = main.querySelector<HTMLElement>(`[data-sum="${t.id}"]`);
-  if (sum) sum.textContent = `${fmtDate(t.at)} · ${summary(t)}`;
+  const sum = main.querySelector('.lab-sum');
+  if (sum) sum.textContent = `${fmtTime(t.at)} · ${summary(t)}`;
   const reveal = main.querySelector<HTMLButtonElement>('.lab-reveal');
-  if (reveal) reveal.disabled = t.results.some((r) => r.state === 'running' || (r.state === 'done' && r.stars === 0));
+  if (reveal) reveal.disabled = t.results.some((r) => busy(r) || (r.state === 'done' && r.stars === 0));
 }
 
-function resultTable(t: Test): HTMLElement {
+function resultTable(t: LabTestFull): HTMLElement {
   const wrap = el('div', 'lab-table-wrap');
   const tb = el('table', 'lab-table');
   const hr = el('tr');
-  for (const h of ['MODEL', 'APP', 'STATE', 'STARS', 'TIME', 'TOKENS', 'COST', 'FILES', 'NOTE']) hr.append(el('th', '', h));
+  for (const h of ['MODEL', 'APP', 'STATE', 'STARS', 'TOKENS', 'COST', 'FILES', 'NOTE']) hr.append(el('th', '', h));
   tb.append(el('thead'), el('tbody'));
   tb.tHead!.append(hr);
-  const max = topStars(t);
-  t.results.forEach((r, i) => {
-    const tr = el('tr');
-    tr.classList.toggle('lab-top', r.stars > 0 && r.stars === max);
-    tr.onclick = (e) => {
-      if (!(e.target as HTMLElement).closest('button, input') && r.state !== 'running') openBig(t, i);
-    };
-    const st = el('td', 'lab-state', stateLabel(r));
-    if (r.state === 'running') st.dataset.clock = `${t.id}:${i}`;
-    const stars = el('td');
-    stars.append(starsWidget(t, i));
-    tr.append(el('td', 'lab-strong', nameOf(t, i)), el('td', 'lab-dim', appOf(t, i)), st, stars, el('td', '', r.state === 'done' ? fmtClock(r.ms) : '-'), el('td', '', fmtTok(r.tokens)), el('td', '', costText(r)), el('td', '', String(r.files.length)), el('td', 'lab-dim', r.note));
-    tb.tBodies[0].append(tr);
-  });
+  t.results.forEach((_, i) => tb.tBodies[0].append(resultRow(t, i)));
   wrap.append(tb);
   return wrap;
 }
 
-function rerun(t: Test): void {
+function resultRow(t: LabTestFull, i: number): HTMLElement {
+  const r = t.results[i];
+  const tr = el('tr');
+  tr.dataset.i = String(i);
+  tr.classList.toggle('lab-top', r.stars > 0 && r.stars === topStars(t));
+  tr.onclick = (e) => {
+    if (!(e.target as HTMLElement).closest('button, input')) openFull(t, i);
+  };
+  const st = el('td', 'lab-state lab-nowrap', stateLabel(r));
+  if (busy(r)) st.dataset.clock = String(i);
+  const stars = el('td');
+  stars.append(starsWidget(t, i));
+  const tok = el('td', '', fmtTok(r.tokens));
+  tok.dataset.tok = String(i);
+  const cost = el('td', 'lab-nowrap', costText(r));
+  cost.title = costTip;
+  tr.append(el('td', 'lab-strong', nameOf(t, i)), el('td', 'lab-dim', appOf(t, i)), st, stars, tok, cost, el('td', '', String(r.files.length)), el('td', 'lab-dim', r.note));
+  return tr;
+}
+
+async function setBlind(t: LabTestFull): Promise<void> {
+  const patch = isBlind(t) ? { revealed: true } : t.blind ? { blind: false } : { blind: true, revealed: false };
+  try {
+    await api(`tests/${t.id}`, 'PATCH', patch);
+    render();
+  } catch (e) {
+    fail(e);
+  }
+}
+
+async function act(path: string, done: string): Promise<void> {
+  try {
+    await api(path, 'POST');
+    toast(done);
+    render();
+  } catch (e) {
+    fail(e);
+  }
+}
+
+function rerun(t: LabTestFull): void {
   draft.prompt = t.prompt;
   draft.title = t.title;
-  draft.picked = new Set(t.results.map((r) => r.model).filter((m) => !modelById(m).old));
+  draft.picked = new Set(t.results.map((r) => r.model));
   draft.blind = t.blind;
+  draft.limit = t.timeLimitMin;
   go({ kind: 'new' });
   toast('Same prompt and models. Change anything, then START.');
 }
 
-async function remove(t: Test): Promise<void> {
-  const ok = await confirmBox('DELETE THIS TEST?', `"${t.title}": ${t.results.length} results, ${fmtMb(testSize(t))}. The folder is deleted for good.`, 'DELETE');
+async function remove(t: LabTest | LabTestFull): Promise<void> {
+  const ok = await confirmBox('DELETE THIS TEST?', `"${t.title}": ${t.results.length} results. Its folder on the PC is deleted for good.`, 'DELETE');
   if (!ok) return;
-  tests.splice(tests.indexOf(t), 1);
-  toast('Deleted (mockup: nothing was on disk).');
-  go({ kind: t.archived ? 'archive' : 'history' });
+  try {
+    await api(`tests/${t.id}`, 'DELETE');
+    toast('Deleted.');
+    go({ kind: t.archived ? 'archive' : 'history' });
+  } catch (e) {
+    fail(e);
+  }
 }
 
-// ------------------------------------------------------------ boxes
+// ------------------------------------------------------------ full screen and boxes
+
+// OPEN BIG: the result fills the whole screen. A small CLOSE at the top right; DETAILS folds open at the bottom.
+function openFull(t: LabTestFull, i: number): void {
+  closeFull(true);
+  const r = t.results[i];
+  const d = el('div', 'lab-full');
+  d.tabIndex = -1;
+  const close = button('✕', () => closeFull(), 'lab-full-close');
+  close.title = 'Close (Esc)';
+  close.setAttribute('aria-label', 'Close');
+  if (r.page) {
+    const f = el('iframe', 'lab-full-frame');
+    f.setAttribute('sandbox', SANDBOX);
+    f.title = `${nameOf(t, i)}: its page`;
+    f.src = pageUrl(t, r);
+    d.append(f);
+  } else d.append(el('pre', `lab-full-text${r.error && !r.reply ? ' lab-err' : ''}`, r.reply || r.error || '(no reply yet)'));
+
+  const info = el('details', 'lab-full-info');
+  const sum = el('summary');
+  sum.append(el('span', 'lab-strong', nameOf(t, i)), el('span', 'lab-dim', ` · ${stateLabel(r)} · DETAILS`));
+  const inner = el('div', 'lab-full-inner');
+  const facts = el('div', 'lab-facts');
+  const fact = (k: string, v: string) => facts.append(el('span', 'lab-dim', k), el('span', '', v));
+  fact('APP', appOf(t, i));
+  if (!isBlind(t)) fact('VERSION', r.appVersion || '-');
+  fact('TIME', r.startedAt ? fmtClock(runMs(r)) : '-');
+  fact('TOKENS', fmtTok(r.tokens));
+  fact('COST', costText(r));
+  fact('FILES', String(r.files.length));
+  inner.append(facts, starsWidget(t, i));
+  if (r.page && r.reply) inner.append(el('pre', 'lab-reply', r.reply));
+  if (r.error) inner.append(el('p', 'lab-err', r.error));
+  if (r.page) {
+    const open = el('a', 'lab-link', 'OPEN THE PAGE IN A NEW TAB');
+    open.href = pageUrl(t, r);
+    open.target = '_blank';
+    open.rel = 'noopener noreferrer';
+    inner.append(open);
+  }
+  const nav2 = el('div', 'lab-row');
+  if (t.results.length > 1) {
+    nav2.append(
+      button('< PREV', () => openFull(t, (i - 1 + t.results.length) % t.results.length)),
+      button('NEXT >', () => openFull(t, (i + 1) % t.results.length)),
+    );
+  }
+  nav2.append(button('FILES', () => openFiles(t, i)), button('LOG', () => void openLog(t, i)));
+  inner.append(nav2);
+  info.append(sum, inner);
+  d.append(close, info);
+  d.onkeydown = (e) => {
+    if (e.key === 'Escape') closeFull();
+  };
+  document.body.append(d);
+  document.body.classList.add('lab-full-open');
+  try {
+    history.pushState({ phosphorLab: true, full: true }, '');
+  } catch {
+    /* fine without */
+  }
+  d.focus();
+}
+
+function closeFull(quiet = false): void {
+  const d = document.querySelector('.lab-full');
+  if (!d) return;
+  d.remove();
+  document.body.classList.remove('lab-full-open');
+  if (!quiet && (history.state as { full?: boolean } | null)?.full) {
+    pendingBack++;
+    history.back();
+  }
+}
 
 function box(title: string, wide = false): { d: HTMLDialogElement; body: HTMLElement } {
   const d = el('dialog', `lab-box${wide ? ' lab-box-wide' : ''}`);
@@ -536,76 +730,60 @@ function box(title: string, wide = false): { d: HTMLDialogElement; body: HTMLEle
   return { d, body };
 }
 
-function openBig(t: Test, i: number): void {
-  const r = t.results[i];
-  const { body } = box(`${nameOf(t, i)} · ${t.title}`, true);
-  if (r.page) {
-    const f = el('iframe', 'lab-big-frame');
-    f.setAttribute('sandbox', 'allow-scripts');
-    f.srcdoc = r.page;
-    body.append(f);
-  }
-  body.append(el('pre', 'lab-reply', r.reply || '(no reply)'));
-}
-
-function openFiles(t: Test, i: number): void {
+function openFiles(t: LabTestFull, i: number): void {
   const r = t.results[i];
   const { body } = box(`FILES · ${nameOf(t, i)}`);
-  body.append(el('code', 'lab-path', `${folder(t)}/${isBlind(t) ? `model-${LETTERS[i].toLowerCase()}` : resultDir(r)}/`));
+  body.append(el('code', 'lab-path', `${t.folder}/${isBlind(t) ? '(hidden)' : r.dir}/files/`));
+  if (!r.files.length) body.append(el('p', 'lab-dim', 'No files.'));
   const list = el('ul', 'lab-files');
-  const rows: [string, string][] = [['result.json', 'model, app, times, tokens, stars, note'], ['reply.md', 'the final answer'], ['log.jsonl', "the app's full log"]];
-  for (const [n, what] of rows) list.append(fileRow(n, what));
-  for (const f of r.files) list.append(fileRow(`files/${f.name}`, `${f.kb} KB`));
-  if (t.junkMb && r.files.length > 1) list.append(fileRow('files/node_modules/', `${fmtMb(t.junkMb / t.results.length)} · junk`));
-  body.append(list);
+  for (const f of r.files) {
+    const li = el('li');
+    const a = el('a', 'lab-strong', f.path);
+    a.href = pageUrl(t, r, f.path);
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    li.append(a, el('span', 'lab-dim', fmtBytes(f.bytes)));
+    list.append(li);
+  }
+  body.append(list, el('p', 'lab-dim', 'Each file opens in a locked tab. Also in the folder: result.json, reply.md and log.jsonl. Build junk (node_modules) is not listed.'));
 }
 
-function fileRow(name: string, what: string): HTMLElement {
-  const li = el('li');
-  li.append(el('span', 'lab-strong', name), el('span', 'lab-dim', what));
-  return li;
-}
-
-function openLog(t: Test, i: number): void {
+async function openLog(t: LabTestFull, i: number): Promise<void> {
   const r = t.results[i];
-  const m = modelById(r.model);
   const { body } = box(`LOG · ${nameOf(t, i)}`, true);
-  const at = new Date(r.startedAt).toISOString();
-  const lines = [
-    { type: 'start', at, app: APPS[m.app].name, model: isBlind(t) ? 'hidden' : m.id, folder: 'out/' },
-    { type: 'tool', tool: 'write', path: r.files[0]?.name ?? 'answer.md' },
-    { type: 'usage', input_tokens: Math.round(r.tokens * 0.7), output_tokens: Math.round(r.tokens * 0.3) },
-    { type: 'end', state: r.state, ms: r.ms },
-  ];
-  body.append(el('p', 'lab-dim', 'MOCKUP: a real log is the app\'s own JSON stream, saved as log.jsonl.'), el('pre', 'lab-log', lines.map((l) => JSON.stringify(l)).join('\n')));
+  body.append(el('p', 'lab-dim', 'LOADING…'));
+  try {
+    const { log, stderr } = await api<{ log: string; stderr: string }>(`tests/${t.id}/results/${r.dir}/log`);
+    body.replaceChildren(el('p', 'lab-dim', "The app's own output (log.jsonl), one event per line."), el('pre', 'lab-log', log || '(empty)'));
+    if (stderr.trim()) body.append(el('h3', '', 'ERRORS AND NOTES (stderr)'), el('pre', 'lab-log', stderr));
+  } catch (e) {
+    body.replaceChildren(el('p', 'lab-err', e instanceof Error ? e.message : String(e)));
+  }
 }
 
 // ------------------------------------------------------------ HISTORY
 
-function inRange(t: Test): boolean {
+function inRange(t: LabTest): boolean {
   const days = RANGES.find((r) => r[0] === filt.range)?.[2] ?? Infinity;
   return Date.now() - t.at <= days * 86400000;
 }
 
-function matches(t: Test): boolean {
-  if (t.archived || !inRange(t)) return false;
-  const q = filt.q.trim().toLowerCase();
-  if (q && !`${t.title} ${t.prompt}`.toLowerCase().includes(q)) return false;
-  if (filt.model && !t.results.some((r) => modelById(r.model).name === filt.model)) return false;
-  if (filt.app && !t.results.some((r) => modelById(r.model).app === filt.app)) return false;
-  if (filt.minStars && !t.results.some((r) => r.stars >= filt.minStars)) return false;
-  return true;
-}
-
-function resultMatches(r: Result): boolean {
-  const m = modelById(r.model);
-  if (filt.model && m.name !== filt.model) return false;
-  if (filt.app && m.app !== filt.app) return false;
+function resultMatches(r: LabResult): boolean {
+  if (filt.model && r.modelName !== filt.model) return false;
+  if (filt.app && r.appName !== filt.app) return false;
   if (filt.minStars && r.stars < filt.minStars) return false;
   return true;
 }
 
-function historyView(): HTMLElement {
+function matches(t: LabTest): boolean {
+  if (!inRange(t)) return false;
+  const q = filt.q.trim().toLowerCase();
+  if (q && !`${t.title} ${t.prompt}`.toLowerCase().includes(q)) return false;
+  return !(filt.model || filt.app || filt.minStars) || t.results.some(resultMatches);
+}
+
+async function historyView(): Promise<HTMLElement> {
+  const { tests } = await api<{ tests: LabTest[] }>('tests');
   const w = el('div', 'lab-history');
   const shown = tests.filter(matches);
   const results = shown.flatMap((t) => t.results.filter(resultMatches).map((r) => ({ t, r })));
@@ -621,13 +799,16 @@ function historyView(): HTMLElement {
     timer = window.setTimeout(() => {
       filt.q = q.value;
       const pos = q.selectionStart;
-      render();
-      const nq = main.querySelector<HTMLInputElement>('.lab-search');
-      nq?.focus();
-      if (nq && pos !== null) nq.setSelectionRange(pos, pos);
-    }, 200);
+      void historyView().then((node) => {
+        main.firstElementChild?.replaceWith(node);
+        const nq = main.querySelector<HTMLInputElement>('.lab-search');
+        nq?.focus();
+        if (nq && pos !== null) nq.setSelectionRange(pos, pos);
+      });
+    }, 250);
   };
-  const modelNames = [...new Set(MODELS.map((m) => m.name))].sort();
+  const modelNames = [...new Set(tests.flatMap((t) => t.results.map((r) => r.modelName)))].sort();
+  const appNames = [...new Set(tests.flatMap((t) => t.results.map((r) => r.appName)))].sort();
   const rangeSeg = el('div', 'lab-seg');
   for (const [k, label] of RANGES) {
     const b = button(label, () => {
@@ -643,7 +824,7 @@ function historyView(): HTMLElement {
       filt.model = v;
       render();
     }),
-    select('APP', [['', 'ANY'], ...(Object.keys(APPS) as (keyof typeof APPS)[]).filter((a) => a !== 'local').map((a): [string, string] => [a, APPS[a].name]), ['local', 'Local (this PC)']], filt.app, (v) => {
+    select('APP', [['', 'ANY'], ...appNames.map((n): [string, string] => [n, n])], filt.app, (v) => {
       filt.app = v;
       render();
     }),
@@ -653,6 +834,11 @@ function historyView(): HTMLElement {
     }),
     rangeSeg,
   );
+  w.append(bar);
+  if (!tests.length) {
+    w.append(el('p', 'lab-empty', 'No tests yet. Press + NEW TEST, write a prompt, pick some models and START.'));
+    return w;
+  }
 
   const charts = el('div', 'lab-charts');
   charts.append(starsChart(results.map((x) => x.r)), speedChart(results.map((x) => x.r)), winsChart(shown));
@@ -662,7 +848,7 @@ function historyView(): HTMLElement {
   for (const [k, label] of [['tests', `TESTS (${shown.length})`], ['results', `RESULTS (${results.length})`]] as const) {
     const b = button(label, () => {
       filt.rows = k;
-      if (k === 'tests' && !['date', 'test', 'models', 'stars', 'size'].includes(filt.sort)) filt.sort = 'date';
+      if (k === 'tests' && !['date', 'test', 'models', 'stars'].includes(filt.sort)) filt.sort = 'date';
       render();
     });
     b.classList.toggle('on', filt.rows === k);
@@ -670,7 +856,7 @@ function historyView(): HTMLElement {
   }
   rowsBar.append(seg, el('span', 'lab-grow'), el('span', 'lab-dim', 'Click a row to open it. Click a heading to sort.'));
 
-  w.append(bar, charts, rowsBar, filt.rows === 'tests' ? testsTable(shown) : resultsTable(results));
+  w.append(charts, rowsBar, filt.rows === 'tests' ? testsTable(shown) : resultsTable(results));
   if (!shown.length) w.append(el('p', 'lab-empty', 'No tests match. Clear the search or pick a longer time range.'));
   return w;
 }
@@ -688,44 +874,49 @@ function sortHead(tr: HTMLElement, cols: [string, SortKey | null][]): void {
   }
 }
 
-function testsTable(shown: Test[]): HTMLElement {
-  const val = (t: Test): number | string =>
-    filt.sort === 'test' ? t.title.toLowerCase() : filt.sort === 'models' ? t.results.length : filt.sort === 'stars' ? avgStars(rated(t)) : filt.sort === 'size' ? testSize(t) : t.at;
-  const rows = [...shown].sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * filt.dir);
+const cmp = (a: number | string, b: number | string) => (a < b ? -1 : a > b ? 1 : 0);
+
+function testsTable(shown: LabTest[], archive = false): HTMLElement {
+  const val = (t: LabTest): number | string => (filt.sort === 'test' ? t.title.toLowerCase() : filt.sort === 'models' ? t.results.length : filt.sort === 'stars' ? avgStars(rated(t)) : t.at);
+  const rows = archive ? shown : [...shown].sort((a, b) => cmp(val(a), val(b)) * filt.dir);
   const wrap = el('div', 'lab-table-wrap');
   const tb = el('table', 'lab-table lab-click');
   const hr = el('tr');
-  sortHead(hr, [['DATE', 'date'], ['TEST', 'test'], ['MODELS', 'models'], ['WINNER', null], ['AVG STARS', 'stars'], ['STATE', null], ['SIZE', 'size']]);
+  if (archive) for (const h of ['DATE', 'TEST', 'MODELS', 'WINNER', '']) hr.append(el('th', '', h));
+  else sortHead(hr, [['DATE', 'date'], ['TEST', 'test'], ['MODELS', 'models'], ['WINNER', null], ['AVG STARS', 'stars'], ['STATE', null]]);
   tb.append(el('thead'), el('tbody'));
   tb.tHead!.append(hr);
   for (const t of rows) {
     const tr = el('tr');
-    tr.onclick = () => go({ kind: 'test', id: t.id });
+    tr.onclick = (e) => {
+      if (!(e.target as HTMLElement).closest('button')) go({ kind: 'test', id: t.id });
+    };
     const max = topStars(t);
-    const winners = max ? t.results.filter((r) => r.stars === max).map((r) => modelById(r.model).name) : [];
+    const winners = max ? t.results.filter((r) => r.stars === max).map((r) => r.modelName) : [];
     const testCell = el('td', 'lab-test-cell');
     testCell.append(el('div', 'lab-strong', t.title), el('div', 'lab-dim lab-clip', t.prompt));
-    const running = t.results.filter((r) => r.state === 'running').length;
+    const run = t.results.filter(busy).length;
     const avg = avgStars(rated(t));
-    tr.append(
-      el('td', 'lab-nowrap', fmtDate(t.at)),
-      testCell,
-      el('td', '', String(t.results.length)),
-      el('td', '', isBlind(t) ? '(blind)' : winners.join(', ') || '-'),
-      el('td', 'lab-nowrap', avg ? `${avg.toFixed(1)} ★` : '-'),
-      el('td', 'lab-nowrap', running ? `${running} RUNNING` : rated(t).length < t.results.filter((r) => r.state === 'done').length ? 'TO RATE' : 'DONE'),
-      el('td', 'lab-nowrap', fmtMb(testSize(t))),
-    );
+    tr.append(el('td', 'lab-nowrap', fmtDate(t.at)), testCell, el('td', '', String(t.results.length)), el('td', '', isBlind(t) ? '(blind)' : winners.join(', ') || '-'));
+    if (archive) {
+      const acts = el('td', 'lab-nowrap');
+      acts.append(button('RESTORE', () => void act(`tests/${t.id}/restore`, 'Back in HISTORY.')), button('DELETE', () => void remove(t), 'lab-danger'));
+      tr.append(acts);
+    } else
+      tr.append(
+        el('td', 'lab-nowrap', avg ? `${avg.toFixed(1)} ★` : '-'),
+        el('td', 'lab-nowrap', run ? `${run} RUNNING` : t.results.some((r) => r.state === 'done' && !r.stars) ? 'TO RATE' : 'DONE'),
+      );
     tb.tBodies[0].append(tr);
   }
   wrap.append(tb);
   return wrap;
 }
 
-function resultsTable(results: { t: Test; r: Result }[]): HTMLElement {
-  const val = ({ t, r }: { t: Test; r: Result }): number | string =>
-    filt.sort === 'test' ? t.title.toLowerCase() : filt.sort === 'model' ? modelById(r.model).name.toLowerCase() : filt.sort === 'stars' ? r.stars : filt.sort === 'time' ? r.ms : filt.sort === 'tokens' ? r.tokens : t.at;
-  const rows = [...results].sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * filt.dir);
+function resultsTable(results: { t: LabTest; r: LabResult }[]): HTMLElement {
+  const val = ({ t, r }: { t: LabTest; r: LabResult }): number | string =>
+    filt.sort === 'test' ? t.title.toLowerCase() : filt.sort === 'model' ? r.modelName.toLowerCase() : filt.sort === 'stars' ? r.stars : filt.sort === 'time' ? runMs(r) : filt.sort === 'tokens' ? r.tokens : t.at;
+  const rows = [...results].sort((a, b) => cmp(val(a), val(b)) * filt.dir);
   const wrap = el('div', 'lab-table-wrap');
   const tb = el('table', 'lab-table lab-click');
   const hr = el('tr');
@@ -735,17 +926,16 @@ function resultsTable(results: { t: Test; r: Result }[]): HTMLElement {
   for (const { t, r } of rows) {
     const tr = el('tr');
     tr.onclick = () => go({ kind: 'test', id: t.id });
-    const m = modelById(r.model);
     const blind = isBlind(t);
     tr.append(
       el('td', 'lab-nowrap', fmtDate(t.at)),
       el('td', 'lab-strong', t.title),
-      el('td', 'lab-nowrap', blind ? '(blind)' : m.name),
-      el('td', 'lab-dim lab-nowrap', blind ? '' : APPS[m.app].name),
-      el('td', 'lab-nowrap lab-starcell', r.state === 'done' ? starText(r.stars) : r.state.toUpperCase()),
-      el('td', '', r.state === 'done' ? fmtClock(r.ms) : '-'),
+      el('td', 'lab-nowrap', blind ? '(blind)' : r.modelName),
+      el('td', 'lab-dim lab-nowrap', blind ? '' : r.appName),
+      el('td', 'lab-nowrap lab-starcell', r.state === 'done' ? (r.stars ? starText(r.stars) : 'NOT RATED') : r.state.toUpperCase()),
+      el('td', '', r.startedAt ? fmtClock(runMs(r)) : '-'),
       el('td', '', fmtTok(r.tokens)),
-      el('td', '', costText(r)),
+      el('td', 'lab-nowrap', costText(r)),
       el('td', 'lab-dim', r.note),
     );
     tb.tBodies[0].append(tr);
@@ -767,10 +957,7 @@ function chartBox(title: string, sub: string): HTMLElement {
 }
 
 function barRows(c: HTMLElement, rows: Row[], max: number): void {
-  if (!rows.length) {
-    c.append(el('p', 'lab-dim lab-chart-empty', 'Rate some results to see this.'));
-    return;
-  }
+  if (!rows.length) return void c.append(el('p', 'lab-dim lab-chart-empty', 'Rate some results to see this.'));
   const list = el('div', 'lab-bars');
   for (const r of rows) {
     const row = el('div', 'lab-bar-row');
@@ -785,17 +972,13 @@ function barRows(c: HTMLElement, rows: Row[], max: number): void {
   c.append(list);
 }
 
-function byModel(results: Result[]): Map<string, Result[]> {
-  const m = new Map<string, Result[]>();
-  for (const r of results) {
-    if (r.state !== 'done') continue;
-    const k = modelById(r.model).name;
-    m.set(k, [...(m.get(k) ?? []), r]);
-  }
+function byModel(results: LabResult[]): Map<string, LabResult[]> {
+  const m = new Map<string, LabResult[]>();
+  for (const r of results) if (r.state === 'done') m.set(r.modelName, [...(m.get(r.modelName) ?? []), r]);
   return m;
 }
 
-function starsChart(results: Result[]): HTMLElement {
+function starsChart(results: LabResult[]): HTMLElement {
   const c = chartBox('AVERAGE STARS', 'per model, rated results');
   const rows: Row[] = [...byModel(results.filter((r) => r.stars > 0))].map(([label, rs]) => {
     const a = avgStars(rs);
@@ -806,13 +989,13 @@ function starsChart(results: Result[]): HTMLElement {
   return c;
 }
 
-function winsChart(shown: Test[]): HTMLElement {
+function winsChart(shown: LabTest[]): HTMLElement {
   const c = chartBox('WINS', 'tests where it got the most stars');
   const wins = new Map<string, number>();
   for (const t of shown) {
     const max = topStars(t);
-    if (!max) continue;
-    for (const r of t.results) if (r.stars === max && resultMatches(r)) wins.set(modelById(r.model).name, (wins.get(modelById(r.model).name) ?? 0) + 1);
+    if (!max || isBlind(t)) continue;
+    for (const r of t.results) if (r.stars === max && resultMatches(r)) wins.set(r.modelName, (wins.get(r.modelName) ?? 0) + 1);
   }
   const rows: Row[] = [...wins].map(([label, n]) => ({ label, value: n, text: String(n), tip: `${label}: top stars in ${n} test${n > 1 ? 's' : ''} (ties count for each)` }));
   rows.sort((a, b) => b.value - a.value);
@@ -821,9 +1004,9 @@ function winsChart(shown: Test[]): HTMLElement {
 }
 
 // Stars (up) against time (right): the best are top-left.
-function speedChart(results: Result[]): HTMLElement {
+function speedChart(results: LabResult[]): HTMLElement {
   const c = chartBox('QUALITY VS SPEED', 'average stars against average time');
-  const pts = [...byModel(results.filter((r) => r.stars > 0))].map(([label, rs]) => ({ label, s: avgStars(rs), t: rs.reduce((a, r) => a + r.ms, 0) / rs.length / 1000, n: rs.length }));
+  const pts = [...byModel(results.filter((r) => r.stars > 0))].map(([label, rs]) => ({ label, s: avgStars(rs), t: rs.reduce((a, r) => a + runMs(r), 0) / rs.length / 1000, n: rs.length }));
   if (!pts.length) {
     c.append(el('p', 'lab-dim lab-chart-empty', 'Rate some results to see this.'));
     return c;
@@ -866,18 +1049,17 @@ function speedChart(results: Result[]): HTMLElement {
   for (const p of pts) {
     const g = document.createElementNS(NS, 'g');
     g.setAttribute('class', 'lab-dot');
-    const hit = document.createElementNS(NS, 'circle');
-    hit.setAttribute('cx', String(x(p.t)));
-    hit.setAttribute('cy', String(y(p.s)));
-    hit.setAttribute('r', '12');
-    hit.setAttribute('class', 'lab-hit');
-    const dot = document.createElementNS(NS, 'circle');
-    dot.setAttribute('cx', String(x(p.t)));
-    dot.setAttribute('cy', String(y(p.s)));
-    dot.setAttribute('r', '5');
     const tip = document.createElementNS(NS, 'title');
     tip.textContent = `${p.label}: ${p.s.toFixed(2)} stars, ${Math.round(p.t)}s average (${p.n} result${p.n > 1 ? 's' : ''})`;
-    g.append(tip, hit, dot);
+    g.append(tip);
+    for (const [r, cls] of [[12, 'lab-hit'], [5, '']] as const) {
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('cx', String(x(p.t)));
+      dot.setAttribute('cy', String(y(p.s)));
+      dot.setAttribute('r', String(r));
+      if (cls) dot.setAttribute('class', cls);
+      g.append(dot);
+    }
     svg.append(g);
     if (labelled.has(p.label)) {
       const right = x(p.t) < W * 0.6;
@@ -890,89 +1072,16 @@ function speedChart(results: Result[]): HTMLElement {
 
 // ------------------------------------------------------------ ARCHIVE
 
-function archiveView(): HTMLElement {
+async function archiveView(): Promise<HTMLElement> {
+  const [{ tests }, st] = await Promise.all([api<{ tests: LabTest[] }>('tests?archived=1'), api<LabStorage>('storage')]);
   const w = el('div', 'lab-archive');
-  const arch = tests.filter((t) => t.archived).sort((a, b) => b.at - a.at);
-  const total = tests.reduce((a, t) => a + testSize(t), 0);
-  const junk = tests.reduce((a, t) => a + t.junkMb, 0);
   const store = el('div', 'lab-row lab-storage');
-  const junkBtn = button(`REMOVE ALL JUNK (${fmtMb(junk)})`, () => {
-    for (const t of tests) t.junkMb = 0;
-    toast('Junk removed: node_modules and build caches. Replies, files, logs and stars are kept.');
-    render();
-  });
-  junkBtn.disabled = !junk;
+  const junkBtn = button(`REMOVE ALL JUNK (${fmtBytes(st.junkBytes)})`, () => void act('junk', 'Junk removed: node_modules and build caches. Replies, files, logs and stars are kept.'));
+  junkBtn.disabled = !st.junkBytes;
   junkBtn.title = 'Deletes node_modules and build caches in every test. Keeps the replies, the files, the logs and the stars.';
-  store.append(el('span', '', `${tests.length} TESTS · ${fmtMb(total)} ON DISK · ${fmtMb(junk)} JUNK`), el('span', 'lab-grow'), junkBtn);
-  w.append(store);
-  w.append(el('p', 'lab-dim', 'Archived tests are kept in data/lab/archive/ but hidden from HISTORY. Moving a folder there by hand works too.'));
-  if (!arch.length) {
-    w.append(el('p', 'lab-empty', 'Nothing archived. Open a test and press ARCHIVE.'));
-    return w;
-  }
-  const wrap = el('div', 'lab-table-wrap');
-  const tb = el('table', 'lab-table lab-click');
-  const hr = el('tr');
-  for (const h of ['DATE', 'TEST', 'MODELS', 'SIZE', '']) hr.append(el('th', '', h));
-  tb.append(el('thead'), el('tbody'));
-  tb.tHead!.append(hr);
-  for (const t of arch) {
-    const tr = el('tr');
-    tr.onclick = (e) => {
-      if (!(e.target as HTMLElement).closest('button')) go({ kind: 'test', id: t.id });
-    };
-    const acts = el('td', 'lab-nowrap');
-    acts.append(
-      button('RESTORE', () => {
-        t.archived = false;
-        toast('Back in HISTORY.');
-        render();
-      }),
-      button('DELETE', () => void remove(t), 'lab-danger'),
-    );
-    const testCell = el('td', 'lab-test-cell');
-    testCell.append(el('div', 'lab-strong', t.title), el('div', 'lab-dim lab-clip', t.prompt));
-    tr.append(el('td', 'lab-nowrap', fmtDate(t.at)), testCell, el('td', '', String(t.results.length)), el('td', 'lab-nowrap', fmtMb(testSize(t))), acts);
-    tb.tBodies[0].append(tr);
-  }
-  wrap.append(tb);
-  w.append(wrap);
+  store.append(el('span', '', `${st.tests} TESTS · ${st.archived} ARCHIVED · ${fmtBytes(st.bytes)} ON DISK · ${fmtBytes(st.junkBytes)} JUNK`), el('span', 'lab-grow'), junkBtn);
+  w.append(store, el('p', 'lab-dim', 'Archived tests are kept in data/lab/archive/ but hidden from HISTORY. Moving a folder there by hand works too.'));
+  if (!tests.length) w.append(el('p', 'lab-empty', 'Nothing archived. Open a test and press ARCHIVE.'));
+  else w.append(testsTable(tests, true));
   return w;
-}
-
-// ------------------------------------------------------------ the fake runner
-
-function tick(): void {
-  const now = Date.now();
-  for (const t of tests)
-    t.results.forEach((r, i) => {
-      if (r.state !== 'running' || r.startedAt > now) return;
-      if (now - r.startedAt >= r.ms) {
-        fakeFinish(r, t.prompt, i + t.id.length);
-        r.ms = now - r.startedAt;
-        finished(t, i);
-      } else r.tokens += 150 + Math.round(Math.random() * 500);
-    });
-  if (!rootEl) return;
-  for (const e of rootEl.querySelectorAll<HTMLElement>('[data-clock]')) {
-    const [id, i] = e.dataset.clock!.split(':');
-    const r = tests.find((t) => t.id === id)?.results[Number(i)];
-    if (r?.state === 'running') e.textContent = r.startedAt > now ? 'WAITING' : stateLabel(r);
-  }
-  for (const e of rootEl.querySelectorAll<HTMLElement>('[data-tok]')) {
-    const [id, i] = e.dataset.tok!.split(':');
-    const r = tests.find((t) => t.id === id)?.results[Number(i)];
-    if (r) e.textContent = `${fmtTok(r.tokens)} TOK`;
-  }
-}
-
-function finished(t: Test, i: number): void {
-  if (view.kind !== 'test' || view.id !== t.id) return;
-  const old = main.querySelector<HTMLElement>(`[data-card="${i}"]`);
-  if (old) old.replaceWith(card(t, i));
-  else {
-    const body = main.querySelector<HTMLElement>(`[data-test="${t.id}"]`);
-    if (body) fillResults(t, body);
-  }
-  afterRate(t);
 }
