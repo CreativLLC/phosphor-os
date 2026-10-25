@@ -692,10 +692,9 @@ async function saveRanking(t: LabTestFull, dirs: string[]): Promise<void> {
 // RUN AGAIN: that one model from scratch. After a time-out it gets an hour.
 async function runAgain(t: LabTestFull, i: number): Promise<void> {
   const r = t.results[i];
-  const timedOut = r.error.includes('time limit');
   try {
-    await api(`tests/${t.id}/results/${r.dir}/again`, 'POST', timedOut ? { timeLimitMin: Math.max(60, t.timeLimitMin) } : {});
-    toast(timedOut ? 'Running it again with a 1-hour limit.' : 'Running it again.');
+    await api(`tests/${t.id}/results/${r.dir}/again`, 'POST', { timeLimitMin: Math.max(60, t.timeLimitMin) });
+    toast('Running it again with a 1-hour limit.');
     render();
   } catch (e) {
     fail(e);
