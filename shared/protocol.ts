@@ -93,7 +93,12 @@ export type Stats = {
   contextWindow: number;
   cacheAt: number | null; // when the chat last called Claude: its prompt cache counts down from here (shared/cache.ts)
   cacheTtlMs: number; // how long that cache lives (5 min or 1 h); 0 = no cache (a local model, or not known yet)
+  connectors?: Connector[]; // the MCP servers this chat has, and how often it used each (mission panel CONNECTORS)
 };
+
+// A connector (MCP server) in one chat. status: Claude Code's (connected, failed, needs-auth, pending, disabled), or
+// '' when only known from the saved chat (its process has not started yet). calls: tool calls this chat made to it.
+export type Connector = { name: string; status: string; calls: number };
 
 export type TabMeta = {
   id: string;

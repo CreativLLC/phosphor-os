@@ -513,6 +513,19 @@
   color: var(--ph-dim);
 }
 
+/* CONNECTORS: unused ones dim, a failed or signed-out one stands out. */
+.ms-conn .ms-row:not(.used) {
+  color: var(--ph-dim);
+}
+
+.ms-conn .ms-row.used .ms-k {
+  color: var(--ph);
+}
+
+.ms-conn .ms-row.bad .ms-v {
+  color: var(--ph-bright);
+}
+
 /* CONTEXT: the gauge takes the place of the dot leader. */
 .ms-ctx::after {
   display: none;

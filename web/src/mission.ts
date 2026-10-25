@@ -254,6 +254,9 @@ function row(label: string, ...val: HTMLElement[]): { row: HTMLElement; key: HTM
   return { row: r, key, val: v };
 }
 
+// Claude Code's connector states, as the panel words them ('' = known only from the saved chat).
+const CONN_STATE: Record<string, string> = { connected: 'ON', failed: 'FAILED', 'needs-auth': 'SIGN IN', pending: 'STARTING', disabled: 'OFF', '': '' };
+
 let showFiles = false;
 let ticker = 0;
 
@@ -280,6 +283,10 @@ export function mountMission(root: HTMLElement): void {
   // STEPS
   const list = el('ol', 'ms-steps');
   const steps = section('STEPS', list);
+
+  // CONNECTORS: the MCP servers this chat has, their state, and how often it used each (most used first).
+  const connList = el('div', 'ms-stats ms-conn');
+  const conn = section('CONNECTORS', connList);
 
   // STATS
   const timeVal = el('span', 'ms-time');
@@ -312,7 +319,7 @@ export function mountMission(root: HTMLElement): void {
   const stats = section('STATS', grid);
 
   const wrap = el('div', 'ms');
-  wrap.append(usagePanel(), noTab, task.sec, sum.sec, now.sec, steps.sec, stats.sec);
+  wrap.append(usagePanel(), noTab, task.sec, sum.sec, now.sec, steps.sec, conn.sec, stats.sec);
   root.replaceChildren(wrap);
 
   const showTab = (tab: TabState | undefined) => {
@@ -435,6 +442,24 @@ export function mountMission(root: HTMLElement): void {
   }
 
   watchActive(['stats', 'agents', 'info', 'meta'], renderStats);
+
+  watchActive(['stats'], (tab) => {
+    const list = [...(tab?.stats.connectors ?? [])].sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name));
+    conn.sec.hidden = !list.length;
+    const used = list.filter((c) => c.calls).length;
+    conn.extra.textContent = used ? `${used} USED` : 'NONE USED';
+    connList.replaceChildren(
+      ...list.map((c) => {
+        const r = row(c.name.replace(/^claude\.ai /, ''));
+        const state = CONN_STATE[c.status] ?? c.status.toUpperCase();
+        r.val.textContent = [c.calls ? `${c.calls} ${c.calls === 1 ? 'CALL' : 'CALLS'}` : '', state].filter(Boolean).join(' · ');
+        r.row.classList.toggle('used', c.calls > 0);
+        r.row.classList.toggle('bad', c.status === 'failed' || c.status === 'needs-auth');
+        r.row.title = `${c.name}: ${c.status || 'not started yet in this chat'}`;
+        return r.row;
+      }),
+    );
+  });
   watchCache((tab) => {
     const c = cacheOf(tab);
     cache.row.hidden = !c;

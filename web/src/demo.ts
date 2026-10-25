@@ -52,7 +52,7 @@ const tab1: TabState = {
     agent('a2', 'Plan', 'Design the tab protocol', 'completed', 300, { summary: 'Protocol drafted: one WebSocket, events carry a tab id.', toolUses: 4, tokens: 9100, endedAt: now - 120000 }),
     agent('a3', 'general-purpose', 'Check the old login code', 'failed', 400, { summary: 'Could not read data/secret', toolUses: 2, tokens: 3300, endedAt: now - 200000 }),
   ],
-  stats: { toolCalls: 23, filesChanged: [`${CWD}/server/tabs.ts`, `${CWD}/server/tab.ts`, `${CWD}/web/src/tabs.ts`], turns: 3, turnStartedAt: now - 95000, lastTurnMs: 42000, contextTokens: 61000, contextWindow: 200000, cacheAt: now, cacheTtlMs: TTL_1H },
+  stats: { toolCalls: 23, filesChanged: [`${CWD}/server/tabs.ts`, `${CWD}/server/tab.ts`, `${CWD}/web/src/tabs.ts`], turns: 3, turnStartedAt: now - 95000, lastTurnMs: 42000, contextTokens: 61000, contextWindow: 200000, cacheAt: now, cacheTtlMs: TTL_1H , connectors: [{ name: 'claude.ai Gmail', status: 'connected', calls: 4 }, { name: 'playwright', status: 'connected', calls: 2 }, { name: 'claude.ai Google Drive', status: 'connected', calls: 0 }, { name: 'claude.ai Notion', status: 'needs-auth', calls: 0 }] },
   activity: 'Edit: server/tabs.ts',
 };
 

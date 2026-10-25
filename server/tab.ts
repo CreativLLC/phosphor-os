@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { IMAGE_MODEL, isImageModel, type Agent, type AskQuestion, type Attachment, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
+import { IMAGE_MODEL, isImageModel, type Agent, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
 import { ttlFromUsage } from '../shared/cache.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
 import { DATA_DIR, geminiImage, imageModel, localChoice, localModel } from './config.ts';
@@ -81,6 +81,31 @@ export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: st
 // The image model's prompts and pictures are not in Claude Code's transcript: the tab saves them (tabs.json), each
 // with the id of the last transcript message before it, so a reload puts them back in the same place.
 export type SavedImage = { after: string | null; item: Item };
+
+// A connector's tool names are mcp__<server name, other characters made _>__<tool>.
+const toolKey = (server: string) => server.replace(/[^A-Za-z0-9_-]/g, '_');
+const OWN_SERVER = 'phosphor'; // this app's mission tool, not a connector
+
+// One more call to the connector a tool belongs to (none for a built-in tool or this app's own).
+export function countConnector(list: Connector[], tool: string): boolean {
+  const m = /^mcp__(.+?)__/.exec(tool);
+  if (!m || m[1] === OWN_SERVER) return false;
+  const c = list.find((x) => toolKey(x.name) === m[1]);
+  if (c) c.calls++;
+  else list.push({ name: m[1], status: '', calls: 1 });
+  return true;
+}
+
+// The servers Claude Code reports, with the calls counted so far (also those of servers known only by tool name).
+export function mergeConnectors(list: Connector[], servers: { name: string; status: string }[]): Connector[] {
+  const out = servers.filter((s) => s.name !== OWN_SERVER).map((s) => ({ name: s.name, status: s.status, calls: 0 }));
+  for (const old of list) {
+    const now = out.find((c) => toolKey(c.name) === toolKey(old.name));
+    if (now) now.calls += old.calls;
+    else if (old.calls) out.push(old);
+  }
+  return out;
+}
 
 const emptyStats = (): Stats => ({ toolCalls: 0, filesChanged: [], turns: 0, turnStartedAt: null, lastTurnMs: 0, contextTokens: 0, contextWindow: 0, cacheAt: null, cacheTtlMs: 0 });
 
@@ -523,6 +548,15 @@ export class Tab {
       }));
   }
 
+  // The CONNECTORS section after a change on the MCP screen (init reported the old states).
+  private async refreshConnectors(): Promise<void> {
+    const list = await this.q?.mcpServerStatus().catch(() => undefined);
+    if (!list) return;
+    const keep = new Map((this.state.stats.connectors ?? []).map((c) => [c.name, c.calls]));
+    this.state.stats.connectors = mergeConnectors([], list).map((c) => ({ ...c, calls: keep.get(c.name) ?? c.calls }));
+    this.patch('stats');
+  }
+
   // RECONNECT, or ON/OFF. Claude Code saves ON/OFF for this folder, like /mcp in the terminal.
   // Returns an error to show, if any.
   async mcpAction(name: string, action: McpAction): Promise<string | undefined> {
@@ -530,6 +564,7 @@ export class Tab {
     try {
       if (action === 'reconnect') await this.q!.reconnectMcpServer(name);
       else await this.q!.toggleMcpServer(name, action === 'enable');
+      await this.refreshConnectors();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // A server that needs a login "fails" to connect with that status; the list shows it, so it is not an error.
@@ -793,6 +828,8 @@ export class Tab {
       Tab.lastModel = m.model;
       if (m.terminal_slash_commands) Tab.terminalCommands = new Set(m.terminal_slash_commands);
       this.patch('info');
+      this.state.stats.connectors = mergeConnectors(this.state.stats.connectors ?? [], m.mcp_servers ?? []);
+      this.patch('stats');
       if (this.state.meta.sessionId !== m.session_id) {
         this.state.meta.sessionId = m.session_id;
         this.patch('meta');
@@ -894,6 +931,7 @@ export class Tab {
   private onToolUse(id: string, name: string, input: Record<string, unknown>, parent: string | null): void {
     const s = this.state.stats;
     s.toolCalls++;
+    countConnector((s.connectors ??= []), name);
     const file = input.file_path ?? input.notebook_path;
     if (/^(Edit|Write|NotebookEdit|MultiEdit)$/.test(name) && typeof file === 'string' && !s.filesChanged.includes(file)) s.filesChanged.push(file);
 
@@ -1186,6 +1224,7 @@ function historyToItems(msgs: SessionMessage[]): { items: Item[]; mission: Missi
         const name = String(b.name);
         const input = (b.input ?? {}) as Record<string, unknown>;
         stats.toolCalls++;
+        countConnector((stats.connectors ??= []), name);
         const file = input.file_path ?? input.notebook_path;
         if (/^(Edit|Write|NotebookEdit|MultiEdit)$/.test(name) && typeof file === 'string' && !stats.filesChanged.includes(file)) stats.filesChanged.push(file);
         if (isMissionTool(name)) mission = { ...(input as Omit<Mission, 'updatedAt'>), updatedAt: 0 };
