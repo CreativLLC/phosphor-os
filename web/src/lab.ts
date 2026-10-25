@@ -505,7 +505,7 @@ function card(t: LabTestFull, i: number): HTMLElement {
     pane.append(f);
     pane.onclick = () => openFull(t, i);
   } else if (busy(r)) {
-    pane.append(el('div', 'lab-wait', r.state === 'queued' ? 'WAITING FOR ITS TURN' : 'WORKING…'));
+    pane.append(el('div', 'lab-wait', r.state === 'queued' ? (r.app === 'local' ? 'WAITING: A LOCAL MODEL RUNS ALONE, AFTER THE OTHERS' : 'WAITING FOR ITS TURN') : 'WORKING…'));
   } else if (r.build === 'building') {
     pane.append(el('div', 'lab-wait', 'BUILDING THE PAGE…'));
   } else if (r.canBuild) {

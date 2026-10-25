@@ -327,22 +327,34 @@ export function queueRun(job: Job): void {
   pump();
 }
 
-// Starts what may start: at most MAX_RUNNING at once, local models one at a time (one GPU).
+// Starts what may start: at most MAX_RUNNING at once. A local model runs alone. The cloud models think elsewhere,
+// but their installs, builds and browsers run in boxes on this PC, and a local engine needs most of its RAM: on
+// 2026-10-24 Strata died 10 times when the RAM ran out during a 7-model test. So a local model starts only when no
+// other run, queued cloud run or page build is left, and the cloud runs that come in meanwhile wait for it.
 function pump(): void {
-  for (let i = 0; i < waiting.length && running.size < MAX_RUNNING; ) {
-    const job = waiting[i];
-    const r = readJson<LabResult>(resultFile(job));
-    if (!r || r.state !== 'queued') {
-      waiting.splice(i, 1);
-      continue;
+  const jobs = waiting
+    .splice(0)
+    .map((job) => ({ job, r: readJson<LabResult>(resultFile(job)) }))
+    .filter((x): x is { job: Job; r: LabResult } => x.r?.state === 'queued');
+  const go = startable(
+    jobs.map((x) => x.r.app),
+    { running: running.size, localBusy, building: building.size },
+  );
+  jobs.forEach((x, i) => (go[i] ? void start(x.job, x.r) : waiting.push(x.job)));
+}
+
+// pump()'s rule for the queue (in order), on its own so tests/lab-queue.ts can check it.
+export function startable(apps: LabApp[], now: { running: number; localBusy: boolean; building: number }): boolean[] {
+  let { running: n, localBusy: local } = now;
+  return apps.map((app, i) => {
+    const cloudLeft = n > (local ? 1 : 0) || now.building > 0 || apps.some((a, j) => j !== i && a !== 'local');
+    const go = n < MAX_RUNNING && !local && (app !== 'local' || !cloudLeft);
+    if (go) {
+      n++;
+      if (app === 'local') local = true;
     }
-    if (r.app === 'local' && localBusy) {
-      i++;
-      continue;
-    }
-    waiting.splice(i, 1);
-    void start(job, r);
-  }
+    return go;
+  });
 }
 
 export function stopRuns(testDir: string): void {
@@ -452,11 +464,11 @@ async function start(job: Job, r: LabResult): Promise<void> {
   rmSync(home, { recursive: true, force: true });
   running.delete(key);
   if (r.app === 'local') localBusy = false;
-  pump();
   if (state === 'done') {
     const site = pickPage(files, listFiles(files));
-    if (!site.page && site.buildDir !== null) void buildPage(resultDir, site.buildDir);
+    if (!site.page && site.buildDir !== null) void buildPage(resultDir, site.buildDir); // before pump(): a local model waits for it
   }
+  pump();
 }
 
 // ------------------------------------------------------------ the page to show, and building it
@@ -563,6 +575,7 @@ export async function buildPage(resultDir: string, projectRel: string): Promise<
   writeJson(join(resultDir, 'build.json'), { state: ok ? 'done' : 'failed', at, ms: Date.now() - at });
   rmSync(home, { recursive: true, force: true });
   building.delete(resultDir);
+  pump();
 }
 
 // After a restart: runs that were going are gone (the server held their output). Say so in their result.json.
