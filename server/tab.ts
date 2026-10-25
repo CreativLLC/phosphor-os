@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { IMAGE_MODEL, isImageModel, type Agent, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
+import { IMAGE_MODEL, isImageModel, LEAD_PREFIX, REPORT_PREFIX, type Agent, type ProjectRef, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
 import { ttlFromUsage } from '../shared/cache.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
 import { DATA_DIR, geminiImage, imageModel, localChoice, localModel } from './config.ts';
@@ -56,10 +56,13 @@ const onlyMainMission: HookCallback = async (input) =>
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
-          permissionDecisionReason: 'The mission panel belongs to the main Claude. Do not call this tool again; report progress in your reply.',
+          permissionDecisionReason: 'The mission panel and the project tools belong to the main Claude. Do not call these tools again; report in your reply.',
         },
       }
     : {};
+
+// The project tools (Tab.projectTools): this app's own, so they run without asking.
+const PROJECT_TOOLS = ['start_thread', 'send_to_thread', 'read_thread', 'list_threads', 'report_to_project'].map((n) => `mcp__phosphor__${n}`);
 
 const MISSION_HELP = `You are running inside Phosphor-OS, a custom UI on the user's PC and phone. It shows a progress bar and a mission panel that read the ${MISSION_TOOL} tool.
 For any task with more than one step: call it at the start with a short title, a plain-words summary of the task (one or two short sentences), and the step list. Call it again each time a step starts or finishes, or the plan changes. Keep exactly one step in_progress while you work. Skip it for quick questions and one-step answers.`;
@@ -76,7 +79,26 @@ const RESUME_MARGIN_MS = 90_000; // after the reset time, so the first request i
 const RESUME_RETRY_MS = 30 * 60_000; // reset time unknown: try again this much later
 type Waiter = { resolve: (r: PermissionResult) => void; input: Record<string, unknown>; title: string };
 
-export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: string; createdAt?: number; mode?: Mode; model?: string; effort?: Effort; auto?: boolean; agents?: Agent[]; resume?: Resume | null; images?: SavedImage[] };
+export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: string; createdAt?: number; mode?: Mode; model?: string; effort?: Effort; auto?: boolean; agents?: Agent[]; resume?: Resume | null; images?: SavedImage[]; project?: ProjectRef };
+
+// A project's folder (its shared memory file), outside the workspace: no sync clutter, and every chat may edit it.
+export const projectDir = (id: string) => join(DATA_DIR, 'projects', id);
+export const projectMemory = (id: string) => join(projectDir(id), 'PROJECT.md');
+
+// What a project's chats are told (added to the system prompt): the lead steers threads, a thread reports back.
+function projectHelp(p: ProjectRef): string {
+  const memory = projectMemory(p.id);
+  return p.main
+    ? `\n\nThis chat is the LEAD of the project "${p.name}" in Phosphor-OS. Its shared memory is ${memory}: read it at the start, and keep it current (goal, decisions, what each thread is doing, open questions). Split big work into threads, one per job (for example thumbnails, outline, editing): start_thread starts one with a brief. Each thread is a full chat with its own helper agents, and the user can open it and talk to it too. send_to_thread steers one, read_thread checks its work, list_threads shows all. Threads report back here in messages that start with "${REPORT_PREFIX.trim()}". Keep this chat's own context light: let the threads do the heavy work.`
+    : `\n\nThis chat is a THREAD of the project "${p.name}" in Phosphor-OS, started by the project's lead chat. The shared memory is ${memory}: read it first, and add your decisions and results to it. Messages that start with "${LEAD_PREFIX.trim()}" come from the lead. When your job is done, or you need a decision you cannot make, call report_to_project with a short summary.`;
+}
+
+// One word for how a chat is doing, for the project tools and the THREADS list.
+export function chatStatus(t: TabState): string {
+  if (t.meta.attention) return 'NEEDS YOU';
+  if (t.meta.busy || t.agents.some((a) => a.status === 'running')) return 'WORKING';
+  return t.items.some((i) => i.kind === 'claude') ? 'IDLE' : 'NOT STARTED';
+}
 
 // The image model's prompts and pictures are not in Claude Code's transcript: the tab saves them (tabs.json), each
 // with the id of the last transcript message before it, so a reload puts them back in the same place.
@@ -166,7 +188,7 @@ export class Tab {
   constructor(private emit: (ev: ServerEvent) => void, init: TabInit) {
     this.autoTitle = !init.title || init.title === 'New chat';
     this.state = {
-      meta: { id: init.id ?? randomUUID(), title: init.title ?? 'New chat', busy: false, attention: false, sessionId: init.sessionId, createdAt: init.createdAt ?? Date.now(), resume: init.resume ?? null },
+      meta: { id: init.id ?? randomUUID(), title: init.title ?? 'New chat', busy: false, attention: false, sessionId: init.sessionId, createdAt: init.createdAt ?? Date.now(), resume: init.resume ?? null, ...(init.project ? { project: init.project } : {}) },
       info: { cwd: init.cwd, model: init.model ?? '', permissionMode: init.mode ?? '', effort: init.effort ?? '', auto: init.auto ?? false },
       items: [],
       mission: null,
@@ -195,6 +217,57 @@ export class Tab {
     return this.state.meta.id;
   }
 
+  get project(): ProjectRef | undefined {
+    return this.state.meta.project;
+  }
+
+  // The project tools: the lead's (start, steer, read threads) or a thread's (report back).
+  private projectTools() {
+    const p = this.project;
+    const projects = Tab.projects;
+    if (!p || !projects) return [];
+    const say = (text: string) => ({ content: [{ type: 'text' as const, text }] });
+    const threads = () => projects.members(p.id).filter((t) => !t.project?.main);
+    const find = (which: string) => threads().find((t) => t.id === which || t.state.meta.title.toLowerCase() === which.trim().toLowerCase());
+    if (!p.main) {
+      return [
+        tool('report_to_project', "Report to the project's lead chat: your result, or a decision you need. Short and complete: the lead reads only this.", { summary: z.string().describe('What you did or found, and anything the lead must decide') }, async (args) => {
+          const lead = projects.members(p.id).find((t) => t.project?.main);
+          if (!lead) return say("The project's lead chat is closed: tell the user instead.");
+          lead.send(`${REPORT_PREFIX}"${this.state.meta.title}": ${args.summary}`);
+          return say('Sent to the lead.');
+        }),
+      ];
+    }
+    return [
+      tool('start_thread', 'Start a thread chat for one job of this project. It is a full chat with its own helper agents; it starts working on the brief at once and reports back here.', { title: z.string().describe('Short tab name, 1-4 words (for example "Thumbnails")'), brief: z.string().describe('The job: what to do, what to read, what done looks like') }, async (args) => {
+        const t = projects.thread(this, args.title, args.brief);
+        return say(`Started thread "${t.state.meta.title}" (id ${t.id}).`);
+      }),
+      tool('send_to_thread', 'Send a message to one of this project\'s threads (by id or title). It works on it right away, or after its current step.', { thread: z.string(), message: z.string() }, async (args) => {
+        const t = find(args.thread);
+        if (!t) return say(`No thread "${args.thread}". list_threads shows them.`);
+        t.send(`${LEAD_PREFIX}${args.message}`);
+        return say(`Sent to "${t.state.meta.title}".`);
+      }),
+      tool('read_thread', "Read a thread's status, its task panel and its last replies.", { thread: z.string(), replies: z.number().int().min(1).max(10).optional().describe('How many of its last replies (default 3)') }, async (args) => {
+        const t = find(args.thread);
+        if (!t) return say(`No thread "${args.thread}". list_threads shows them.`);
+        const s = t.state;
+        const m = s.mission;
+        const replies = s.items.filter((i) => i.kind === 'claude').slice(-(args.replies ?? 3)).map((i) => (i.kind === 'claude' ? i.text.slice(0, 1500) : ''));
+        const lines = [`"${s.meta.title}" (${t.id}): ${chatStatus(s)}`];
+        if (m) lines.push(`Task: ${m.title}. ${m.summary}`, ...m.steps.map((x) => `- [${x.status}] ${x.label}`));
+        lines.push(replies.length ? `Last replies:\n${replies.join('\n---\n')}` : 'No replies yet.');
+        return say(lines.join('\n').slice(0, 6000));
+      }),
+      tool('list_threads', "List this project's threads with their status.", {}, async () => {
+        const all = threads();
+        return say(all.length ? all.map((t) => `- "${t.state.meta.title}" (${t.id}): ${chatStatus(t.state)}`).join('\n') : 'No threads yet. start_thread starts one.');
+      }),
+    ];
+  }
+
   // The mode the user picked in this tab (saved with the tab), if any.
   get mode(): Mode | undefined {
     return this.pendingMode;
@@ -215,6 +288,8 @@ export class Tab {
   // The local image model and its painter (server/imagegen.ts); tests hand in fakes.
   static images: Imager | undefined = painter && imageModel ? { painter, model: imageModel } : undefined;
   // The Gemini picture models (server/geminiimage.ts), by picker value. They can change an attached picture.
+  // Projects (set by server/tabs.ts): start a thread for a lead, and a project's chats.
+  static projects?: { thread(lead: Tab, title: string, brief: string): Tab; members(id: string): Tab[] };
   static gemini = new Map<string, Imager>(geminiImage.models.map((m) => [m.value, { painter: new GeminiPainter(m.model), model: { label: m.label, edit: true, turbo: '' } }]));
 
   // For the AUTO tag: the model's name as the picker shows it.
@@ -674,9 +749,9 @@ export class Tab {
       prompt: input(),
       options: {
         cwd: this.state.info.cwd,
-        additionalDirectories: [UPLOADS_DIR], // attachments: Claude may read them without asking
+        additionalDirectories: [UPLOADS_DIR, ...(this.project ? [projectDir(this.project.id)] : [])], // attachments; a project's memory
         resume: this.state.meta.sessionId,
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP + (this.project ? projectHelp(this.project) : '') },
         includePartialMessages: true,
         agentProgressSummaries: true,
         permissionMode: sdkMode(this.pendingMode, this.pendingModel),
@@ -687,8 +762,8 @@ export class Tab {
         enableFileCheckpointing: true, // backups before each edit, so UNDO can put files back
         canUseTool: this.canUseTool,
         mcpServers: { phosphor: this.missionServer() },
-        allowedTools: [MISSION_TOOL],
-        hooks: { PreToolUse: [{ matcher: MISSION_TOOL, hooks: [onlyMainMission] }] },
+        allowedTools: [MISSION_TOOL, ...PROJECT_TOOLS],
+        hooks: { PreToolUse: [{ matcher: [MISSION_TOOL, ...PROJECT_TOOLS].join('|'), hooks: [onlyMainMission] }] },
       },
     });
     void this.pump(this.q, run);
@@ -713,6 +788,7 @@ export class Tab {
             return { content: [{ type: 'text', text: 'Mission panel updated.' }] };
           },
         ),
+        ...this.projectTools(),
       ],
     });
   }

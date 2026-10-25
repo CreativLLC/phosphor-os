@@ -108,7 +108,16 @@ export type TabMeta = {
   sessionId?: string;
   createdAt: number;
   resume?: Resume | null; // the plan's usage limit stopped this chat's work; it continues by itself at `at`
+  project?: ProjectRef; // the project this chat belongs to, if any
 };
+
+// A project (owner's ask 2026-10-25): a named group of tabs with one shared memory file (data/projects/<id>/PROJECT.md).
+// Its main chat (the lead) starts thread chats and steers them with tools (server/tab.ts); each thread is a full
+// chat with its own helper agents, and reports back to the lead. parent: the lead's tab id (threads only).
+export type ProjectRef = { id: string; name: string; main: boolean; parent?: string };
+// How the messages between a lead and its threads start (the chat labels them by this).
+export const LEAD_PREFIX = '[From the project lead] ';
+export const REPORT_PREFIX = '[Thread report] ';
 
 // AUTO-CONTINUE: when to send the chat a "continue" message (ms), and which limit stopped it
 // ('five_hour', 'seven_day', ...; '' = not known).
@@ -161,6 +170,7 @@ export type ClientEvent =
   | { t: 'model'; tab: string; model: string }
   | { t: 'effort'; tab: string; effort: Effort }
   | { t: 'new_tab'; cwd?: string; req?: string }
+  | { t: 'new_project'; name: string; req?: string }
   | { t: 'open_session'; sessionId: string; cwd: string; title: string; req?: string }
   | { t: 'close_tab'; tab: string }
   | { t: 'rename_tab'; tab: string; title: string }

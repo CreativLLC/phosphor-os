@@ -1,9 +1,10 @@
 import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, IMAGE_MODEL, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
-import { Tab, type TabInit } from './tab.ts';
+import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
 const SHOWN_MODELS = ['opus', 'sonnet', 'haiku'];
@@ -20,6 +21,7 @@ export class Tabs {
   constructor(private emit: (ev: ServerEvent) => void) {
     Tab.models = () => this.models();
     Tab.knownModels = () => this.modelsLoaded;
+    Tab.projects = { thread: (lead, title, brief) => this.thread(lead, title, brief), members: (id) => [...this.tabs.values()].filter((t) => t.project?.id === id) };
     // AUTO-CONTINUE: a chat stopped by the usage limit goes on once the limit resets (Tab.resumeIfDue).
     // A short interval, not one long timer: survives sleep, and the time can move.
     setInterval(() => {
@@ -66,6 +68,28 @@ export class Tabs {
     this.save();
     this.emit({ t: 'tab', tab: tab.state, req });
     void tab.prefillInfo();
+  }
+
+  // A new project: its lead chat in the workspace folder, and its shared memory file.
+  createProject(name: string, req?: string): void {
+    const id = randomUUID().slice(0, 8);
+    mkdirSync(projectDir(id), { recursive: true });
+    writeFileSync(projectMemory(id), `# ${name}\n\nShared memory of this Phosphor-OS project: the lead chat and every thread read it and keep it current.\n\n## Goal\n\n## Decisions\n\n## Threads\n\n## Open questions\n`);
+    const tab = this.make({ cwd: config.cwd, title: name, auto: true, project: { id, name, main: true } });
+    this.save();
+    this.emit({ t: 'tab', tab: tab.state, req });
+    void tab.prefillInfo();
+  }
+
+  // A thread for a project's lead: the lead's folder and model settings; it starts on the brief at once.
+  private thread(lead: Tab, title: string, brief: string): Tab {
+    const p = lead.project!;
+    const tab = this.make({ cwd: lead.state.info.cwd, title: title.trim().slice(0, 60) || 'Thread', mode: lead.mode, model: lead.model, effort: lead.effort, auto: lead.autoModel, project: { id: p.id, name: p.name, main: false, parent: lead.id } });
+    this.save();
+    this.emit({ t: 'tab', tab: tab.state });
+    void tab.prefillInfo();
+    tab.send(`${LEAD_PREFIX}${brief}`);
+    return tab;
   }
 
   async open(sessionId: string, cwd: string, title: string, req?: string): Promise<void> {
@@ -217,6 +241,7 @@ export class Tabs {
       agents: t.state.agents.slice(-30),
       resume: t.state.meta.resume ?? undefined,
       images: t.images.length ? t.images : undefined,
+      project: t.project,
     }));
     writeFileSync(TABS_FILE, JSON.stringify(data, null, 2));
   }

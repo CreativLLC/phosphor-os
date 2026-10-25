@@ -444,3 +444,58 @@ html[data-crt='off'] .crew .sprite {
   }
 }
 
+
+/* THREADS: the open chat's project (web/src/agents.ts). */
+.threads {
+  margin-bottom: 10px;
+}
+
+.thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.thread {
+  display: flex;
+  justify-content: space-between;
+  gap: 1ch;
+  min-height: 30px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ph);
+  text-align: left;
+}
+
+.thread.on {
+  border-color: var(--ph);
+  background: rgb(var(--ph-rgb) / 0.08);
+}
+
+.thread-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-state {
+  flex: none;
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.thread.st-working .thread-state {
+  color: var(--ph-bright);
+}
+
+.thread.st-needs-you .thread-state {
+  color: var(--ph-bright);
+  animation: crew-blink 1s steps(1) infinite;
+}
+
+.thread-empty {
+  color: var(--ph-dim);
+  padding: 2px 0;
+}

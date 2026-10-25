@@ -3,7 +3,7 @@ import { CREW_LOOKS, crewAnim, crewKind, nameHash } from './sprites/crew.ts';
 import { Sprite } from './sprites/engine.ts';
 import { operatorAnim, type OperatorState } from './sprites/operator.ts';
 import { send } from './net.ts';
-import { watchActive } from './store.ts';
+import { store, watchActive, working } from './store.ts';
 import { mountIdeas } from './ideas.ts';
 import { mountToday } from './today.ts';
 import { el, fmtDuration } from './ui.ts';
@@ -29,6 +29,13 @@ export function fmtTokens(n: number): string {
   if (n < 1000) return String(n);
   const k = n / 1000;
   return `${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, '')}K`;
+}
+
+// How a project chat is doing, in one word (as the server's project tools say it).
+function threadState(t: TabState): string {
+  if (t.meta.attention) return 'NEEDS YOU';
+  if (working(t)) return 'WORKING';
+  return t.items.some((i) => i.kind === 'claude') ? 'IDLE' : 'NOT STARTED';
 }
 
 function heading(label: string): { el: HTMLElement; extra: HTMLElement } {
@@ -208,7 +215,38 @@ export function mountAgents(root: HTMLElement): void {
   const todayBox = el('section', 'today');
   const ideasHead = heading('IDEAS');
   const ideasBox = el('section', 'ideas');
-  root.replaceChildren(opHead.el, op.el, crewHead.el, list, empty, todayBox, ideasBox);
+  // THREADS: the open chat's project, the lead first, then its threads with how each is doing. A click opens it.
+  const threadsHead = heading('THREADS');
+  const threadList = el('div', 'thread-list');
+  const threadsBox = el('section', 'threads');
+  threadsBox.append(threadsHead.el, threadList);
+  const renderThreads = () => {
+    const p = store.current()?.meta.project;
+    threadsBox.hidden = !p;
+    if (!p) return threadList.replaceChildren();
+    const members = [...store.tabs.values()]
+      .filter((t) => t.meta.project?.id === p.id)
+      .sort((a, b) => Number(!!b.meta.project?.main) - Number(!!a.meta.project?.main) || a.meta.createdAt - b.meta.createdAt);
+    threadsHead.extra.textContent = p.name.toUpperCase();
+    threadList.replaceChildren(
+      ...members.map((t) => {
+        const row = el('button', 'thread');
+        row.type = 'button';
+        const state = threadState(t);
+        row.classList.toggle('on', t.meta.id === store.active);
+        row.classList.add(`st-${state.toLowerCase().replace(/ /g, '-')}`);
+        row.append(el('span', 'thread-name', `${t.meta.project?.main ? 'LEAD · ' : ''}${t.meta.title}`), el('span', 'thread-state', state));
+        row.onclick = () => store.setActive(t.meta.id);
+        return row;
+      }),
+      ...(members.length < 2 ? [el('div', 'thread-empty', 'No threads yet. Ask the lead to split the work.')] : []),
+    );
+  };
+  store.on((c) => {
+    if (c.kind === 'tabs' || c.kind === 'active' || c.kind === 'reset' || (c.kind === 'patch' && (c.key === 'meta' || c.key === 'agents')) || (c.kind === 'item' && c.op === 'add')) renderThreads();
+  });
+  root.replaceChildren(opHead.el, op.el, threadsBox, crewHead.el, list, empty, todayBox, ideasBox);
+  renderThreads();
   mountToday(todayBox, todayHead);
   mountIdeas(ideasBox, ideasHead);
 

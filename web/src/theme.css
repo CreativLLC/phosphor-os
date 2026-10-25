@@ -896,3 +896,38 @@ html.booting body > :not(#boot) {
     box-shadow: 0 0 12px rgb(var(--ph-rgb) / 0.6);
   }
 }
+
+/* ---------- Project tab groups ---------- */
+
+.tab-group {
+  border: 1px solid var(--ph-dim);
+  background: rgb(var(--ph-rgb) / 0.07);
+}
+
+#top .tab-group-label,
+.tab-group-label {
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  padding: 0 8px 0 10px;
+  color: var(--ph-bright);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.tab-group-label.busy {
+  text-shadow: var(--glow);
+}
+
+.tab.lead .tab-title::before {
+  content: 'LEAD · ';
+  color: var(--ph-dim);
+}
+
+.project-help {
+  color: var(--ph-dim);
+}
+
+.project-btn::before {
+  content: '+';
+}

@@ -59,6 +59,7 @@ wss.on('connection', (ws) => {
       return;
     }
     if (ev.t === 'new_tab') return tabs.create(ev.cwd, ev.req);
+    if (ev.t === 'new_project') return typeof ev.name === 'string' && ev.name.trim() ? tabs.createProject(ev.name.trim().slice(0, 60), ev.req) : undefined;
     if (ev.t === 'open_session') return void tabs.open(String(ev.sessionId), String(ev.cwd), String(ev.title ?? ''), ev.req);
     if (ev.t === 'close_tab') return tabs.close(ev.tab);
     if (ev.t === 'presence') return notePresence(ws, ev);

@@ -541,3 +541,31 @@ dialog {
     display: none !important;
   }
 }
+
+/* A project's tabs: one framed group with its name first (web/src/tabs.ts). */
+.tab-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 0 4px 0 0;
+}
+
+.tab-group-label {
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-name {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 4px 14px 14px;
+  font: inherit;
+}
+
+.project-help {
+  margin: 8px 14px;
+  max-width: 52ch;
+}

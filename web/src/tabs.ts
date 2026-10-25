@@ -1,8 +1,26 @@
-import type { FoldersResponse } from '../../shared/protocol.ts';
+import type { FoldersResponse, TabState } from '../../shared/protocol.ts';
 import { newReq, send } from './net.ts';
 import { store, working } from './store.ts';
 import { shellApi } from './shellapi.ts';
 import { button, editInline, el, folderName } from './ui.ts';
+
+// Projects whose threads are folded away in the tab bar (this browser only).
+const FOLD_KEY = 'phosphor-os.folded-projects';
+const folded = new Set<string>(readFolded());
+function readFolded(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(FOLD_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+function saveFolded(): void {
+  try {
+    localStorage.setItem(FOLD_KEY, JSON.stringify([...folded]));
+  } catch {
+    /* no storage: folds last until a reload */
+  }
+}
 
 export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
   let editing = false; // a re-render would throw away the name being typed
@@ -22,9 +40,7 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
     }
     for (const id of unseen) if (!store.tabs.has(id)) unseen.delete(id);
   };
-  const render = () => {
-    if (editing) return;
-    const tabs = [...store.tabs.values()].map((t) => {
+  const tabEl = (t: TabState) => {
       const m = t.meta;
       const b = el('div', 'tab');
       b.classList.toggle('on', m.id === store.active);
@@ -47,12 +63,44 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       };
       const close = button('×', () => closeTab(m.id), 'tab-close');
       close.title = 'Close tab (the chat stays in HISTORY)';
+      b.classList.toggle('lead', !!m.project?.main);
       b.append(label, close);
       return b;
-    });
+  };
+  const render = () => {
+    if (editing) return;
+    // A project's tabs stay together where its first tab is: a label (click folds the threads away), the lead,
+    // then the threads, oldest first.
+    const all = [...store.tabs.values()];
+    const drawn = new Set<string>();
+    const items: HTMLElement[] = [];
+    for (const t of all) {
+      const p = t.meta.project;
+      if (!p) {
+        items.push(tabEl(t));
+        continue;
+      }
+      if (drawn.has(p.id)) continue;
+      drawn.add(p.id);
+      const members = all
+        .filter((x) => x.meta.project?.id === p.id)
+        .sort((a, b) => Number(!!b.meta.project?.main) - Number(!!a.meta.project?.main) || a.meta.createdAt - b.meta.createdAt);
+      const fold = folded.has(p.id) && !members.some((x) => x.meta.id === store.active && !x.meta.project?.main);
+      const busy = members.filter((x) => working(x)).length;
+      const head = button(`${fold ? '▸' : '▾'} ${p.name}${fold && members.length > 1 ? ` (${members.length - 1})` : ''}`, () => {
+        if (!folded.delete(p.id)) folded.add(p.id);
+        saveFolded();
+        render();
+      }, 'tab-group-label');
+      head.title = `Project "${p.name}": ${members.length - 1} thread${members.length === 2 ? '' : 's'}${busy ? `, ${busy} working` : ''}. Click to ${fold ? 'show' : 'fold'} the threads.`;
+      head.classList.toggle('busy', busy > 0);
+      const group = el('div', 'tab-group');
+      group.append(head, ...members.filter((x) => !fold || x.meta.project?.main).map(tabEl));
+      items.push(group);
+    }
     const add = button('+', () => openNewTab(dialog), 'tab-add');
-    add.title = 'New chat';
-    nav.replaceChildren(...tabs, add);
+    add.title = 'New chat or project';
+    nav.replaceChildren(...items, add);
     nav.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   };
   // A mouse wheel only scrolls up/down; turn that into sideways scrolling of the strip.
@@ -84,8 +132,10 @@ function closeTab(id: string): void {
 export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
   const list = el('div', 'folder-list');
   const cancel = button('CANCEL', () => dialog.close());
+  const project = button('NEW PROJECT…', () => newProject(dialog), 'folder project-btn');
+  project.title = 'A project: one lead chat that starts and steers thread chats, with a shared memory file';
   dialog.replaceChildren(el('h2', '', 'NEW CHAT: PICK A FOLDER'), list, el('div', 'buttons', ''));
-  dialog.lastElementChild!.append(cancel);
+  dialog.lastElementChild!.append(project, cancel);
   dialog.showModal();
   list.append(el('div', 'empty', 'Loading…'));
   try {
@@ -108,4 +158,25 @@ export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
       dialog.close();
     }, 'folder'));
   }
+}
+
+// A new project: its name, then its lead chat opens (in the workspace folder).
+function newProject(dialog: HTMLDialogElement): void {
+  const input = el('input', 'project-name');
+  input.placeholder = 'Project name, for example "YT: Claude video"';
+  input.maxLength = 60;
+  const create = () => {
+    const name = input.value.trim();
+    if (!name) return input.focus();
+    send({ t: 'new_project', name, req: newReq() });
+    dialog.close();
+  };
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') create();
+  };
+  const buttons = el('div', 'buttons');
+  buttons.append(button('CREATE', create), button('CANCEL', () => dialog.close()));
+  const help = el('p', 'project-help', 'The lead chat splits the work into thread chats (one per job), starts them, and checks on them. Threads show next to it in the tab bar and in THREADS on the left. All of them share one memory file.');
+  dialog.replaceChildren(el('h2', '', 'NEW PROJECT'), help, input, buttons);
+  input.focus();
 }

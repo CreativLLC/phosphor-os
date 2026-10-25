@@ -71,6 +71,22 @@ const tab2: TabState = {
 
 // The local image model: a picture being painted (its steps move with the ticker).
 const painting: ImageItem = { id: 'p2', kind: 'image', status: 'painting', phase: 'Painting', step: 4, steps: 8, startedAt: now - 9000, prompt: 'a lighthouse at sunset', model: 'Qwen-Image 2.1 (local)', width: 1344, height: 768, seed: 42, fast: true };
+// A project (a tab group): its lead chat and two threads.
+function projectTabs(): TabState[] {
+  const make = (id: string, title: string, main: boolean, busy: boolean, ago: number, reply: string): TabState => ({
+    ...structuredClone(tab2),
+    meta: { id, title, busy, attention: false, createdAt: now - ago, project: { id: 'demo-p', name: 'YT: Claude video', main, ...(main ? {} : { parent: 'demo-p1' }) } },
+    items: reply ? [{ id: `${id}-r`, kind: 'claude', text: reply }] : [],
+    mission: null,
+    agents: [],
+  });
+  return [
+    make('demo-p1', 'YT: Claude video', true, false, 900000, 'Started two threads: thumbnails and the outline.'),
+    make('demo-p2', 'Thumbnails', false, true, 800000, ''),
+    make('demo-p3', 'Outline', false, false, 700000, 'Outline done: 7 beats, 12 minutes.'),
+  ];
+}
+
 const tab3: TabState = {
   meta: { id: 'demo-3', title: 'Lighthouse pictures', busy: true, attention: false, createdAt: now - 120000 },
   info: { cwd: CWD, model: IMAGE_MODEL, permissionMode: 'default', effort: '' },
@@ -98,7 +114,7 @@ export function startDemo(): void {
     { value: IMAGE_MODEL, label: 'Qwen-Image 2.1 (local)', description: "Makes pictures on this PC. Your message is the picture's description.", efforts: [] },
   ]);
   useDemo(onClientEvent);
-  apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2), structuredClone(tab3)] });
+  apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2), structuredClone(tab3), ...projectTabs()] });
   apply({ t: 'sdk_update', state: { installed: '0.3.296', pending: '0.3.301', claude: '2.1.301', bigger: null, running: false, failed: false } });
 
   let tick = 0;

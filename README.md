@@ -57,12 +57,14 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 - What the agent is doing right now, a plain-words summary, and the step list with a progress bar
 - Context window gauge, model and thinking level, plan usage, files changed
 - Sub-agents as a crew of cards, one per helper, with what each is doing
+- Connectors: which ones the chat has, their state, and how often it used each
 
 **Work in chat tabs**
 - One Claude Code session per tab, each in its own folder; tabs come back after a restart
 - Done and needs-you markers on every tab, and a phone buzz when a turn finishes or the agent waits for you
 - AUTO: picks the model and thinking level for each message
 - Undo from any of your messages (puts back the files the agent changed after it)
+- Projects: a lead chat splits big work into thread chats (one per job), starts and steers them, and gets their reports; they sit together in the tab bar and in THREADS, and share one memory file
 - Dictation: talk instead of type; the speech engine runs on your PC
 
 **Around the chat**

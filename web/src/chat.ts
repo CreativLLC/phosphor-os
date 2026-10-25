@@ -1,4 +1,4 @@
-import { IMAGE_MODEL, isImageModel, MODES, type Attachment, type ImageItem, type Item, type Mode } from '../../shared/protocol.ts';
+import { IMAGE_MODEL, isImageModel, LEAD_PREFIX, MODES, REPORT_PREFIX, type Attachment, type ImageItem, type Item, type Mode } from '../../shared/protocol.ts';
 import { takeAttachments } from './attach.ts';
 import { runAppCommand } from './slash.ts';
 import { askUndo } from './undo.ts';
@@ -271,7 +271,10 @@ function render(item: Item): HTMLElement {
   const tab = store.active!;
   switch (item.kind) {
     case 'user': {
-      const who = el('div', 'who', item.auto ? '> AUTO-CONTINUE' : '> YOU');
+      // Project messages: from the lead to a thread, or a thread's report to the lead (server/tab.ts).
+      const from = item.text.startsWith(LEAD_PREFIX) ? '> PROJECT LEAD' : item.text.startsWith(REPORT_PREFIX) ? '> THREAD REPORT' : '';
+      const who = el('div', 'who', item.auto ? '> AUTO-CONTINUE' : from || '> YOU');
+      if (from) box.classList.add('project-msg');
       if (item.auto) box.classList.add('auto');
       const label = item.text.split('\n')[0].slice(0, 40) || item.attachments?.[0]?.name || 'attachment';
       if (!item.paint) {
@@ -281,7 +284,7 @@ function render(item: Item): HTMLElement {
       }
       box.append(who);
       if (item.attachments?.length) box.append(attachRow(item.attachments));
-      if (item.text) box.append(el('div', 'body', item.text));
+      if (item.text) box.append(el('div', 'body', from ? item.text.replace(LEAD_PREFIX, '').replace(REPORT_PREFIX, '') : item.text));
       if (item.route) box.append(el('div', 'route', `AUTO → ${item.route.model.toUpperCase()}${item.route.effort ? ` · ${item.route.effort.toUpperCase()}` : ''} — ${item.route.reason}`));
       break;
     }
