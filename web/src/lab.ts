@@ -222,7 +222,7 @@ const pageUrl = (t: LabTestFull, r: LabResultFull, path = r.page) => `${t.view}$
 function stateLabel(r: LabResult): string {
   if (r.state === 'running') return `RUNNING ${fmtClock(runMs(r))}`;
   if (r.state === 'queued') return 'WAITING';
-  if (r.state === 'done') return `DONE ${fmtClock(runMs(r))}`;
+  if (r.state === 'done') return `${r.timeUp ? 'TIME UP' : 'DONE'} ${fmtClock(runMs(r))}`;
   return r.state === 'limit' ? 'PLAN LIMIT' : r.state === 'stopped' ? 'STOPPED' : 'FAILED';
 }
 
@@ -533,7 +533,7 @@ function card(t: LabTestFull, i: number): HTMLElement {
   const big = button('OPEN BIG', () => openFull(t, i));
   big.disabled = busy(r) && !r.page;
   acts.append(big, button('FILES', () => openFiles(t, i)), button('LOG', () => void openLog(t, i)));
-  if (r.state === 'failed' || r.state === 'limit' || r.state === 'stopped') acts.append(button('RUN AGAIN', () => void runAgain(t, i), 'lab-again'));
+  if (r.state === 'failed' || r.state === 'limit' || r.state === 'stopped' || r.timeUp) acts.append(button('RUN AGAIN', () => void runAgain(t, i), 'lab-again'));
 
   const rate = el('div', 'lab-rate');
   rate.append(starsWidget(t, i));

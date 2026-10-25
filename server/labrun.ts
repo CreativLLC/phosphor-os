@@ -429,9 +429,14 @@ async function start(job: Job, r: LabResult): Promise<void> {
   const lastErr = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);
   let state: LabResult['state'] = 'done';
   let error = live.error;
-  if (run.stop === 'time') {
-    state = 'failed';
-    error = `Stopped: the time limit (${job.timeLimitMin} min) ran out.`;
+  const timeUp = run.stop === 'time';
+  if (timeUp) {
+    // Same limit for every model: what it made by then is its result. Nothing made = failed.
+    if (listFiles(files).length) error = '';
+    else {
+      state = 'failed';
+      error = `Stopped: the time limit (${job.timeLimitMin} min) ran out before it made anything.`;
+    }
   } else if (run.stop === 'owner') {
     state = 'stopped';
     error = 'Stopped by you.';
@@ -443,7 +448,7 @@ async function start(job: Job, r: LabResult): Promise<void> {
   if (stderr.trim()) writeFileSync(join(resultDir, 'stderr.txt'), stderr);
   writeFileSync(join(resultDir, 'reply.md'), live.reply);
   const now = readJson<LabResult>(resultFile(job)) ?? r; // stars or a note may have come in meanwhile
-  writeJson(resultFile(job), { ...now, state, startedAt, endedAt, tokens: live.tokens, value: live.value, error });
+  writeJson(resultFile(job), { ...now, state, timeUp, startedAt, endedAt, tokens: live.tokens, value: live.value, error });
   rmSync(home, { recursive: true, force: true });
   running.delete(key);
   if (r.app === 'local') localBusy = false;

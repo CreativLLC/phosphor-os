@@ -49,13 +49,13 @@ function load(f: Found): (LabTest & { key: string }) | null {
   const results = t.results.map(({ dir }): LabResult => {
     const r = readJson<LabResult>(join(f.dir, dir, 'result.json'));
     const live = r?.state === 'running' ? liveOf(f.dir, dir) : null;
-    return r ? { ...r, dir, rank: r.rank ?? 0, tokens: live?.tokens ?? r.tokens } : { ...blank(dir, dir), state: 'failed', error: 'result.json is missing.' };
+    return r ? { ...r, dir, rank: r.rank ?? 0, timeUp: r.timeUp ?? false, tokens: live?.tokens ?? r.tokens } : { ...blank(dir, dir), state: 'failed', error: 'result.json is missing.' };
   });
   return { id: t.id, title: t.title, prompt: t.prompt, at: t.at, archived: f.archived, blind: !!t.blind, revealed: !!t.revealed, timeLimitMin: t.timeLimitMin, results, key: t.key };
 }
 
 function blank(dir: string, model: string): LabResult {
-  return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, note: '', error: '' };
+  return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, note: '', error: '' };
 }
 
 function full(f: Found): LabTestFull | null {
@@ -155,7 +155,7 @@ function runAgain(f: Found, dir: string, minutes: unknown): void {
   if (r.state === 'running' || r.state === 'queued') throw new Error('It is still running.');
   for (const n of ['files', 'reply.md', 'log.jsonl', 'stderr.txt', 'build.json', 'build.log']) rmSync(join(rd, n), { recursive: true, force: true });
   mkdirSync(join(rd, 'files'));
-  writeJson(join(rd, 'result.json'), { ...r, state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, note: '', error: '' });
+  writeJson(join(rd, 'result.json'), { ...r, state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, note: '', error: '' });
   const limit = LAB_TIME_LIMITS.includes(Number(minutes)) ? Number(minutes) : t.timeLimitMin;
   queueRun({ testDir: f.dir, dir, prompt: t.prompt, timeLimitMin: limit });
 }

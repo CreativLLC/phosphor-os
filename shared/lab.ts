@@ -35,6 +35,7 @@ export interface LabResult {
   value: number | null; // what the run would have cost at API prices, when the app says
   stars: number; // 0 = not rated
   rank: number; // place in the owner's best-to-worst order: 1 = best, 0 = not ranked
+  timeUp: boolean; // the time limit stopped it; it counts as done and is judged on what it had made by then
   note: string;
   error: string;
 }
