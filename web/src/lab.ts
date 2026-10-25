@@ -689,7 +689,7 @@ async function saveRanking(t: LabTestFull, dirs: string[]): Promise<void> {
   }
 }
 
-// RUN AGAIN: that one model from scratch. After a time-out it gets an hour.
+// RUN AGAIN: that one model from scratch, with at least an hour.
 async function runAgain(t: LabTestFull, i: number): Promise<void> {
   const r = t.results[i];
   try {
