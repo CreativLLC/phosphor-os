@@ -25,7 +25,7 @@ const toggles = new Set<() => void>();
 let models: LabModelsResponse | null = null;
 let current: LabTestFull | null = null; // the open test
 const filt = { q: '', model: '', app: '', range: 'all', minStars: 0, rows: 'tests' as 'tests' | 'results', sort: 'date' as SortKey, dir: -1 };
-let testMode: 'cards' | 'table' = 'cards';
+let testMode: 'cards' | 'table' | 'rank' = 'cards';
 let video = false;
 let releaseDictation: (() => void) | null = null; // NEW TEST borrows DICTATE for its prompt
 let openAfterLoad = -1; // ?labopen=<n>: show result n full screen once the test loads
@@ -204,8 +204,15 @@ const costTip = 'Runs on your plan. In brackets: what the same run would cost at
 const runMs = (r: LabResult) => (r.state === 'running' ? Date.now() - r.startedAt : r.startedAt && r.endedAt ? r.endedAt - r.startedAt : 0);
 const isBlind = (t: LabTest | LabTestFull) => t.blind && !t.revealed;
 const nameOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? `MODEL ${LETTERS[i]}` : t.results[i].modelName);
-const appOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? 'hidden until you rate them all' : `${t.results[i].appName} · ${t.results[i].account}`);
+const appOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? 'hidden until you rate or rank them all' : `${t.results[i].appName} · ${t.results[i].account}`);
 const topStars = (t: LabTest | LabTestFull) => Math.max(0, ...t.results.map((r) => r.stars));
+// The best: the owner's #1 once they ranked, else the most stars (ties all count).
+const isWinner = (t: LabTest | LabTestFull, r: LabResult) => (t.results.some((x) => x.rank > 0) ? r.rank === 1 : r.stars > 0 && r.stars === topStars(t));
+// REVEAL: once nothing runs and every finished result has stars, or every one has a place in the ranking.
+const canReveal = (t: LabTest | LabTestFull) => {
+  const done = t.results.filter((r) => r.state === 'done');
+  return !t.results.some(busy) && (done.every((r) => r.stars > 0) || done.every((r) => r.rank > 0));
+};
 const rated = (t: LabTest) => t.results.filter((r) => r.stars > 0);
 const avgStars = (rs: LabResult[]) => (rs.length ? rs.reduce((a, r) => a + r.stars, 0) / rs.length : 0);
 const busy = (r: LabResult) => r.state === 'running' || r.state === 'queued';
@@ -377,7 +384,7 @@ async function testView(id: string): Promise<HTMLElement> {
   const back = button(t.archived ? '< ARCHIVE' : '< HISTORY', () => go({ kind: t.archived ? 'archive' : 'history' }), 'lab-back');
   const h = el('h2', 'lab-test-title', t.title);
   const modeBtns = el('div', 'lab-seg');
-  for (const m of ['cards', 'table'] as const) {
+  for (const m of ['cards', 'table', 'rank'] as const) {
     const b = button(m.toUpperCase(), () => {
       testMode = m;
       render();
@@ -391,7 +398,7 @@ async function testView(id: string): Promise<HTMLElement> {
   }, video ? 'on' : '');
   videoBtn.title = 'Big cards and race timers: made for recording';
   const blindBtn = button(isBlind(t) ? 'REVEAL' : t.blind ? 'BLIND OFF' : 'BLIND', () => void setBlind(t), isBlind(t) ? 'primary lab-reveal' : '');
-  blindBtn.title = 'BLIND hides the model names, so the brand does not change your stars. REVEAL works once every result has stars.';
+  blindBtn.title = 'BLIND hides the model names, so the brand does not change your stars. REVEAL works once every result has stars, or all are ranked.';
   head.append(back, h, el('span', 'lab-grow'), modeBtns, blindBtn, videoBtn);
 
   const meta = el('div', 'lab-meta');
@@ -420,7 +427,7 @@ async function testView(id: string): Promise<HTMLElement> {
   );
 
   w.append(head, meta, prompt, body, more);
-  blindBtn.disabled = isBlind(t) && t.results.some((r) => busy(r) || (r.state === 'done' && r.stars === 0));
+  blindBtn.disabled = isBlind(t) && !canReveal(t);
   if (t.results.some(working)) schedulePoll(t.id);
   if (t.results[openAfterLoad]) setTimeout((i: number) => openFull(t, i), 0, openAfterLoad);
   openAfterLoad = -1;
@@ -429,6 +436,7 @@ async function testView(id: string): Promise<HTMLElement> {
 
 function fillResults(t: LabTestFull, body: HTMLElement): void {
   if (testMode === 'table' && !video) return void body.replaceChildren(resultTable(t));
+  if (testMode === 'rank' && !video) return void body.replaceChildren(rankView(t));
   const grid = el('div', 'lab-cards');
   grid.dataset.n = String(t.results.length);
   t.results.forEach((_, i) => grid.append(card(t, i)));
@@ -479,11 +487,13 @@ function card(t: LabTestFull, i: number): HTMLElement {
   const r = t.results[i];
   const c = el('article', `lab-card lab-${r.state}`);
   c.dataset.i = String(i);
-  c.classList.toggle('lab-top', r.stars > 0 && r.stars === topStars(t));
+  c.classList.toggle('lab-top', isWinner(t, r));
   const top = el('div', 'lab-card-top');
   const state = el('span', 'lab-state', stateLabel(r));
   if (busy(r)) state.dataset.clock = String(i);
-  top.append(el('div', 'lab-name', nameOf(t, i)), state);
+  const name = el('div', 'lab-name', nameOf(t, i));
+  if (r.rank) name.prepend(el('span', 'lab-rank', `#${r.rank}`));
+  top.append(name, state);
 
   const pane = el('div', 'lab-view');
   if (r.page) {
@@ -523,6 +533,7 @@ function card(t: LabTestFull, i: number): HTMLElement {
   const big = button('OPEN BIG', () => openFull(t, i));
   big.disabled = busy(r) && !r.page;
   acts.append(big, button('FILES', () => openFiles(t, i)), button('LOG', () => void openLog(t, i)));
+  if (r.state === 'failed' || r.state === 'limit' || r.state === 'stopped') acts.append(button('RUN AGAIN', () => void runAgain(t, i), 'lab-again'));
 
   const rate = el('div', 'lab-rate');
   rate.append(starsWidget(t, i));
@@ -579,22 +590,21 @@ function starsWidget(t: LabTestFull, i: number): HTMLElement {
 
 // Stars changed: move the TOP mark, refresh the counts, unlock REVEAL.
 function afterRate(t: LabTestFull): void {
-  const max = topStars(t);
   for (const c of main.querySelectorAll<HTMLElement>('[data-i]')) {
     const r = t.results[Number(c.dataset.i)];
-    if (r) c.classList.toggle('lab-top', r.stars > 0 && r.stars === max);
+    if (r) c.classList.toggle('lab-top', isWinner(t, r));
   }
   const sum = main.querySelector('.lab-sum');
   if (sum) sum.textContent = `${fmtTime(t.at)} · ${summary(t)}`;
   const reveal = main.querySelector<HTMLButtonElement>('.lab-reveal');
-  if (reveal) reveal.disabled = t.results.some((r) => busy(r) || (r.state === 'done' && r.stars === 0));
+  if (reveal) reveal.disabled = !canReveal(t);
 }
 
 function resultTable(t: LabTestFull): HTMLElement {
   const wrap = el('div', 'lab-table-wrap');
   const tb = el('table', 'lab-table');
   const hr = el('tr');
-  for (const h of ['MODEL', 'APP', 'STATE', 'STARS', 'TOKENS', 'COST', 'FILES', 'NOTE']) hr.append(el('th', '', h));
+  for (const h of ['RANK', 'MODEL', 'APP', 'STATE', 'STARS', 'TOKENS', 'COST', 'FILES', 'NOTE']) hr.append(el('th', '', h));
   tb.append(el('thead'), el('tbody'));
   tb.tHead!.append(hr);
   t.results.forEach((_, i) => tb.tBodies[0].append(resultRow(t, i)));
@@ -606,7 +616,7 @@ function resultRow(t: LabTestFull, i: number): HTMLElement {
   const r = t.results[i];
   const tr = el('tr');
   tr.dataset.i = String(i);
-  tr.classList.toggle('lab-top', r.stars > 0 && r.stars === topStars(t));
+  tr.classList.toggle('lab-top', isWinner(t, r));
   tr.onclick = (e) => {
     if (!(e.target as HTMLElement).closest('button, input')) openFull(t, i);
   };
@@ -618,8 +628,78 @@ function resultRow(t: LabTestFull, i: number): HTMLElement {
   tok.dataset.tok = String(i);
   const cost = el('td', 'lab-nowrap', costText(r));
   cost.title = costTip;
-  tr.append(el('td', 'lab-strong', nameOf(t, i)), el('td', 'lab-dim', appOf(t, i)), st, stars, tok, cost, el('td', '', String(r.files.length)), el('td', 'lab-dim', r.note));
+  tr.append(el('td', 'lab-nowrap', r.rank ? `#${r.rank}` : '-'), el('td', 'lab-strong', nameOf(t, i)), el('td', 'lab-dim', appOf(t, i)), st, stars, tok, cost, el('td', '', String(r.files.length)), el('td', 'lab-dim', r.note));
   return tr;
+}
+
+// RANK: the finished results in the owner's order, best at the top. ▲ ▼ move one (drag on a PC). Any move saves
+// the whole order, so every result in the list gets a place.
+function rankView(t: LabTestFull): HTMLElement {
+  const w = el('div', 'lab-ranking');
+  const done = t.results.map((r, i) => ({ r, i })).filter(({ r }) => r.state === 'done');
+  const order = [...done].sort((a, b) => (a.r.rank || 99) - (b.r.rank || 99) || a.i - b.i);
+  const ranked = done.some(({ r }) => r.rank > 0);
+  const head = el('div', 'lab-row');
+  head.append(el('p', 'lab-dim', ranked ? 'Best at the top. ▲ ▼ move one; on a PC you can also drag a row.' : 'Not ranked yet. Move any row and this order is saved: best at the top.'), el('span', 'lab-grow'));
+  if (ranked) head.append(button('CLEAR', () => void saveRanking(t, [])));
+  const list = el('ol', 'lab-rank-list');
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= order.length || from === to) return;
+    const [x] = order.splice(from, 1);
+    order.splice(to, 0, x);
+    void saveRanking(t, order.map(({ r }) => r.dir));
+  };
+  let dragFrom = -1;
+  order.forEach(({ r, i }, pos) => {
+    const li = el('li', 'lab-rank-row');
+    li.draggable = true;
+    li.ondragstart = () => (dragFrom = pos);
+    li.ondragover = (e) => e.preventDefault();
+    li.ondrop = (e) => {
+      e.preventDefault();
+      move(dragFrom, pos);
+    };
+    const who = el('div', 'lab-rank-who');
+    who.append(el('div', 'lab-strong', nameOf(t, i)), el('div', 'lab-dim', `${r.stars ? starText(r.stars) : 'no stars'} · ${appOf(t, i)}`));
+    const up = button('▲', () => move(pos, pos - 1), 'lab-rank-move');
+    const down = button('▼', () => move(pos, pos + 1), 'lab-rank-move');
+    up.disabled = pos === 0;
+    down.disabled = pos === order.length - 1;
+    up.title = 'Move up';
+    down.title = 'Move down';
+    li.append(el('span', 'lab-rank-num', ranked && r.rank ? `#${r.rank}` : `${pos + 1}`), who, button('VIEW', () => openFull(t, i)), up, down);
+    list.append(li);
+  });
+  w.append(head, list);
+  const out = t.results.filter((r) => r.state !== 'done');
+  if (out.length) w.append(el('p', 'lab-dim', `Not in the ranking (did not finish): ${out.map((r) => nameOf(t, t.results.indexOf(r))).join(', ')}.`));
+  if (!done.length) w.append(el('p', 'lab-empty', 'Nothing has finished yet.'));
+  return w;
+}
+
+async function saveRanking(t: LabTestFull, dirs: string[]): Promise<void> {
+  for (const r of t.results) r.rank = dirs.indexOf(r.dir) + 1;
+  const body = main.querySelector<HTMLElement>('.lab-results');
+  if (body) fillResults(t, body);
+  afterRate(t);
+  try {
+    await api(`tests/${t.id}`, 'PATCH', { ranking: dirs });
+  } catch (e) {
+    fail(e);
+  }
+}
+
+// RUN AGAIN: that one model from scratch. After a time-out it gets an hour.
+async function runAgain(t: LabTestFull, i: number): Promise<void> {
+  const r = t.results[i];
+  const timedOut = r.error.includes('time limit');
+  try {
+    await api(`tests/${t.id}/results/${r.dir}/again`, 'POST', timedOut ? { timeLimitMin: Math.max(60, t.timeLimitMin) } : {});
+    toast(timedOut ? 'Running it again with a 1-hour limit.' : 'Running it again.');
+    render();
+  } catch (e) {
+    fail(e);
+  }
 }
 
 async function setBlind(t: LabTestFull): Promise<void> {
@@ -690,6 +770,7 @@ function openFull(t: LabTestFull, i: number): void {
   const facts = el('div', 'lab-facts');
   const fact = (k: string, v: string) => facts.append(el('span', 'lab-dim', k), el('span', '', v));
   fact('APP', appOf(t, i));
+  if (r.rank) fact('RANK', `#${r.rank} of ${t.results.filter((x) => x.rank > 0).length}`);
   if (!isBlind(t)) fact('VERSION', r.appVersion || '-');
   fact('TIME', r.startedAt ? fmtClock(runMs(r)) : '-');
   fact('TOKENS', fmtTok(r.tokens));
@@ -918,7 +999,7 @@ function testsTable(shown: LabTest[], archive = false): HTMLElement {
       if (!(e.target as HTMLElement).closest('button')) go({ kind: 'test', id: t.id });
     };
     const max = topStars(t);
-    const winners = max ? t.results.filter((r) => r.stars === max).map((r) => r.modelName) : [];
+    const winners = max || t.results.some((r) => r.rank > 0) ? t.results.filter((r) => isWinner(t, r)).map((r) => r.modelName) : [];
     const testCell = el('td', 'lab-test-cell');
     testCell.append(el('div', 'lab-strong', t.title), el('div', 'lab-dim lab-clip', t.prompt));
     const run = t.results.filter(busy).length;
@@ -946,7 +1027,7 @@ function resultsTable(results: { t: LabTest; r: LabResult }[]): HTMLElement {
   const wrap = el('div', 'lab-table-wrap');
   const tb = el('table', 'lab-table lab-click');
   const hr = el('tr');
-  sortHead(hr, [['DATE', 'date'], ['TEST', 'test'], ['MODEL', 'model'], ['APP', null], ['STARS', 'stars'], ['TIME', 'time'], ['TOKENS', 'tokens'], ['COST', null], ['NOTE', null]]);
+  sortHead(hr, [['DATE', 'date'], ['TEST', 'test'], ['MODEL', 'model'], ['APP', null], ['RANK', null], ['STARS', 'stars'], ['TIME', 'time'], ['TOKENS', 'tokens'], ['COST', null], ['NOTE', null]]);
   tb.append(el('thead'), el('tbody'));
   tb.tHead!.append(hr);
   for (const { t, r } of rows) {
@@ -958,6 +1039,7 @@ function resultsTable(results: { t: LabTest; r: LabResult }[]): HTMLElement {
       el('td', 'lab-strong', t.title),
       el('td', 'lab-nowrap', blind ? '(blind)' : r.modelName),
       el('td', 'lab-dim lab-nowrap', blind ? '' : r.appName),
+      el('td', 'lab-nowrap', r.rank ? `#${r.rank}` : '-'),
       el('td', 'lab-nowrap lab-starcell', r.state === 'done' ? (r.stars ? starText(r.stars) : 'NOT RATED') : r.state.toUpperCase()),
       el('td', '', r.startedAt ? fmtClock(runMs(r)) : '-'),
       el('td', '', fmtTok(r.tokens)),
@@ -1016,14 +1098,13 @@ function starsChart(results: LabResult[]): HTMLElement {
 }
 
 function winsChart(shown: LabTest[]): HTMLElement {
-  const c = chartBox('WINS', 'tests where it got the most stars');
+  const c = chartBox('WINS', 'tests where you ranked it #1 (or it got the most stars)');
   const wins = new Map<string, number>();
   for (const t of shown) {
-    const max = topStars(t);
-    if (!max || isBlind(t)) continue;
-    for (const r of t.results) if (r.stars === max && resultMatches(r)) wins.set(r.modelName, (wins.get(r.modelName) ?? 0) + 1);
+    if (isBlind(t)) continue;
+    for (const r of t.results) if (isWinner(t, r) && resultMatches(r)) wins.set(r.modelName, (wins.get(r.modelName) ?? 0) + 1);
   }
-  const rows: Row[] = [...wins].map(([label, n]) => ({ label, value: n, text: String(n), tip: `${label}: top stars in ${n} test${n > 1 ? 's' : ''} (ties count for each)` }));
+  const rows: Row[] = [...wins].map(([label, n]) => ({ label, value: n, text: String(n), tip: `${label}: the best in ${n} test${n > 1 ? 's' : ''} (#1 in your ranking, else the most stars; ties count for each)` }));
   rows.sort((a, b) => b.value - a.value);
   barRows(c, rows.slice(0, 8), Math.max(1, ...rows.map((r) => r.value)));
   return c;

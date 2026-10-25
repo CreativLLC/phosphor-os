@@ -426,6 +426,80 @@ body.has-shell #btn-lab {
   animation: lab-blink 1.2s steps(2, start) infinite;
 }
 
+.lab-rank {
+  margin-right: 8px;
+  padding: 0 6px;
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.lab-again {
+  border-color: var(--accent) !important;
+  color: var(--accent);
+  text-shadow: none;
+}
+
+.lab-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lab-ranking p {
+  margin: 0;
+}
+
+.lab-rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lab-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-raise);
+  cursor: grab;
+}
+
+.lab-rank-row:first-child {
+  border-color: var(--ph-bright);
+}
+
+.lab-rank-num {
+  flex: 0 0 auto;
+  min-width: 2.2em;
+  font-size: calc(var(--fs) * 1.6);
+  color: var(--ph-bright);
+  text-shadow: var(--glow-strong);
+  text-align: center;
+}
+
+.lab-rank-who {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lab-rank-who > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab .lab-rank-move {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font: 18px / 1 system-ui, sans-serif;
+}
+
 .lab-needs {
   display: flex;
   flex-direction: column;

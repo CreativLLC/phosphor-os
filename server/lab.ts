@@ -49,13 +49,13 @@ function load(f: Found): (LabTest & { key: string }) | null {
   const results = t.results.map(({ dir }): LabResult => {
     const r = readJson<LabResult>(join(f.dir, dir, 'result.json'));
     const live = r?.state === 'running' ? liveOf(f.dir, dir) : null;
-    return r ? { ...r, dir, tokens: live?.tokens ?? r.tokens } : { ...blank(dir, dir), state: 'failed', error: 'result.json is missing.' };
+    return r ? { ...r, dir, rank: r.rank ?? 0, tokens: live?.tokens ?? r.tokens } : { ...blank(dir, dir), state: 'failed', error: 'result.json is missing.' };
   });
   return { id: t.id, title: t.title, prompt: t.prompt, at: t.at, archived: f.archived, blind: !!t.blind, revealed: !!t.revealed, timeLimitMin: t.timeLimitMin, results, key: t.key };
 }
 
 function blank(dir: string, model: string): LabResult {
-  return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, note: '', error: '' };
+  return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, note: '', error: '' };
 }
 
 function full(f: Found): LabTestFull | null {
@@ -134,6 +134,30 @@ function patchTest(f: Found, body: Record<string, unknown>): void {
   if (typeof body.revealed === 'boolean') t.revealed = body.revealed;
   if (typeof body.title === 'string' && body.title.trim()) t.title = body.title.trim().slice(0, 120);
   writeJson(file, t);
+  // The best-to-worst order: result folders, best first. Each result.json keeps its own place (rank).
+  if (Array.isArray(body.ranking)) {
+    const order = body.ranking.map(String);
+    for (const { dir } of t.results) {
+      const rf = join(f.dir, dir, 'result.json');
+      const r = readJson<LabResult>(rf);
+      if (r) writeJson(rf, { ...r, rank: order.indexOf(dir) + 1 });
+    }
+  }
+}
+
+// RUN AGAIN: one result from scratch (its files, reply and log go), same prompt and model.
+function runAgain(f: Found, dir: string, minutes: unknown): void {
+  if (!DIR.test(dir)) throw new Error('No such result.');
+  const t = readJson<Stored>(join(f.dir, 'test.json'));
+  const rd = join(f.dir, dir);
+  const r = readJson<LabResult>(join(rd, 'result.json'));
+  if (!t || !r || !t.results.some((x) => x.dir === dir)) throw new Error('No such result.');
+  if (r.state === 'running' || r.state === 'queued') throw new Error('It is still running.');
+  for (const n of ['files', 'reply.md', 'log.jsonl', 'stderr.txt', 'build.json', 'build.log']) rmSync(join(rd, n), { recursive: true, force: true });
+  mkdirSync(join(rd, 'files'));
+  writeJson(join(rd, 'result.json'), { ...r, state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, note: '', error: '' });
+  const limit = LAB_TIME_LIMITS.includes(Number(minutes)) ? Number(minutes) : t.timeLimitMin;
+  queueRun({ testDir: f.dir, dir, prompt: t.prompt, timeLimitMin: limit });
 }
 
 function patchResult(f: Found, dir: string, body: Record<string, unknown>): void {
@@ -273,6 +297,7 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
     }
     if (parts[2] === 'results' && parts[3]) {
       if (parts.length === 4 && m === 'PATCH') return (patchResult(f, parts[3], await body(req)), json(res, { ok: true }));
+      if (parts.length === 5 && parts[4] === 'again' && m === 'POST') return (runAgain(f, parts[3], (await body(req)).timeLimitMin), json(res, { ok: true }));
       if (parts.length === 5 && parts[4] === 'build' && m === 'POST' && DIR.test(parts[3])) {
         const root = join(f.dir, parts[3], 'files');
         const { buildDir } = pickPage(root, listFiles(root));

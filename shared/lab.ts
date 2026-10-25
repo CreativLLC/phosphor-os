@@ -34,6 +34,7 @@ export interface LabResult {
   tokens: number;
   value: number | null; // what the run would have cost at API prices, when the app says
   stars: number; // 0 = not rated
+  rank: number; // place in the owner's best-to-worst order: 1 = best, 0 = not ranked
   note: string;
   error: string;
 }
