@@ -363,10 +363,14 @@ const TYPES: Record<string, string> = {
   '.ttf': 'font/ttf',
 };
 
-// A sandboxed page has no origin, so it cannot keep anything in localStorage: reading it throws, and many pages stop
-// right there. This puts a stand-in (kept in memory for the page's life) in front of each page.
-const STORAGE_SHIM =
-  '<script>(function(){function m(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].length}catch(e){try{Object.defineProperty(window,n,{value:m(),configurable:true})}catch(_){}}})})();</script>';
+// A sandboxed page has no origin, so every file it loads counts as from another site. Two things break, and this
+// script (put in front of each page) mends them:
+// - localStorage: reading it throws, and many pages stop right there. It gets a stand-in, kept in memory for the page's life.
+// - pictures: one loaded the plain way "taints" a canvas, so WebGL textures and canvas reads (toDataURL, getImageData)
+//   throw. Pictures from this server load the CORS way instead (crossOrigin "anonymous"; the viewer allows any origin).
+//   This covers pictures made in code; <img> tags in the page get the attribute in rewrite().
+const PAGE_SHIM =
+  '<script>(function(){function m(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].length}catch(e){try{Object.defineProperty(window,n,{value:m(),configurable:true})}catch(_){}}});function c(i,v){try{if(i.crossOrigin===null&&new URL(v,location.href).host===location.host)i.crossOrigin="anonymous"}catch(e){}}var I=HTMLImageElement.prototype,d=Object.getOwnPropertyDescriptor(I,"src");if(d&&d.set)Object.defineProperty(I,"src",{configurable:true,enumerable:d.enumerable,get:d.get,set:function(v){c(this,v);d.set.call(this,v)}});var a=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if(this instanceof HTMLImageElement&&String(n).toLowerCase()==="src")c(this,v);return a.apply(this,arguments)}})();</script>';
 
 // Built sites (Vite and the like) point at "/assets/...": the root of a website. Here a site lives under
 // /lab/v/<key>/<test>/<result>/<folder>/, so those paths are pointed at the site's own folder (the nearest folder
@@ -374,12 +378,14 @@ const STORAGE_SHIM =
 function rewrite(text: string, type: string, site: string): string {
   if (type.startsWith('text/html')) {
     text = text.replace(/(\s(?:src|href|poster|action|data-src)\s*=\s*)(["'])\/(?!\/)/gi, `$1$2${site}/`).replace(/url\(\s*(["']?)\/(?!\/)/g, `url($1${site}/`);
+    // <img> tags with a picture from this server load it the CORS way (see PAGE_SHIM)
+    text = text.replace(/<img\b(?![^>]*\bcrossorigin)(?=[^>]*\ssrc\s*=\s*["']?(?![a-z][\w+.-]*:|\/\/))/gi, '<img crossorigin="anonymous"');
     const head = text.search(/<head[^>]*>/i);
     if (head >= 0) {
       const end = text.indexOf('>', head) + 1;
-      return text.slice(0, end) + STORAGE_SHIM + text.slice(end);
+      return text.slice(0, end) + PAGE_SHIM + text.slice(end);
     }
-    return STORAGE_SHIM + text;
+    return PAGE_SHIM + text;
   }
   if (type.startsWith('text/css')) return text.replace(/url\(\s*(["']?)\/(?!\/)/g, `url($1${site}/`).replace(/@import\s+(["'])\/(?!\/)/g, `@import $1${site}/`);
   if (type.startsWith('text/javascript')) return text.replace(/(["'`])\/assets\//g, `$1${site}/assets/`);
