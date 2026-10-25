@@ -1,4 +1,4 @@
-// Model Lab end to end with REAL models (uses plan quota): npx tsx tests/lab-live.ts [model ids...]
+// Model Lab end to end with REAL models (uses plan quota): [LAB_EFFORT=low] npx tsx tests/lab-live.ts [model ids...]
 // Runs on a private port with its own lab folder; never touches data/lab or the app on 7337.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -32,7 +32,8 @@ const want = process.argv.slice(2).length ? process.argv.slice(2) : ['claude:cla
 for (const w of want) check(models.models.some((m: { id: string }) => m.id === w), `model listed: ${w}`);
 
 const prompt = 'Make index.html: a red square in the middle of a black page, plus a script.js that logs "hi". Then reply with one short sentence.';
-const made = await api('/api/lab/tests', 'POST', { prompt, models: want, timeLimitMin: 10, blind: false });
+const effort = process.env.LAB_EFFORT || 'default'; // LAB_EFFORT=low npx tsx tests/lab-live.ts ...
+const made = await api('/api/lab/tests', 'POST', { prompt, models: want, timeLimitMin: 10, blind: false, effort });
 check(made.status === 200 && typeof made.data.id === 'string', `test made: ${made.data?.id ?? made.data?.error}`);
 const id = made.data.id;
 let t;
@@ -42,7 +43,7 @@ for (let i = 0; i < 240; i++) {
   await new Promise((r) => setTimeout(r, 2000));
 }
 for (const r of t.results) {
-  console.log(`  ${r.modelName} [${r.appName} ${r.appVersion}]: ${r.state} ${Math.round((r.endedAt - r.startedAt) / 1000)}s ${r.tokens} tok value=${r.value} page=${r.page} files=${r.files.map((f: { path: string }) => f.path).join(',')} ${r.error}`);
+  console.log(`  ${r.modelName} [${r.appName} ${r.appVersion}] effort=${r.effort}: ${r.state} ${Math.round((r.endedAt - r.startedAt) / 1000)}s ${r.tokens} tok value=${r.value} page=${r.page} files=${r.files.map((f: { path: string }) => f.path).join(',')} ${r.error}`);
   console.log(`    reply: ${r.reply.slice(0, 160).replace(/\n/g, ' ')}`);
   check(r.state === 'done', `${r.modelName} done`);
   check(r.page === 'index.html', `${r.modelName} made index.html`);

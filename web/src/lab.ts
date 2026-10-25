@@ -1,5 +1,5 @@
 import './lab.css';
-import { LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabModel, type LabModelsResponse, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../../shared/lab.ts';
+import { LAB_EFFORTS, LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabEffort, type LabModel, type LabModelsResponse, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../../shared/lab.ts';
 import { closeDocs, isDocsOpen, onDocsToggle } from './docs.ts';
 import { button, confirmBox, el, toast } from './ui.ts';
 import { useDictation } from './voice.ts';
@@ -30,7 +30,23 @@ let video = false;
 let releaseDictation: (() => void) | null = null; // NEW TEST borrows DICTATE for its prompt
 let openAfterLoad = -1; // ?labopen=<n>: show result n full screen once the test loads
 const PICKED_KEY = 'phosphor.lab.picked';
-const draft = { title: '', prompt: '', picked: new Set<string>(JSON.parse(localStorage.getItem(PICKED_KEY) ?? '[]') as string[]), limit: 30, blind: false, filter: '' };
+const EFFORT_KEY = 'phosphor.lab.effort';
+const draft = {
+  title: '',
+  prompt: '',
+  picked: new Set<string>(JSON.parse(localStorage.getItem(PICKED_KEY) ?? '[]') as string[]),
+  limit: 30,
+  blind: false,
+  effort: (LAB_EFFORTS.find((e) => e === localStorage.getItem(EFFORT_KEY)) ?? 'default') as LabEffort,
+  filter: '',
+};
+const EFFORT_NAME: Record<string, string> = { default: 'APP DEFAULT', minimal: 'MINIMAL', low: 'LOW', medium: 'MEDIUM', high: 'HIGH', xhigh: 'EXTRA HIGH', max: 'MAX' };
+// The level a result ran at, and the asked one when the model had to take the nearest it has.
+function effortText(t: LabTestFull, r: LabResult): string {
+  if (!r.effort) return '-';
+  const ran = EFFORT_NAME[r.effort] ?? r.effort.toUpperCase();
+  return t.effort !== 'default' && r.effort !== t.effort ? `${ran} (ASKED ${EFFORT_NAME[t.effort]}${r.effort === 'default' ? ': IT HAS NO LEVELS' : ''})` : ran;
+}
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 const RANGES: [string, string, number][] = [['30d', '30 DAYS', 30], ['90d', '90 DAYS', 90], ['1y', '1 YEAR', 366], ['all', 'ALL', Infinity]];
@@ -336,6 +352,12 @@ async function newView(): Promise<HTMLElement> {
 
   const opts = el('div', 'lab-row lab-opts');
   opts.append(select('TIME LIMIT', LAB_TIME_LIMITS.map((n): [string, string] => [String(n), n < 60 ? `${n} MIN` : `${n / 60} HOUR`]), String(draft.limit), (v) => (draft.limit = Number(v))));
+  const eff = select('EFFORT', LAB_EFFORTS.map((e): [string, string] => [e, EFFORT_NAME[e]]), draft.effort, (v) => {
+    draft.effort = v as LabEffort;
+    localStorage.setItem(EFFORT_KEY, v);
+  });
+  eff.title = 'How hard every model thinks. Each app gets it in its own words; a model without that level gets its nearest one, and its card says which.';
+  opts.append(eff);
   const blind = el('label', 'lab-check');
   const bc = el('input');
   bc.type = 'checkbox';
@@ -362,7 +384,7 @@ async function start(btn: HTMLButtonElement): Promise<void> {
   if (!draft.prompt.trim() || !draft.picked.size) return;
   btn.disabled = true;
   try {
-    const { id } = await api<{ id: string }>('tests', 'POST', { title: draft.title, prompt: draft.prompt, models: [...draft.picked], timeLimitMin: draft.limit, blind: draft.blind });
+    const { id } = await api<{ id: string }>('tests', 'POST', { title: draft.title, prompt: draft.prompt, models: [...draft.picked], timeLimitMin: draft.limit, blind: draft.blind, effort: draft.effort });
     draft.prompt = '';
     draft.title = '';
     go({ kind: 'test', id });
@@ -402,7 +424,7 @@ async function testView(id: string): Promise<HTMLElement> {
   head.append(back, h, el('span', 'lab-grow'), modeBtns, blindBtn, videoBtn);
 
   const meta = el('div', 'lab-meta');
-  const sum = el('span', 'lab-sum', `${fmtTime(t.at)} · ${summary(t)}`);
+  const sum = el('span', 'lab-sum', `${fmtTime(t.at)} · ${summary(t)} · EFFORT ${EFFORT_NAME[t.effort]}`);
   const path = el('code', 'lab-path', t.folder);
   path.title = 'The test folder on the PC: the prompt, and one folder per model with its reply, files, log and stars.';
   meta.append(sum, path);
@@ -727,6 +749,7 @@ function rerun(t: LabTestFull): void {
   draft.picked = new Set(t.results.map((r) => r.model));
   draft.blind = t.blind;
   draft.limit = t.timeLimitMin;
+  draft.effort = t.effort;
   go({ kind: 'new' });
   toast('Same prompt and models. Change anything, then START.');
 }
@@ -772,6 +795,7 @@ function openFull(t: LabTestFull, i: number): void {
   if (r.rank) fact('RANK', `#${r.rank} of ${t.results.filter((x) => x.rank > 0).length}`);
   if (!isBlind(t)) fact('VERSION', r.appVersion || '-');
   fact('TIME', r.startedAt ? fmtClock(runMs(r)) : '-');
+  fact('EFFORT', effortText(t, r));
   fact('TOKENS', fmtTok(r.tokens));
   fact('COST', costText(r));
   fact('FILES', String(r.files.length));

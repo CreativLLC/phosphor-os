@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabNewTest, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../shared/lab.ts';
+import { LAB_EFFORTS, LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabEffort, type LabNewTest, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../shared/lab.ts';
 import { buildPage, buildState, JUNK, LAB_DIR, labModels, listFiles, liveOf, markStopped, pickPage, queueRun, readJson, stopRuns, writeJson } from './labrun.ts';
 
 // Model Lab (docs/MODEL-LAB.md): tests and results as plain folders, the /api/lab/* routes, and the file viewer.
@@ -49,13 +49,13 @@ function load(f: Found): (LabTest & { key: string }) | null {
   const results = t.results.map(({ dir }): LabResult => {
     const r = readJson<LabResult>(join(f.dir, dir, 'result.json'));
     const live = r?.state === 'running' ? liveOf(f.dir, dir) : null;
-    return r ? { ...r, dir, rank: r.rank ?? 0, timeUp: r.timeUp ?? false, tokens: live?.tokens ?? r.tokens } : { ...blank(dir, dir), state: 'failed', error: 'result.json is missing.' };
+    return r ? { ...r, dir, rank: r.rank ?? 0, timeUp: r.timeUp ?? false, effort: r.effort ?? '', tokens: live?.tokens ?? r.tokens } : { ...blank(dir, dir), state: 'failed', error: 'result.json is missing.' };
   });
-  return { id: t.id, title: t.title, prompt: t.prompt, at: t.at, archived: f.archived, blind: !!t.blind, revealed: !!t.revealed, timeLimitMin: t.timeLimitMin, results, key: t.key };
+  return { id: t.id, title: t.title, prompt: t.prompt, at: t.at, archived: f.archived, blind: !!t.blind, revealed: !!t.revealed, timeLimitMin: t.timeLimitMin, effort: t.effort ?? 'default', results, key: t.key };
 }
 
 function blank(dir: string, model: string): LabResult {
-  return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, note: '', error: '' };
+  return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, effort: '', note: '', error: '' };
 }
 
 function full(f: Found): LabTestFull | null {
@@ -97,6 +97,7 @@ async function create(input: LabNewTest): Promise<string> {
   const ids = [...new Set(Array.isArray(input.models) ? input.models.map(String) : [])];
   if (!ids.length || ids.length > LAB_MAX_MODELS) throw new Error(`Pick 1 to ${LAB_MAX_MODELS} models.`);
   const limit = LAB_TIME_LIMITS.includes(Number(input.timeLimitMin)) ? Number(input.timeLimitMin) : 30;
+  const effort: LabEffort = LAB_EFFORTS.includes(input.effort as LabEffort) ? (input.effort as LabEffort) : 'default';
   const { models } = await labModels();
   const picked = ids.map((id) => models.find((m) => m.id === id));
   if (picked.some((m) => !m)) throw new Error('A picked model is not available now. Reload the list.');
@@ -120,9 +121,9 @@ async function create(input: LabNewTest): Promise<string> {
     return { dir: rd };
   });
   writeFileSync(join(dir, 'prompt.md'), prompt + '\n');
-  const stored: Stored = { schema: SCHEMA, id, title, prompt, at, blind: !!input.blind, revealed: false, timeLimitMin: limit, key: randomBytes(18).toString('base64url'), results };
+  const stored: Stored = { schema: SCHEMA, id, title, prompt, at, blind: !!input.blind, revealed: false, timeLimitMin: limit, effort, key: randomBytes(18).toString('base64url'), results };
   writeJson(join(dir, 'test.json'), stored);
-  for (const r of results) queueRun({ testDir: dir, dir: r.dir, prompt, timeLimitMin: limit });
+  for (const r of results) queueRun({ testDir: dir, dir: r.dir, prompt, timeLimitMin: limit, effort });
   return id;
 }
 
@@ -155,9 +156,9 @@ function runAgain(f: Found, dir: string, minutes: unknown): void {
   if (r.state === 'running' || r.state === 'queued') throw new Error('It is still running.');
   for (const n of ['files', 'reply.md', 'log.jsonl', 'stderr.txt', 'build.json', 'build.log']) rmSync(join(rd, n), { recursive: true, force: true });
   mkdirSync(join(rd, 'files'));
-  writeJson(join(rd, 'result.json'), { ...r, state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, note: '', error: '' });
+  writeJson(join(rd, 'result.json'), { ...r, state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, effort: '', note: '', error: '' });
   const limit = LAB_TIME_LIMITS.includes(Number(minutes)) ? Number(minutes) : t.timeLimitMin;
-  queueRun({ testDir: f.dir, dir, prompt: t.prompt, timeLimitMin: limit });
+  queueRun({ testDir: f.dir, dir, prompt: t.prompt, timeLimitMin: limit, effort: t.effort ?? 'default' });
 }
 
 function patchResult(f: Found, dir: string, body: Record<string, unknown>): void {

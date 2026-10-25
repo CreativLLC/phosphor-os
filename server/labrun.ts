@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import type { LabApp, LabModel, LabModelsResponse, LabResult } from '../shared/lab.ts';
-import { DATA_DIR, localModel } from './config.ts';
+import { DATA_DIR, geminiImage, localModel } from './config.ts';
 import { LOCAL_RELAY_PORT } from './localrelay.ts';
 
 // Model Lab runner (docs/MODEL-LAB.md): runs one model on one prompt in its maker's own app, headless, inside a
@@ -31,6 +31,7 @@ export const APPS: Record<LabApp, { name: string; account: string; bin: string }
   claude: { name: 'Claude Code', account: 'Claude plan', bin: 'claude' },
   codex: { name: 'Codex', account: 'ChatGPT', bin: 'codex' },
   opencode: { name: 'opencode', account: 'OpenCode Go', bin: 'opencode' },
+  agy: { name: 'Antigravity', account: 'Google AI Pro', bin: geminiImage.bin }, // a path: ~/.local/bin is not on the server's PATH
   local: { name: 'Claude Code', account: 'This PC', bin: 'claude' },
 };
 
@@ -66,8 +67,8 @@ function findBin(name: string): Promise<Bin | null> {
   let p = bins.get(name);
   if (!p) {
     p = (async () => {
-      let path = '';
-      for (const [cmd, args] of [['mise', ['which', name]], ['which', [name]]] as const) {
+      let path = name.includes('/') && existsSync(name) ? name : '';
+      for (const [cmd, args] of name.includes('/') ? [] : ([['mise', ['which', name]], ['which', [name]]] as const)) {
         try {
           path = (await exec(cmd, [...args], { timeout: 20000 })).stdout.trim();
         } catch {
@@ -100,7 +101,8 @@ async function tools(): Promise<{ path: string; roots: string[] }> {
   return node ? { path: `${dirname(node.path)}:/usr/bin:/bin`, roots: [node.root] } : { path: '/usr/bin:/bin', roots: [] };
 }
 
-async function catalog(): Promise<Record<string, { name?: string; models?: Record<string, { name?: string }> }>> {
+type CatalogModel = { name?: string; reasoning_options?: { type?: string; values?: string[] }[] };
+async function catalog(): Promise<Record<string, { name?: string; models?: Record<string, CatalogModel> }>> {
   const old = existsSync(CATALOG) ? Date.now() - statSync(CATALOG).mtimeMs : Infinity;
   if (old > 6 * 3600_000) {
     try {
@@ -117,28 +119,60 @@ async function catalog(): Promise<Record<string, { name?: string; models?: Recor
   return readJson(CATALOG) ?? {};
 }
 
+// ------------------------------------------------------------ effort
+
+// The effort scale, lowest first ('none' = no thinking at all is never picked). A model that lacks the asked level
+// gets the nearest one it has, the higher one on a tie; the result says which level it really ran at.
+const SCALE = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']; // claude --effort; the local relay turns them into a local model's own
+const onScale = (xs: unknown[]) => [...new Set(xs.map(String).filter((x) => SCALE.includes(x)))].sort((a, b) => SCALE.indexOf(a) - SCALE.indexOf(b));
+
+export function nearestEffort(asked: string, has: string[]): string {
+  const at = SCALE.indexOf(asked);
+  if (at < 0 || !has.length) return 'default';
+  let best = 'default';
+  let dist = Infinity;
+  for (const h of has) {
+    const i = SCALE.indexOf(h);
+    const d = Math.abs(i - at);
+    if (i >= 0 && (d < dist || (d === dist && i > SCALE.indexOf(best)))) [best, dist] = [h, d];
+  }
+  return best;
+}
+
+// agy's Google sign-in: one item in the desktop keyring. Read only to hand it to the box (plan) or to see it is there.
+async function agySignIn(): Promise<string> {
+  try {
+    return (await exec('secret-tool', ['lookup', 'service', 'gemini', 'username', 'antigravity'], { timeout: 15000, maxBuffer: 1 << 20 })).stdout;
+  } catch {
+    return '';
+  }
+}
+
 let modelCache: { at: number; data: LabModelsResponse } | null = null;
 
 export async function labModels(): Promise<LabModelsResponse> {
   if (modelCache && Date.now() - modelCache.at < 5 * 60_000) return modelCache.data;
   const models: LabModel[] = [];
   const notes: string[] = [];
-  const add = (app: LabApp, id: string, name: string) => models.push({ id: `${app}:${id}`, name, app, appName: APPS[app].name, account: APPS[app].account });
+  const add = (app: LabApp, id: string, name: string, efforts: string[]) =>
+    models.push({ id: `${app}:${id}`, name, app, appName: APPS[app].name, account: APPS[app].account, efforts });
   if (!hasBox()) notes.push('bubblewrap (bwrap) is not installed, so no model can run safely. Install it, then reload.');
 
   const claude = await findBin('claude');
   if (!claude) notes.push('Claude Code is not installed.');
   else if (!claudeToken) notes.push('Claude: run `claude setup-token`, put the token in .env as PHOSPHOR_LAB_CLAUDE_TOKEN, restart.');
-  else for (const [id, name] of CLAUDE_MODELS) add('claude', id, name);
+  else for (const [id, name] of CLAUDE_MODELS) add('claude', id, name, CLAUDE_EFFORTS);
 
   const codexAuth = join(process.env.CODEX_HOME || join(HOME, '.codex'), 'auth.json');
   if (!(await findBin('codex'))) notes.push('Codex is not installed.');
   else if (!existsSync(codexAuth)) notes.push('Codex: run `codex login` (or `codex login --device-auth` from a phone).');
   else {
-    type C = { models?: { slug?: string; display_name?: string; visibility?: string }[] };
+    type C = { models?: { slug?: string; display_name?: string; visibility?: string; supported_reasoning_levels?: (string | { effort?: string })[] }[] };
     const list = readJson<C>(join(dirname(codexAuth), 'models_cache.json'))?.models ?? [];
-    for (const m of list) if (m.slug && m.visibility === 'list') add('codex', m.slug, m.display_name || m.slug);
-    if (!list.length) add('codex', 'default', 'GPT (Codex default)');
+    for (const m of list)
+      if (m.slug && m.visibility === 'list') add('codex', m.slug, m.display_name || m.slug, onScale((m.supported_reasoning_levels ?? []).map((x) => (typeof x === 'string' ? x : x?.effort))));
+    if (!list.length) add('codex', 'default', 'GPT (Codex default)', []);
   }
 
   if (!(await findBin('opencode'))) notes.push('opencode is not installed.');
@@ -153,12 +187,37 @@ export async function labModels(): Promise<LabModelsResponse> {
     const ids = lines.map((l) => l.trim()).filter((l) => /^(opencode-go|openrouter)\/\S+$/.test(l));
     for (const id of ids) {
       const [prov, ...rest] = id.split('/');
-      add('opencode', id, cat[prov]?.models?.[rest.join('/')]?.name ?? rest.join('/'));
+      const c = cat[prov]?.models?.[rest.join('/')];
+      add('opencode', id, c?.name ?? rest.join('/'), onScale(c?.reasoning_options?.find((o) => o.type === 'effort')?.values ?? [])); // run as <model>#<level>
     }
     if (!ids.length && lines.length) notes.push('opencode: no OpenCode Go models. Run `opencode auth login opencode-go`.');
   }
 
-  for (const m of localModel?.models ?? []) add('local', m.name, m.label.replace(/\s*\(local\)\s*$/i, ''));
+  // agy lists each model once per effort ("gemini-4-argon-high"); the lab shows one entry and passes --effort.
+  const agy = await findBin(APPS.agy.bin);
+  if (!agy) notes.push('Antigravity (agy, for Gemini on a Google AI Pro plan) is not installed.');
+  else if (!(await agySignIn())) notes.push('Antigravity (Gemini): run `agy` once in a terminal and sign in with Google.');
+  else {
+    let lines: string[] = [];
+    try {
+      lines = (await exec(agy.path, ['models'], { timeout: 45000, env: { ...process.env, AGY_CLI_DISABLE_AUTO_UPDATE: 'true' } })).stdout.split('\n');
+    } catch {
+      notes.push('Antigravity did not answer with its model list.');
+    }
+    const byBase = new Map<string, { name: string; efforts: string[] }>();
+    for (const line of lines) {
+      const [id, name] = line.split('\t').map((s) => s.trim());
+      if (!id || !name || !/^[\w.-]+$/.test(id)) continue;
+      const m = id.match(/^(.+)-(low|medium|high|xhigh|max)$/);
+      const base = m ? m[1] : id;
+      const e = byBase.get(base) ?? { name: name.replace(/\s*\((low|medium|high|xhigh|max)\)\s*$/i, ''), efforts: [] };
+      if (m) e.efforts.push(m[2]);
+      byBase.set(base, e);
+    }
+    for (const [id, e] of byBase) add('agy', id, e.name, onScale(e.efforts));
+  }
+
+  for (const m of localModel?.models ?? []) add('local', m.name, m.label.replace(/\s*\(local\)\s*$/i, ''), CLAUDE_EFFORTS);
 
   const data = { models, notes };
   modelCache = { at: Date.now(), data };
@@ -251,17 +310,53 @@ const parseOpencode = (texts: Map<string, Map<string, string>>): Parse => (e, l)
   }
 };
 
-type Plan = { cmd: string[]; spec: BoxSpec; stdin: string; parse: Parse; roots: string[] };
+// agy: the "result" event at the end has the reply, the status and the tokens.
+const parseAgy: Parse = (e, l) => {
+  if (e.event === 'result' && e.result) {
+    l.reply = String(e.result.response ?? '');
+    if (typeof e.result.usage?.total_tokens === 'number') l.tokens = e.result.usage.total_tokens;
+    if (e.result.status && e.result.status !== 'SUCCESS') {
+      l.error = l.reply.trim() || `Antigravity stopped: ${e.result.status}`;
+      l.limit = isLimit(l.error);
+    }
+  }
+  if (e.event === 'error') {
+    l.error = String(e.error?.message ?? e.message ?? 'error');
+    l.limit = isLimit(l.error);
+  }
+};
 
-async function plan(app: LabApp, model: string, prompt: string, home: string): Promise<Plan> {
+type Plan = { cmd: string[]; spec: BoxSpec; stdin: string; parse: Parse; roots: string[]; effort: string };
+
+async function plan(app: LabApp, model: string, prompt: string, home: string, asked: string): Promise<Plan> {
   const b = await findBin(APPS[app].bin);
   if (!b) throw new Error(`${APPS[app].name} is not installed.`);
   const roots = [b.root];
+  const effort = nearestEffort(asked, (await labModels()).models.find((m) => m.id === `${app}:${model}`)?.efforts ?? []);
+  const level = effort === 'default' ? [] : ['--effort', effort]; // claude and agy
   const quiet = { DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', CLAUDE_CONFIG_DIR: join(HOME, '.claude') };
-  const claudeCmd = (m: string) => [b.path, '-p', '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions', '--model', m];
+  const claudeCmd = (m: string) => [b.path, '-p', '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions', '--model', m, ...level];
   if (app === 'claude') {
     if (!claudeToken) throw new Error('The lab has no Claude sign-in (PHOSPHOR_LAB_CLAUDE_TOKEN).');
-    return { cmd: claudeCmd(model), spec: { env: { ...quiet, CLAUDE_CODE_OAUTH_TOKEN: claudeToken } }, stdin: prompt, parse: parseClaude, roots };
+    return { cmd: claudeCmd(model), spec: { env: { ...quiet, CLAUDE_CODE_OAUTH_TOKEN: claudeToken } }, stdin: prompt, parse: parseClaude, roots, effort };
+  }
+  if (app === 'agy') {
+    // Its Google sign-in lives in the desktop keyring, which holds every other saved password too, so the box never
+    // reaches it: the box starts its own D-Bus and an empty keyring, and only the one sign-in item comes in, on stdin.
+    const token = await agySignIn();
+    if (!token) throw new Error('Antigravity is not signed in: run `agy` once in a terminal and sign in with Google.');
+    mkdirSync(join(home, '.gemini', 'antigravity-cli'), { recursive: true });
+    writeFileSync(join(home, '.gemini', 'antigravity-cli', 'settings.json'), JSON.stringify({ trustedWorkspaces: [WORK] }) + '\n');
+    const sh = [
+      'eval "$(printf lab-box | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null)"',
+      `secret-tool store --label="Password for 'antigravity' on 'gemini'" service gemini username antigravity || exit 3`,
+      'm="$1"; p="$2"; shift 2',
+      'exec /opt/agy/agy -p "$p" --model "$m" --output-format stream-json --dangerously-skip-permissions "$@" </dev/null',
+    ].join('\n');
+    const text = prompt.startsWith('-') ? ` ${prompt}` : prompt; // never read as a flag
+    const t = await tools();
+    const spec: BoxSpec = { env: { AGY_CLI_DISABLE_AUTO_UPDATE: 'true', PATH: `/opt/agy:${t.path}` }, ro: [[realpathSync(b.path), '/opt/agy/agy']] };
+    return { cmd: ['dbus-run-session', '--', '/bin/sh', '-c', sh, 'sh', model, text, ...level], spec, stdin: token, parse: parseAgy, roots: [], effort }; // only the one program file, not its folder
   }
   if (app === 'local') {
     const m = localModel?.models.find((x) => x.name === model);
@@ -275,16 +370,17 @@ async function plan(app: LabApp, model: string, prompt: string, home: string): P
       ANTHROPIC_DEFAULT_HAIKU_MODEL: m.name,
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(localModel.contexts[m.name] ?? localModel.context),
     };
-    return { cmd: claudeCmd(m.name), spec: { env }, stdin: prompt, parse: (e, l) => (parseClaude(e, l), (l.value = null)), roots };
+    return { cmd: claudeCmd(m.name), spec: { env }, stdin: prompt, parse: (e, l) => (parseClaude(e, l), (l.value = null)), roots, effort };
   }
   if (app === 'codex') {
     const auth = join(process.env.CODEX_HOME || join(HOME, '.codex'), 'auth.json');
     mkdirSync(join(home, '.codex'), { recursive: true });
     const cmd = [b.path, 'exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '-C', WORK];
     if (model !== 'default') cmd.push('-m', model);
+    if (effort !== 'default') cmd.push('-c', `model_reasoning_effort=${effort}`);
     cmd.push('-'); // the prompt comes on stdin
     // auth.json is bound, not copied: a token refresh in the box writes back to the one file.
-    return { cmd, spec: { env: { CODEX_HOME: join(HOME, '.codex') }, bind: [[auth, join(HOME, '.codex', 'auth.json')]] }, stdin: prompt, parse: parseCodex, roots };
+    return { cmd, spec: { env: { CODEX_HOME: join(HOME, '.codex') }, bind: [[auth, join(HOME, '.codex', 'auth.json')]] }, stdin: prompt, parse: parseCodex, roots, effort };
   }
   // opencode: its sign-in is in its own database, so the box gets only the one it needs, imported on stdin.
   await catalog();
@@ -301,12 +397,13 @@ async function plan(app: LabApp, model: string, prompt: string, home: string): P
   };
   const text = prompt.startsWith('-') ? ` ${prompt}` : prompt; // never read as a flag
   const sh = '"$0" auth import --standalone >/dev/null 2>&1 || exit 3; exec "$0" run --standalone --format json --auto -m "$1" "$2" </dev/null';
-  return { cmd: ['/bin/sh', '-c', sh, b.path, model, text], spec: { env, ro: [[CATALOG, '/opt/lab/models.json']] }, stdin: JSON.stringify(mine), parse: parseOpencode(new Map()), roots };
+  const variant = effort === 'default' ? model : `${model}#${effort}`; // opencode's effort: the model's variant
+  return { cmd: ['/bin/sh', '-c', sh, b.path, variant, text], spec: { env, ro: [[CATALOG, '/opt/lab/models.json']] }, stdin: JSON.stringify(mine), parse: parseOpencode(new Map()), roots, effort };
 }
 
 // ------------------------------------------------------------ runs
 
-export type Job = { testDir: string; dir: string; prompt: string; timeLimitMin: number };
+export type Job = { testDir: string; dir: string; prompt: string; timeLimitMin: number; effort: string };
 type Running = { child: ChildProcess | null; live: Live; stop: 'time' | 'owner' | '' };
 
 const running = new Map<string, Running>(); // key: <test dir>/<result dir>
@@ -399,12 +496,12 @@ async function start(job: Job, r: LabResult): Promise<void> {
     mkdirSync(home, { recursive: true });
     mkdirSync(files, { recursive: true });
     const model = r.model.slice(r.model.indexOf(':') + 1);
-    const p = await plan(r.app, model, job.prompt, home);
+    const p = await plan(r.app, model, job.prompt, home, job.effort);
     const t = await tools();
     p.spec.env.PATH ??= t.path;
     p.roots.push(...t.roots);
     const b = await findBin(APPS[r.app].bin);
-    writeJson(resultFile(job), { ...r, state: 'running', startedAt, appVersion: b?.version ?? '' });
+    writeJson(resultFile(job), { ...r, state: 'running', startedAt, appVersion: b?.version ?? '', effort: p.effort });
     if (!hasBox()) throw new Error('bubblewrap (bwrap) is not installed.');
     const box = ['bwrap', ...boxArgs(home, files, p.roots, p.spec), ...p.cmd];
     const scoped = existsSync('/usr/bin/systemd-run');

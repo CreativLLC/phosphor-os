@@ -1,10 +1,15 @@
 // Model Lab (docs/MODEL-LAB.md): what the server and the LAB screens send each other. The files on disk
 // (test.json, result.json) hold the same fields plus `schema`.
 
-export type LabApp = 'claude' | 'codex' | 'opencode' | 'local';
+export type LabApp = 'claude' | 'codex' | 'opencode' | 'agy' | 'local';
 export type LabState = 'queued' | 'running' | 'done' | 'failed' | 'limit' | 'stopped';
 
 export const LAB_TIME_LIMITS = [5, 10, 30, 60];
+
+// How hard the models think, one setting for the whole test. Each app takes it in its own words, and a model that
+// lacks the asked level gets the nearest one it has (server/labrun.ts nearestEffort). 'default' = the app decides.
+export type LabEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const LAB_EFFORTS: LabEffort[] = ['default', 'low', 'medium', 'high', 'xhigh', 'max'];
 export const LAB_MAX_MODELS = 12;
 
 export interface LabModel {
@@ -13,6 +18,7 @@ export interface LabModel {
   app: LabApp;
   appName: string;
   account: string;
+  efforts: string[]; // the effort levels it takes, lowest first ([] = none: it always runs at its default)
 }
 
 export interface LabModelsResponse {
@@ -36,6 +42,7 @@ export interface LabResult {
   stars: number; // 0 = not rated
   rank: number; // place in the owner's best-to-worst order: 1 = best, 0 = not ranked
   timeUp: boolean; // the time limit stopped it; it counts as done and is judged on what it had made by then
+  effort: string; // the level it ran at ('default' = the app chose), '' before it started
   note: string;
   error: string;
 }
@@ -62,6 +69,7 @@ export interface LabTest {
   blind: boolean;
   revealed: boolean;
   timeLimitMin: number;
+  effort: LabEffort;
   results: LabResult[];
 }
 
@@ -77,6 +85,7 @@ export interface LabNewTest {
   models: string[];
   timeLimitMin: number;
   blind: boolean;
+  effort?: LabEffort;
 }
 
 export interface LabStorage {
