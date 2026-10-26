@@ -1,5 +1,5 @@
 import type { FoldersResponse, TabState } from '../../shared/protocol.ts';
-import { firstMessage } from './firstmsg.ts';
+import { firstMessage, type FirstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
 import { store, working } from './store.ts';
 import { shellApi } from './shellapi.ts';
@@ -135,7 +135,7 @@ export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
   const list = el('div', 'folder-list');
   const first = firstMessage(dialog, 'chat');
   const cancel = button('CANCEL', () => dialog.close());
-  const project = button('NEW PROJECT…', () => newProject(dialog), 'folder project-btn');
+  const project = button('NEW PROJECT…', () => newProject(dialog, first), 'folder project-btn');
   project.title = 'A project: one lead chat that starts and steers thread chats, with a shared memory file';
   dialog.replaceChildren(el('h2', '', 'NEW CHAT: PICK A FOLDER'), first.block, list, el('div', 'buttons', ''));
   dialog.lastElementChild!.append(project, cancel);
@@ -166,11 +166,11 @@ export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
 }
 
 // A new project: its name, then its lead chat opens (in the workspace folder). The first message is optional too.
-function newProject(dialog: HTMLDialogElement): void {
+function newProject(dialog: HTMLDialogElement, from: FirstMessage): void {
   const input = el('input', 'project-name');
   input.placeholder = 'Project name, for example "YT: Claude video"';
   input.maxLength = 60;
-  const first = firstMessage(dialog, 'lead chat');
+  const first = firstMessage(dialog, 'lead chat', from);
   const create = async () => {
     const name = input.value.trim();
     if (!name) return input.focus();

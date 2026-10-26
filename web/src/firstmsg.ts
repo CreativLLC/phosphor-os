@@ -8,13 +8,15 @@ import { button, el } from './ui.ts';
 
 export type FirstMessage = {
   block: HTMLElement;
+  box: HTMLTextAreaElement;
   // Call when the dialog is about to start the chat: stops a running dictation and waits for its words, then gives what
   // to run when the new chat is open (newReq's `then`), or undefined when the box is empty. null: do not start (a
   // second tap while it waited, or the dialog was closed or turned into NEW PROJECT meanwhile).
   take: () => Promise<((tab: string) => void) | undefined | null>;
 };
 
-export function firstMessage(dialog: HTMLDialogElement, where: string): FirstMessage {
+// from: NEW CHAT's box when NEW PROJECT… replaces it; its text comes along.
+export function firstMessage(dialog: HTMLDialogElement, where: string, from?: FirstMessage): FirstMessage {
   const box = el('textarea');
   box.rows = 3;
   box.placeholder = `Type or dictate. Nothing is sent: it waits in the new ${where}'s message box.`;
@@ -27,6 +29,7 @@ export function firstMessage(dialog: HTMLDialogElement, where: string): FirstMes
 
   // The one voice engine and the clean-up button belong to this box while the dialog is open.
   const release = useDictation(dictate, box, true);
+  if (from) box.value = from.box.value; // after useDictation: a take in the old box has ended and its words are in it
   const dispose = mountCleanup(clean, box);
   dialog.addEventListener(
     'close',
@@ -40,6 +43,7 @@ export function firstMessage(dialog: HTMLDialogElement, where: string): FirstMes
   let taking = false;
   return {
     block,
+    box,
     take: async () => {
       if (taking) return null;
       taking = true;
