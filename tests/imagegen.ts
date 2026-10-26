@@ -190,6 +190,21 @@ const cfg = { url: 'http://img.test', label: 'Fake Image (local)', dir, idleMs: 
 }
 
 {
+  // holdsGpu (ROUTER's ask_local stays off the card then): the engine up counts, also when the GPU turns never saw a
+  // picture (another app started it, or this server restarted since).
+  const w = fakeEngine();
+  const p = new Painter(w.engine, cfg);
+  check('holdsGpu: engine down, no picture: free', !(await p.holdsGpu()));
+  await w.engine.start(); // another app starts the engine and paints with it
+  check('holdsGpu: engine up, started by another app: held', await p.holdsGpu());
+  (await p.gpu.acquire('chat'))(); // a chat had the card (its hand-over stopped the engine)
+  await w.engine.start(); // the other app starts it again
+  check('holdsGpu: engine up after a chat had the card: held', await p.holdsGpu());
+  await w.engine.stop();
+  check('holdsGpu: engine stopped: free', !(await p.holdsGpu()));
+}
+
+{
   // A chat takes the card before the idle time is up: its hand-over stops the engine; the idle stop does not run
   // again, and never unloads the chat models.
   const w = fakeEngine();

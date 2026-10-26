@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { basename, join } from 'node:path';
 import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
+import type { ThreadModel } from './delegate.ts';
 import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
@@ -21,7 +22,7 @@ export class Tabs {
   constructor(private emit: (ev: ServerEvent) => void) {
     Tab.models = () => this.models();
     Tab.knownModels = () => this.modelsLoaded;
-    Tab.projects = { thread: (lead, title, brief) => this.thread(lead, title, brief), members: (id) => [...this.tabs.values()].filter((t) => t.project?.id === id) };
+    Tab.projects = { thread: (lead, title, brief, run) => this.thread(lead, title, brief, run), members: (id) => [...this.tabs.values()].filter((t) => t.project?.id === id) };
     // AUTO-CONTINUE: a chat stopped by the usage limit goes on once the limit resets (Tab.resumeIfDue).
     // A short interval, not one long timer: survives sleep, and the time can move.
     setInterval(() => {
@@ -81,10 +82,11 @@ export class Tabs {
     void tab.prefillInfo();
   }
 
-  // A thread for a project's lead: the lead's folder and model settings; it starts on the brief at once.
-  private thread(lead: Tab, title: string, brief: string): Tab {
+  // A thread for a project's lead: the lead's folder and model settings, or the worker the lead chose (`run`,
+  // server/delegate.ts); it starts on the brief at once.
+  private thread(lead: Tab, title: string, brief: string, run: ThreadModel = { model: lead.model, effort: lead.effort, auto: lead.autoModel }): Tab {
     const p = lead.project!;
-    const tab = this.make({ cwd: lead.state.info.cwd, title: title.trim().slice(0, 60) || 'Thread', mode: lead.mode, model: lead.model, effort: lead.effort, auto: lead.autoModel, project: { id: p.id, name: p.name, main: false, parent: lead.id } });
+    const tab = this.make({ cwd: lead.state.info.cwd, title: title.trim().slice(0, 60) || 'Thread', mode: lead.mode, model: run.model, effort: run.effort, auto: run.auto, project: { id: p.id, name: p.name, main: false, parent: lead.id } });
     this.save();
     this.emit({ t: 'tab', tab: tab.state });
     void tab.prefillInfo();

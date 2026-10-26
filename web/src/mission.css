@@ -526,6 +526,18 @@
   color: var(--ph-bright);
 }
 
+/* ROUTER (routercard.ts): this chat's line is bright once it handed the local model a job. */
+.ms-router-chat {
+  margin: 0 0 2px;
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+}
+
+.ms-router-chat.used {
+  color: var(--ph-bright);
+}
+
 /* CONTEXT: the gauge takes the place of the dot leader. */
 .ms-ctx::after {
   display: none;

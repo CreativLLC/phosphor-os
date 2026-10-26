@@ -1,4 +1,4 @@
-import { IMAGE_MODEL, type Agent, type CalendarEvent, type CalendarRangeResponse, type ClientEvent, type ImageItem, type Item, type Mission, type ServerEvent, type TabState, type TodayResponse } from '../../shared/protocol.ts';
+import { IMAGE_MODEL, type Agent, type CalendarEvent, type CalendarRangeResponse, type ClientEvent, type ImageItem, type Item, type Mission, type RouterResponse, type ServerEvent, type TabState, type TodayResponse } from '../../shared/protocol.ts';
 import { TTL_1H } from '../../shared/cache.ts';
 import { parseIdeas, type IdeasResponse } from '../../shared/ideas.ts';
 import { apply, useDemo } from './net.ts';
@@ -116,6 +116,7 @@ export function startDemo(): void {
   useDemo(onClientEvent);
   apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2), structuredClone(tab3), ...projectTabs()] });
   apply({ t: 'sdk_update', state: { installed: '0.3.296', pending: '0.3.301', claude: '2.1.301', bigger: null, running: false, failed: false } });
+  demoRouterTabs();
 
   let tick = 0;
   let done = 2;
@@ -203,6 +204,16 @@ function onClientEvent(ev: ClientEvent): void {
   } else if (ev.t === 'rename_tab') {
     emit({ t: 'patch', tab: ev.tab, key: 'meta', value: { ...cur(ev.tab).meta, title: ev.title } });
   }
+}
+
+// ROUTER card (routercard.ts): the first chat handed the local model 12 jobs; a project lead's threads run on the
+// local model and on Haiku.
+const LOCAL_JOBS = { calls: 12, failed: 1, inTokens: 214_000, outTokens: 9_800, keptOff: 48_200, ms: 412_000, worker: 'Qwen3.6 35B MoE', at: now - 60_000 };
+export const demoRouter = (): RouterResponse => ({ on: true, since: now - 9 * 86_400_000, total: { ...LOCAL_JOBS, calls: 41, failed: 2, inTokens: 820_000, outTokens: 36_500, keptOff: 212_000, ms: 1_480_000 } });
+function demoRouterTabs(): void {
+  apply({ t: 'patch', tab: 'demo-1', key: 'stats', value: { ...cur('demo-1').stats, delegate: LOCAL_JOBS } });
+  apply({ t: 'patch', tab: 'demo-p2', key: 'info', value: { ...cur('demo-p2').info, model: 'local' } });
+  apply({ t: 'patch', tab: 'demo-p3', key: 'info', value: { ...cur('demo-p3').info, model: 'haiku' } });
 }
 
 // Demo links go to Google's day view (no account here).

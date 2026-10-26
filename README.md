@@ -71,6 +71,7 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 - DOCS: a document editor over plain Markdown files
 - TODAY: today's events (read-only Google Calendar link) and your Omarchy reminders, with a month view
 - Local models (optional, bring your own): Qwen and Gemma through llama.cpp, from the same model picker
+- Router (with a local model): Claude hands big reads and routine jobs to the local model, which reads the files so Claude does not, and a project lead can run threads on it or on a cheaper Claude; the ROUTER card shows the tokens kept off Claude
 - Phone access over Tailscale, private to your own devices
 
 **The Omarchy add-on pack** (`os/`, the desktop flavor only)

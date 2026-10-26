@@ -1,5 +1,6 @@
 import { cacheOf, compressButton, contextGauge, watchCache } from './context.ts';
 import type { Mission, TabState } from '../../shared/protocol.ts';
+import { routerCard } from './routercard.ts';
 import { store, watchActive } from './store.ts';
 import { button, el, folderName, shortPath } from './ui.ts';
 import { usageGauge, usagePanel } from './usage.ts';
@@ -319,7 +320,7 @@ export function mountMission(root: HTMLElement): void {
   const stats = section('STATS', grid);
 
   const wrap = el('div', 'ms');
-  wrap.append(usagePanel(), noTab, task.sec, sum.sec, now.sec, steps.sec, conn.sec, stats.sec);
+  wrap.append(usagePanel(), noTab, task.sec, sum.sec, now.sec, steps.sec, conn.sec, routerCard(), stats.sec);
   root.replaceChildren(wrap);
 
   const showTab = (tab: TabState | undefined) => {

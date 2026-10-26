@@ -29,6 +29,34 @@ export function makeRoom(m: Local, name: string, f: Fetch = fetch, start = start
   return next;
 }
 
+// Requests to a model on its own server (Strata), from their GPU turn to their answer's end: that server is loading
+// or answering, though its /health may not say loaded yet. ask_local (server/delegate.ts) is BUSY then.
+let ownRequests = 0;
+export const ownBusy = (): boolean => ownRequests > 0;
+
+// ask_local's requests carry NO_SWAP: they run only on the model that holds the card now. Checked in the switch line,
+// after a switch already on its way: a model on its own server loaded or busy, or another router model loaded or
+// loading, is the reason given (the relay answers 409) instead of a swap. '' = it can run without one.
+export const NO_SWAP = 'x-phosphor-no-swap';
+export function swapNeeded(m: Local, name: string, f: Fetch = fetch): Promise<string> {
+  const next = switching.then(async () => {
+    if (m.urls[name]) return `${name} runs on its own server`;
+    if (ownRequests > 0) return 'a model on its own server is loading or answering';
+    for (const url of new Set(Object.values(m.urls))) if ((await health(url, f))?.loaded) return 'a model on its own server has the GPU';
+    try {
+      const r = await f(new URL('/v1/models', m.url), { headers: { authorization: `Bearer ${m.key}` }, signal: AbortSignal.timeout(3000) });
+      const list = ((await r.json()) as { data?: { id?: string; status?: { value?: string } }[] }).data ?? [];
+      const other = list.find((x) => x.id && x.id !== name && ['loaded', 'loading'].includes(x.status?.value ?? ''));
+      if (other) return `${other.id} has the GPU`;
+    } catch {
+      /* not a router: its one model */
+    }
+    return '';
+  });
+  switching = next.catch(() => {});
+  return next;
+}
+
 // The image model (server/imagegen.ts) needs the whole card: every chat model gives its memory back. A running
 // Strata answer finishes first (/unload?wait); the GPU turns (server/gpu.ts) keep router requests from running then.
 export function freeChatModels(f: Fetch = fetch): Promise<void> {
@@ -153,10 +181,19 @@ export function startLocalRelay(): void {
           if (name && j.stream === true && req.url?.split('?')[0] === '/v1/messages') meter = new Meter(name);
           if (name) {
             target = m.urls[name] || m.url;
+            if (target !== m.url) {
+              ownRequests++;
+              res.on('close', () => ownRequests--);
+            }
             const release = await chatTurn();
             if (abort.signal.aborted) release(); // the caller left while it waited
             else res.on('close', release);
-            await makeRoom(m, name);
+            const busy = req.headers[NO_SWAP] ? await swapNeeded(m, name) : await makeRoom(m, name).then(() => '');
+            if (busy) {
+              meter?.drop();
+              res.writeHead(409, json).end(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: busy } }));
+              return;
+            }
           }
           const effort = j?.output_config?.effort;
           if (req.url?.startsWith('/v1/messages')) blind = withoutImages(j);
@@ -173,7 +210,7 @@ export function startLocalRelay(): void {
       }
       if (abort.signal.aborted) return meter?.end('cancelled');
       const headers: Record<string, string> = {};
-      for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !['host', 'content-length', 'connection'].includes(k)) headers[k] = v;
+      for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !['host', 'content-length', 'connection', NO_SWAP].includes(k)) headers[k] = v;
       meter?.forwarded();
       const send = (b: typeof body) => fetch(new URL(req.url ?? '/', target), { method: req.method, headers, body: b.length ? b : undefined, signal: abort.signal });
       let r = await send(body);

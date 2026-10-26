@@ -23,6 +23,7 @@ import { IMAGE_MODEL, isImageModel, LEAD_PREFIX, REPORT_PREFIX, type Agent, type
 import { ttlFromUsage } from '../shared/cache.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
 import { DATA_DIR, geminiImage, imageModel, localChoice, localModel } from './config.ts';
+import { askLocalTool, DELEGATE_HELP, DELEGATE_TOOLS, ledger, routerOn, threadModel, threadWorkers, WORKER_HELP, type ThreadModel } from './delegate.ts';
 import { GeminiPainter } from './geminiimage.ts';
 import { painter, type Painter } from './imagegen.ts';
 import { editSize, imageSize, parseImageOptions, STEPS } from './imageopts.ts';
@@ -207,6 +208,7 @@ export class Tab {
       e.item.kind === 'image' && (e.item.status === 'queued' || e.item.status === 'painting') ? { ...e, item: { ...e.item, status: 'failed', error: 'Stopped when the app restarted.', phase: undefined } } : e,
     );
     this.state.items = this.imageLog.map((e) => e.item);
+    this.state.stats.delegate = ledger.forChat(this.state.meta.id); // ROUTER counts survive a restart
     this.pendingMode = init.mode;
     this.pendingModel = init.model;
     this.pendingEffort = init.effort;
@@ -240,9 +242,12 @@ export class Tab {
       ];
     }
     return [
-      tool('start_thread', 'Start a thread chat for one job of this project. It is a full chat with its own helper agents; it starts working on the brief at once and reports back here.', { title: z.string().describe('Short tab name, 1-4 words (for example "Thumbnails")'), brief: z.string().describe('The job: what to do, what to read, what done looks like') }, async (args) => {
-        const t = projects.thread(this, args.title, args.brief);
-        return say(`Started thread "${t.state.meta.title}" (id ${t.id}).`);
+      tool('start_thread', 'Start a thread chat for one job of this project. It is a full chat with its own helper agents; it starts working on the brief at once and reports back here.', { title: z.string().describe('Short tab name, 1-4 words (for example "Thumbnails")'), brief: z.string().describe('The job: what to do, what to read, what done looks like'), worker: z.enum(threadWorkers() as [string, ...string[]]).optional().describe(WORKER_HELP()) }, async (args) => {
+        // The worker (server/delegate.ts): the lead's model, the local model, or a cheaper Claude.
+        const run = await threadModel(args.worker as Parameters<typeof threadModel>[0], { model: this.model, effort: this.effort, auto: this.autoModel }, { efforts: (m) => Tab.knownModels?.()?.models.find((x) => x.value === m)?.efforts });
+        if ('error' in run) return { ...say(run.error), isError: true };
+        const t = projects.thread(this, args.title, args.brief, run);
+        return say(`Started thread "${t.state.meta.title}" (id ${t.id})${args.worker ? ` on ${args.worker}` : ''}.`);
       }),
       tool('send_to_thread', 'Send a message to one of this project\'s threads (by id or title). It works on it right away, or after its current step.', { thread: z.string(), message: z.string() }, async (args) => {
         const t = find(args.thread);
@@ -289,7 +294,7 @@ export class Tab {
   static images: Imager | undefined = painter && imageModel ? { painter, model: imageModel } : undefined;
   // The Gemini picture models (server/geminiimage.ts), by picker value. They can change an attached picture.
   // Projects (set by server/tabs.ts): start a thread for a lead, and a project's chats.
-  static projects?: { thread(lead: Tab, title: string, brief: string): Tab; members(id: string): Tab[] };
+  static projects?: { thread(lead: Tab, title: string, brief: string, run?: ThreadModel): Tab; members(id: string): Tab[] };
   static gemini = new Map<string, Imager>(geminiImage.models.map((m) => [m.value, { painter: new GeminiPainter(m.model), model: { label: m.label, edit: true, turbo: '' } }]));
 
   // For the AUTO tag: the model's name as the picker shows it.
@@ -751,7 +756,7 @@ export class Tab {
         cwd: this.state.info.cwd,
         additionalDirectories: [UPLOADS_DIR, ...(this.project ? [projectDir(this.project.id)] : [])], // attachments; a project's memory
         resume: this.state.meta.sessionId,
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP + (this.project ? projectHelp(this.project) : '') },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP + (this.delegates ? DELEGATE_HELP : '') + (this.project ? projectHelp(this.project) : '') },
         includePartialMessages: true,
         agentProgressSummaries: true,
         permissionMode: sdkMode(this.pendingMode, this.pendingModel),
@@ -762,8 +767,8 @@ export class Tab {
         enableFileCheckpointing: true, // backups before each edit, so UNDO can put files back
         canUseTool: this.canUseTool,
         mcpServers: { phosphor: this.missionServer() },
-        allowedTools: [MISSION_TOOL, ...PROJECT_TOOLS],
-        hooks: { PreToolUse: [{ matcher: [MISSION_TOOL, ...PROJECT_TOOLS].join('|'), hooks: [onlyMainMission] }] },
+        allowedTools: [MISSION_TOOL, ...PROJECT_TOOLS, ...DELEGATE_TOOLS],
+        hooks: { PreToolUse: [{ matcher: [MISSION_TOOL, ...PROJECT_TOOLS, ...DELEGATE_TOOLS].join('|'), hooks: [onlyMainMission] }] },
       },
     });
     void this.pump(this.q, run);
@@ -789,7 +794,29 @@ export class Tab {
           },
         ),
         ...this.projectTools(),
+        ...(this.delegates ? [this.askLocal()] : []),
       ],
+    });
+  }
+
+  // ROUTER (server/delegate.ts): a cloud chat hands jobs to the local model, when one is set up.
+  private get delegates(): boolean {
+    return routerOn() && !localChoice(this.pendingModel);
+  }
+
+  // ask_local reads files from the same folders Claude Code may read here.
+  private askLocal() {
+    return askLocalTool({
+      id: this.id,
+      cwd: this.state.info.cwd,
+      roots: [this.state.info.cwd, UPLOADS_DIR, ...(this.project ? [projectDir(this.project.id)] : [])],
+      status: (text) => {
+        if (this.state.meta.busy) this.setActivity(text);
+      },
+      counted: (c) => {
+        this.state.stats.delegate = c;
+        this.patch('stats');
+      },
     });
   }
 
@@ -1008,6 +1035,7 @@ export class Tab {
     const s = this.state.stats;
     s.toolCalls++;
     countConnector((s.connectors ??= []), name);
+    if (name === 'Read' && typeof input.file_path === 'string') s.delegate = ledger.sawFile(this.id, input.file_path) ?? s.delegate; // it saw that file after all
     const file = input.file_path ?? input.notebook_path;
     if (/^(Edit|Write|NotebookEdit|MultiEdit)$/.test(name) && typeof file === 'string' && !s.filesChanged.includes(file)) s.filesChanged.push(file);
 
@@ -1172,7 +1200,7 @@ function shortTitle(text: string): string {
 
 export function describeTool(name: string, input: unknown, max = 160): string {
   const i = (input ?? {}) as Record<string, unknown>;
-  const pick = i.command ?? i.file_path ?? i.notebook_path ?? i.pattern ?? i.url ?? i.query ?? i.description ?? i.prompt;
+  const pick = i.command ?? i.file_path ?? i.notebook_path ?? i.pattern ?? i.url ?? i.query ?? i.description ?? i.prompt ?? i.task;
   let s = typeof pick === 'string' ? pick : JSON.stringify(i);
   s = s.replace(/\s+/g, ' ').trim();
   return s.length > max ? s.slice(0, max - 1) + '…' : s;

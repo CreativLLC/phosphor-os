@@ -94,7 +94,16 @@ export type Stats = {
   cacheAt: number | null; // when the chat last called Claude: its prompt cache counts down from here (shared/cache.ts)
   cacheTtlMs: number; // how long that cache lives (5 min or 1 h); 0 = no cache (a local model, or not known yet)
   connectors?: Connector[]; // the MCP servers this chat has, and how often it used each (mission panel CONNECTORS)
+  delegate?: DelegateCount; // jobs this chat handed to the local model (mission panel ROUTER)
 };
+
+// ROUTER (server/delegate.ts, docs/ROUTER-PLAN.md): jobs handed to the local model with ask_local. inTokens, outTokens:
+// what the local model read and wrote (its own counts). keptOff: estimated Claude tokens of file text the server read
+// for it that Claude never saw (about 4 characters a token, less the answers Claude read back; a file Claude reads
+// itself later comes off again). worker: the model that did the last job. at: the last job (ms), 0 = none.
+export type DelegateCount = { calls: number; failed: number; inTokens: number; outTokens: number; keptOff: number; ms: number; worker?: string; at: number };
+// GET /api/router: on = a local model is set up and PHOSPHOR_ROUTER is not off; total = every chat since `since` (ms).
+export type RouterResponse = { on: boolean; total: DelegateCount; since: number };
 
 // A connector (MCP server) in one chat. status: Claude Code's (connected, failed, needs-auth, pending, disabled), or
 // '' when only known from the saved chat (its process has not started yet). calls: tool calls this chat made to it.
