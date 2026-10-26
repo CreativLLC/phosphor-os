@@ -666,6 +666,7 @@ function toggleDiscover(show = disc.hidden): void {
 async function scan(): Promise<void> {
   const host = discInput.value.trim();
   if (!host) return discInput.focus();
+  if (isDemo()) return toast('Demo mode: nothing is scanned.');
   try {
     localStorage.setItem(HOST_KEY, host);
   } catch {
