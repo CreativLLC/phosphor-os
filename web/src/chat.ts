@@ -19,6 +19,9 @@ const MODE_LABELS: Record<string, string> = {
 };
 // BYPASS = no permission prompts at all (hooks such as the prod-write block still run).
 const PICKER_MODES = [...new Set<string>([...MODES, 'bypassPermissions'])];
+const MODE_HELP = 'Permission mode: when Claude must ask you first. BYPASS never asks.';
+// A Gemini chat (server/geminitab.ts, agyMode) cannot stop to ask: each mode says what Gemini may do on its own.
+const GEMINI_MODE_HELP = "Gemini cannot stop to ask. ASK FIRST: it reads and answers; this folder is read-only for it. PLAN ONLY: it writes a plan, and changes nothing here. AUTO-EDIT and AUTO: it may change files in this folder. It runs no commands in any mode (agy has none of Claude Code's safety hooks). BYPASS is not offered.";
 
 let log: HTMLElement;
 let input: HTMLTextAreaElement;
@@ -51,7 +54,6 @@ export function mountChat(logEl: HTMLElement, composer: HTMLElement): void {
   const mode = composer.querySelector('#mode') as HTMLSelectElement;
 
   for (const m of PICKER_MODES) mode.append(new Option(MODE_LABELS[m] ?? m.toUpperCase(), m));
-  mode.title = 'Permission mode: when Claude must ask you first. BYPASS never asks.';
   mode.onchange = () => {
     mode.classList.toggle('bypass', mode.value === 'bypassPermissions');
     if (store.active) send({ t: 'mode', tab: store.active, mode: mode.value as Mode });
@@ -102,7 +104,9 @@ export function mountChat(logEl: HTMLElement, composer: HTMLElement): void {
     composer.classList.toggle('busy', !!tab?.meta.busy);
     mode.value = PICKER_MODES.includes(tab?.info.permissionMode ?? '') ? tab!.info.permissionMode : 'auto';
     const model = tab?.info.auto ? '' : tab?.info.model;
-    input.placeholder = model === IMAGE_MODEL ? 'Describe a picture… (--wide --tall --best --seed N)' : isImageModel(model) ? 'Describe a picture, or attach one to change… (--wide --tall)' : 'Message Claude…';
+    const gemini = tab?.info.agent === 'gemini';
+    input.placeholder = model === IMAGE_MODEL ? 'Describe a picture… (--wide --tall --best --seed N)' : isImageModel(model) ? 'Describe a picture, or attach one to change… (--wide --tall)' : gemini ? 'Message Gemini…' : 'Message Claude…';
+    mode.title = gemini ? GEMINI_MODE_HELP : MODE_HELP;
     mode.classList.toggle('bypass', mode.value === 'bypassPermissions');
     if (tab?.meta.id !== shownTab) {
       shownTab = tab?.meta.id ?? null;
@@ -277,7 +281,7 @@ function render(item: Item): HTMLElement {
       if (from) box.classList.add('project-msg');
       if (item.auto) box.classList.add('auto');
       const label = item.text.split('\n')[0].slice(0, 40) || item.attachments?.[0]?.name || 'attachment';
-      if (!item.paint) {
+      if (!item.paint && !store.tabs.get(tab)?.info.agent) {
         const undo = button('UNDO FROM HERE', () => askUndo(tab, item.id, label), 'undo-btn');
         undo.title = "Put back every file Claude changed after this message";
         who.append(undo);

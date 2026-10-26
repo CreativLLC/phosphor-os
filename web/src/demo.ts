@@ -102,6 +102,30 @@ const tab3: TabState = {
   activity: 'Painting 4/8',
 };
 
+// A chat with Gemini (server/geminitab.ts): its replies, tool lines, a plan in its own notes, and a refused command.
+const SAMPLE = '/home/user/workspace/projects/sample-app';
+const GEMINI = 'Gemini 4 Argon';
+const PLAN = '# Add a dark mode\n\n1. Read the colors in `src/theme.css`\n2. Add a `[data-theme="dark"]` block\n3. A toggle in the settings page';
+const tab4: TabState = {
+  meta: { id: 'demo-4', title: 'Dark mode plan', busy: false, attention: false, createdAt: now - 300000 },
+  info: { cwd: SAMPLE, model: 'gemini:gemini-4-argon', permissionMode: 'acceptEdits', effort: 'high', agent: 'gemini' },
+  items: [
+    { id: 'g1', kind: 'user', text: 'Plan a dark mode for the settings page. Short.' },
+    { id: 'g2', kind: 'tool', name: 'Read', detail: `${SAMPLE}/src/theme.css`, body: '48 lines, 1.2 KB' },
+    { id: 'g3', kind: 'tool', name: 'Write', detail: "implementation_plan.md (Gemini's notes)", body: PLAN },
+    { id: 'g4', kind: 'claude', who: GEMINI, at: now - 240000, text: 'Plan written, three steps:\n\n1. Read the colors in `src/theme.css`\n2. Add a `[data-theme="dark"]` block\n3. A toggle in the settings page' },
+    { id: 'g5', kind: 'user', text: 'Good. Do steps 1 and 2, then run the tests.' },
+    { id: 'g6', kind: 'tool', name: 'Edit', detail: `${SAMPLE}/src/theme.css` },
+    { id: 'g7', kind: 'tool', name: 'Run', detail: 'npm test', body: 'npm test' },
+    { id: 'g8', kind: 'claude', who: GEMINI, at: now - 200000, text: 'The dark colors are in `src/theme.css`, under `[data-theme="dark"]`.' },
+    { id: 'g9', kind: 'note', text: "Gemini wanted to run a command, which AUTO-EDIT does not allow, so it stopped there. AUTO-EDIT lets it change files in this folder. Gemini chats run no commands and open no web pages (agy has none of Claude Code's safety hooks): ask Claude for those." },
+  ],
+  mission: null,
+  agents: [],
+  stats: { toolCalls: 4, filesChanged: [`${SAMPLE}/src/theme.css`], turns: 2, turnStartedAt: null, lastTurnMs: 9400, contextTokens: 0, contextWindow: 0, cacheAt: null, cacheTtlMs: 0 },
+  activity: '',
+};
+
 const ACTIVITIES = ['Read: server/index.ts', 'Grep: listSessions', 'Edit: server/tabs.ts', 'Bash: npm run typecheck', 'Writing a reply', 'Thinking'];
 const TOOLS = ['Read server/tab.ts', 'Grep getSessionMessages', 'Glob **/*.jsonl', 'Read sdk.d.ts'];
 const NAMES = ['Explore', 'general-purpose', 'Plan', 'claude-code-guide', 'scout'];
@@ -111,10 +135,12 @@ export function startDemo(): void {
     { value: 'default', label: 'Opus 5.5', description: 'Most capable', resolved: 'claude-opus-5-5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
     { value: 'sonnet', label: 'Sonnet 5.5', description: 'Fast and capable', resolved: 'claude-sonnet-5-5', efforts: ['low', 'medium', 'high'] },
     { value: 'haiku', label: 'Haiku 4.5', description: 'Fastest', resolved: 'claude-haiku-4-5-20251001', efforts: [] },
+    { value: 'gemini:gemini-4-argon', label: GEMINI, description: "Chat with Gemini (your Google AI Pro sign-in, through agy). Works in this chat's folder.", efforts: ['low', 'medium', 'high'] },
+    { value: 'gemini:gemini-3.8-flash', label: 'Gemini 3.8 Flash', description: "Chat with Gemini (your Google AI Pro sign-in, through agy). Works in this chat's folder.", efforts: ['low', 'medium', 'high'] },
     { value: IMAGE_MODEL, label: 'Qwen-Image 2.1 (local)', description: "Makes pictures on this PC. Your message is the picture's description.", efforts: [] },
   ]);
   useDemo(onClientEvent);
-  apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2), structuredClone(tab3), ...projectTabs()] });
+  apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2), structuredClone(tab3), structuredClone(tab4), ...projectTabs()] });
   apply({ t: 'sdk_update', state: { installed: '0.3.296', pending: '0.3.301', claude: '2.1.301', bigger: null, running: false, failed: false } });
   demoRouterTabs();
 
@@ -179,6 +205,9 @@ function onClientEvent(ev: ClientEvent): void {
   if (ev.t === 'send' && cur(ev.tab).info.model === IMAGE_MODEL) {
     emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'user', text: ev.text, paint: true } });
     emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'image', status: 'failed', error: 'Demo mode: no image engine here.', prompt: ev.text, model: 'Qwen-Image 2.1 (local)', width: 1024, height: 1024, seed: 1, steps: 30 } });
+  } else if (ev.t === 'send' && cur(ev.tab).info.agent === 'gemini') {
+    emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'user', text: ev.text } });
+    emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'claude', who: GEMINI, at: Date.now(), text: 'Demo mode: no real Gemini here.' } });
   } else if (ev.t === 'send') {
     emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'user', text: ev.text, ...(cur(ev.tab).info.auto ? { route: { model: 'Sonnet 5.5', effort: 'medium', reason: 'small single-file edit' } } : {}) } });
     emit({ t: 'item', tab: ev.tab, item: { id: id(), kind: 'claude', text: 'Demo mode: no real Claude here.' } });

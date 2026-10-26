@@ -88,6 +88,7 @@ class OperatorCard {
     const state: OperatorState = meta?.attention ? 'alert' : meta?.busy ? 'working' : 'idle';
     this.sprite.play(operatorAnim(state));
     this.el.dataset.state = state;
+    setText(this.name, tab?.info.agent === 'gemini' ? 'GEMINI' : 'CLAUDE');
     this.title.disabled = !tab;
     if (document.activeElement !== this.title) this.title.value = meta?.title ?? '';
     setText(this.tag, !tab ? '[NO TAB]' : state === 'alert' ? '[NEEDS YOU]' : state === 'working' ? '[WORKING]' : '[STANDBY]');
@@ -288,7 +289,7 @@ export function mountAgents(root: HTMLElement): void {
     empty.hidden = shown.length > 0;
   }
 
-  watchActive(['agents', 'meta', 'activity', 'stats'], render);
+  watchActive(['agents', 'meta', 'activity', 'stats', 'info'], render); // info: a chat with Gemini names it
 
   // Live clocks for running crew and the operator's turn timer; finished cards fold when their time is up.
   setInterval(() => {

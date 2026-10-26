@@ -72,6 +72,7 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 - TODAY: today's events (read-only Google Calendar link) and your Omarchy reminders, with a month view
 - Local models (optional, bring your own): Qwen and Gemma through llama.cpp, from the same model picker
 - Router (with a local model): Claude hands big reads and routine jobs to the local model, which reads the files so Claude does not, and a project lead can run threads on it or on a cheaper Claude; the ROUTER card shows the tokens kept off Claude
+- Gemini chat (optional, Google AI Pro or Ultra): pick a Gemini model in a new chat and talk to Gemini in that chat's folder
 - Phone access over Tailscale, private to your own devices
 
 **The Omarchy add-on pack** (`os/`, the desktop flavor only)
@@ -200,6 +201,7 @@ own tailnet. More: [SECURITY.md](SECURITY.md).
   that needs sudo. Then the local models show up in the model picker next to Claude.
 - Local image generator on your own GPU (AMD, about 19 GB of disk): [docs/IMAGE-MODEL.md](docs/IMAGE-MODEL.md)
 - Gemini pictures with a Google AI Pro or Ultra account (no API key, no GPU): [docs/IMAGE-MODEL.md](docs/IMAGE-MODEL.md#gemini-pictures-cloud-optional)
+- Gemini chat with the same account: install Google's Antigravity CLI and sign in once as for Gemini pictures, restart the server, then in a new chat pick GEMINI 4 ARGON or GEMINI 3.8 FLASH. Gemini cannot stop to ask, so the mode picker decides what it may do: ASK FIRST reads and answers, PLAN ONLY writes a plan, AUTO-EDIT and AUTO may change files in the chat's folder; Gemini runs no commands (agy has none of Claude Code's safety hooks). Type `/quota` in a Gemini chat to see your Gemini limits. Details: PLAN.md, "Gemini chat".
 - Settings (`PHOSPHOR_*`) are listed in `.env.example`
 
 ## Update

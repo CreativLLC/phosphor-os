@@ -267,7 +267,8 @@ export function mountMission(root: HTMLElement): void {
   // TASK + SUMMARY
   const title = el('div', 'ms-title');
   const empty = el('div', 'ms-empty');
-  empty.append(el('div', 'ms-empty-1', 'NO MISSION LOADED.'), el('div', 'ms-empty-2', 'Claude fills this in on bigger tasks.'));
+  const emptyWho = el('div', 'ms-empty-2');
+  empty.append(el('div', 'ms-empty-1', 'NO MISSION LOADED.'), emptyWho);
   const task = section('TASK', title, empty);
   const summary = el('p', 'ms-sum');
   const sum = section('SUMMARY', summary);
@@ -429,6 +430,10 @@ export function mountMission(root: HTMLElement): void {
       ctx.row.classList.remove('hot');
     }
     ctxSub.hidden = !ctxSub.textContent;
+    // A Gemini chat (server/geminitab.ts) has no context count, COMPRESS or task list.
+    const gemini = tab.info.agent === 'gemini';
+    ctx.row.hidden = ctxMore.hidden = gemini;
+    emptyWho.textContent = gemini ? 'Gemini chats have no task list.' : 'Claude fills this in on bigger tasks.';
 
     const running = tab.agents.filter((a) => a.status === 'running').length;
     const total = tab.agents.length;

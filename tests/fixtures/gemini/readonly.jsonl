@@ -1,0 +1,11 @@
+{"event":"init","conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","init":{"model":"gemini-3.8-flash","cwd":"{{CWD}}","tools":[],"permission_mode":"request-review"}}
+{"event":"step_update","step_update":{"conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","step_index":0,"state":"DONE","step_type":"user_input"}}
+{"event":"step_update","step_update":{"conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","step_index":1,"state":"DONE","step_type":"agent_response","duration_seconds":4.499628386,"usage":{"input_tokens":6834,"output_tokens":90,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":6924}}}
+{"event":"step_update","step_update":{"conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","step_index":2,"state":"ACTIVE","step_type":"tool","tool_name":"write_file","tool_info":{"name":"write_file","parameters":{"Path":"{{CWD}}/a.txt"}}}}
+#touch {{CWD}}/a.txt
+{"event":"step_update","step_update":{"conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","step_index":2,"state":"ERROR","step_type":"tool","tool_name":"write_file","duration_seconds":0.087018476,"tool_info":{"name":"write_file","parameters":{"Path":"{{CWD}}/a.txt"},"error":{"type":"TOOL_ERROR","message":"open {{CWD}}/a.txt: read-only file system"}}}}
+{"event":"step_update","step_update":{"conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","step_index":4,"state":"ACTIVE","step_type":"agent_response","text_delta":"I could not create `a.txt`: "}}
+{"event":"step_update","step_update":{"conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","step_index":4,"state":"ACTIVE","step_type":"agent_response","text_delta":"this folder is on a **read-only file system**."}}
+{"event":"step_update","step_update":{"conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","step_index":4,"state":"ACTIVE","step_type":"agent_response","text_delta":"\n"}}
+{"event":"result","result":{"conversation_id":"f0a21c23-31fd-43c8-941f-daf3df311c7f","status":"SUCCESS","response":"I could not create `a.txt`: this folder is on a **read-only file system**.\n","num_turns":1}}
+#exit 0

@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import type { ThreadModel } from './delegate.ts';
+import { chatText, geminiModels, savedGeminiChats } from './geminitab.ts';
 import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
@@ -95,7 +96,8 @@ export class Tabs {
   }
 
   async open(sessionId: string, cwd: string, title: string, req?: string): Promise<void> {
-    const existing = [...this.tabs.values()].find((t) => t.state.meta.sessionId === sessionId);
+    const gemini = sessionId.startsWith('gemini:') ? sessionId.slice('gemini:'.length) : undefined; // a Gemini chat
+    const existing = [...this.tabs.values()].find((t) => (gemini ? t.geminiId === gemini : t.state.meta.sessionId === sessionId));
     if (existing) {
       this.emit({ t: 'tab', tab: existing.state, req });
       return;
@@ -103,7 +105,7 @@ export class Tabs {
     // Always the workspace folder (PHOSPHOR_CWD), so Claude keeps the workspace's CLAUDE.md and memory.
     // `cwd` is where the chat last ran a command, often a project subfolder; resuming by id works from here.
     void cwd;
-    const tab = this.make({ cwd: config.cwd, title: title.slice(0, 60) || 'Old chat', sessionId, auto: true });
+    const tab = this.make({ cwd: config.cwd, title: title.slice(0, 60) || 'Old chat', ...(gemini ? { gemini } : { sessionId, auto: true }) });
     try {
       await tab.loadHistory();
     } catch (e) {
@@ -125,7 +127,7 @@ export class Tabs {
   }
 
   async history(all = false): Promise<HistoryResponse> {
-    return { sessions: (await this.historyList(all)).map(({ path: _p, ...s }) => s) };
+    return { sessions: (await this.historyList(all)).map(({ path: _p, text: _t, ...s }) => s) };
   }
 
   // Chats whose own text has every word, newest first, each with a short piece of text around the first hit.
@@ -135,7 +137,7 @@ export class Tabs {
     if (!words.length) return { hits };
     // One file at a time: a first search reads every chat, some are tens of MB.
     for (const s of await this.historyList(all)) {
-      const text = s.path ? await textOf(s.path).catch(() => '') : '';
+      const text = s.path ? await textOf(s.path).catch(() => '') : (s.text ?? '');
       const at = matchAt(text, words);
       if (at >= 0) hits.push({ sessionId: s.sessionId, snippet: snippet(text, at) });
     }
@@ -145,7 +147,7 @@ export class Tabs {
   // HISTORY lists Phosphor-OS chats: started in this app, or open in a tab now. With `all`, every Claude Code
   // chat on this PC (terminal, VS Code, desktop app). An open tab's name wins: the session file may lag behind.
   // 500: enough that this app's chats still fill the list once the others are left out.
-  private async historyList(all: boolean): Promise<(HistoryEntry & { path?: string })[]> {
+  private async historyList(all: boolean): Promise<(HistoryEntry & { path?: string; text?: string })[]> {
     const open = new Map([...this.tabs.values()].map((t) => [t.state.meta.sessionId, t]));
     const paths = transcriptPaths();
     const sessions = await listSessions({ limit: 500 });
@@ -166,7 +168,12 @@ export class Tabs {
           };
         }),
     );
-    return rows.filter((r) => r !== null);
+    // Gemini chats (server/geminitab.ts) are this app's own: always listed, newest first among the others.
+    const gemini = savedGeminiChats().map((c) => {
+      const tab = [...this.tabs.values()].find((t) => t.geminiId === c.conversation);
+      return { sessionId: `gemini:${c.conversation}`, title: tab?.state.meta.title ?? c.title, cwd: c.cwd, lastModified: c.updatedAt, openTab: tab?.id, agent: 'gemini' as const, text: chatText(c) };
+    });
+    return [...rows.filter((r) => r !== null), ...gemini].sort((a, b) => b.lastModified - a.lastModified);
   }
 
   // Models this account can use. Asked once from a short-lived Claude process (no prompt is sent).
@@ -176,6 +183,7 @@ export class Tabs {
         await new Promise(() => {});
       })();
       const q = query({ prompt: idle, options: { cwd: config.cwd, persistSession: false } }); // leaves no chat in HISTORY
+      const gemini = geminiModels(); // Gemini chats through agy (server/geminitab.ts), asked at the same time
       try {
         const timeout = new Promise<never>((_, no) => setTimeout(() => no(new Error('model list timed out')), 30000));
         const list = await Promise.race([q.supportedModels(), timeout]);
@@ -189,6 +197,7 @@ export class Tabs {
             resolved: m.resolvedModel,
             efforts: m.supportsEffort === false ? [] : (m.supportedEffortLevels ?? [...EFFORTS]),
           })), ...(localModel?.models ?? []).map((m) => ({ value: m.value, label: m.label, description: 'Runs on this PC, no plan limits.', efforts: ['low', 'medium', 'xhigh'] as Effort[] })),
+            ...(await gemini),
             ...(imageModel ? [{ value: IMAGE_MODEL, label: imageModel.label, description: 'Makes pictures on this PC. Your message is the picture\'s description.', efforts: [] as Effort[] }] : []),
             ...geminiImage.models.map((m) => ({ value: m.value, label: m.label, description: 'Makes pictures with Gemini (your Google AI Pro sign-in). Your message is the picture\'s description.', efforts: [] as Effort[] }))],
         };
@@ -244,6 +253,7 @@ export class Tabs {
       resume: t.state.meta.resume ?? undefined,
       images: t.images.length ? t.images : undefined,
       project: t.project,
+      gemini: t.geminiId,
     }));
     writeFileSync(TABS_FILE, JSON.stringify(data, null, 2));
   }

@@ -86,7 +86,8 @@ export function commands(tab: string): Promise<SlashCommandInfo[]> {
 async function update(): Promise<void> {
   const m = input.value.match(/^\/([\w:.-]*)$/);
   const tab = store.active;
-  if (!m || !tab || store.demo) return close();
+  // A Gemini chat has no list to show (agy still runs its own slash commands when they are sent).
+  if (!m || !tab || store.demo || store.tabs.get(tab)?.info.agent) return close();
   const typed = m[1].toLowerCase();
   if (menu.hidden) {
     menu.hidden = false;
