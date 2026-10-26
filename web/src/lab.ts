@@ -835,9 +835,9 @@ async function openAddModels(t: LabTestFull): Promise<void> {
     return void body.replaceChildren(el('p', 'lab-err', message(e)));
   }
   const room = LAB_MAX_MODELS - t.results.length;
+  if (room <= 0) return void body.replaceChildren(el('p', 'lab-dim', `This test has ${t.results.length} models, the most one test holds. Start a new test from the LIBRARY in NEW TEST instead.`));
   const have = new Set(t.results.map((r) => r.model));
   const left = list.models.filter((m) => !have.has(m.id));
-  if (room <= 0) return void body.replaceChildren(el('p', 'lab-dim', `This test has ${t.results.length} models, the most one test holds. Start a new test from the LIBRARY in NEW TEST instead.`));
   const picked = new Set<string>();
   const intro = el('p', 'lab-dim', `The same prompt, EFFORT ${EFFORT_NAME[t.effort]}, TIME LIMIT ${limitText(t.timeLimitMin)}. The new results join this test${isBlind(t) ? ' and take the next letters' : ''}.`);
   const err = el('p', 'lab-err');
@@ -860,7 +860,7 @@ async function openAddModels(t: LabTestFull): Promise<void> {
     }
   };
   const { head, groups } = modelPicker(left, picked, { filter: '' }, sync);
-  if (!left.length) groups.append(el('p', 'lab-empty', 'Every model that is ready is already in this test.'));
+  if (!left.length) groups.append(el('p', 'lab-empty', list.models.length ? 'Every model that is ready is already in this test.' : 'No models are ready. See the notes above.'));
   const scroll = el('div', 'lab-scroll');
   scroll.append(head, groups);
   const foot = el('div', 'lab-row lab-box-foot');
