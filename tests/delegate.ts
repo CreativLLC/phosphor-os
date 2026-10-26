@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DelegateCount } from '../shared/protocol.ts';
-import { askLocalTool, Busy, CAPS, JobQueue, Ledger, ledger, pickLocal, readJobFiles, routerOn, runLocal, threadModel, threadWorkers, tokensOf, type Deps, type Pick } from '../server/delegate.ts';
+import { askLocalTool, Busy, CAPS, DELEGATE_HELP, JobQueue, Ledger, ledger, pickLocal, readJobFiles, routerOn, runLocal, threadModel, threadWorkers, tokensOf, type Deps, type Pick } from '../server/delegate.ts';
 import { Tab } from '../server/tab.ts';
 
 let fail = 0;
@@ -320,6 +320,10 @@ const ask = async (d: Deps, args: Record<string, unknown>, extra: unknown = {}) 
   const empty = await ask(deps({ rows: {}, answer: () => sse(answer(' ')) }), { task: 'x' });
   check('ask_local: an empty answer: FAILED', empty.error && /empty answer/.test(empty.text));
   check('ask_local: failures are counted as failed', counts.at(-1)?.failed === 1);
+  // The guidance and the tool text: exact words are Grep's, "none" proves nothing, paths not pasted text, no counts.
+  const desc = (askLocalTool(chat, deps({})) as unknown as { description: string }).description;
+  const says = (t: string) => /Grep/.test(t) && /exact words/.test(t) && /"none" or "not found" from it proves nothing/.test(t) && /never paste file text/i.test(t) && /counts/.test(t) && /math/.test(t);
+  check('guidance and tool text: Grep for exact words, a "none" proves nothing, pass paths, no counts or math', says(DELEGATE_HELP) && says(desc), desc);
 }
 
 // ---------------------------------------------------------------- thread workers

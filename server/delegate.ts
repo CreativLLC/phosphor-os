@@ -24,7 +24,7 @@ export const routerOn = (): boolean => !!localModel && process.env.PHOSPHOR_ROUT
 export const DELEGATE_TOOLS = ['mcp__phosphor__ask_local'];
 
 // Appended to the system prompt of cloud chats when the router is on.
-export const DELEGATE_HELP = `\n\nThis PC has a free local model, reached with the ask_local tool: it does one job and returns a short answer. Files you pass by path are read by the app and go only to that model; they never enter your context. Hand off when that saves tokens: summarizing or searching big files and logs (a few hundred lines or more), extracting or comparing across several files, sorting or labeling lists, first drafts you will edit. Do it yourself when the file is small, for exact counts, sums or math (a command such as grep -c does those right; the local model guesses), final decisions, security questions, exact code edits, or anything you cannot check. It is weaker than you: check what matters before you rely on it (a Grep or a short Read of the part it names). If it says DOWN or BUSY, do the job yourself.`;
+export const DELEGATE_HELP = `\n\nThis PC has a free local model, reached with the ask_local tool: it does one job and returns a short answer. Pass files by path: the app reads them and gives them only to that model, so they never enter your context. Never paste file text into the task: writing it costs you more than reading it. Hand off when that saves tokens: summarizing big files and logs (a few hundred lines or more), finding what they say about a topic when no exact words would find it, extracting or comparing across several files, sorting or labeling lists, first drafts you will edit. Do it yourself when the file is small; to find exact words, names or errors (Grep finds them exactly and cheaply); for exact counts, sums or math (a command such as grep -c does those right, the local model guesses); and for final decisions, security questions, exact code edits, or anything you cannot check. It is weaker than you: check what matters before you rely on it (a Grep or a short Read of the part it names). A "none" or "not found" from it proves nothing: Grep to be sure. If it says DOWN or BUSY, do the job yourself.`;
 
 // ---------------------------------------------------------------- files
 
@@ -469,9 +469,9 @@ const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
 export function askLocalTool(chat: DelegateChat, deps: Deps = LIVE) {
   return tool(
     'ask_local',
-    'Hand one job to the free local model on this PC: summarize, search, extract, classify, compare or draft. Files are read by the app, not by you: big files cost you only the short answer. One job at a time; it can take a minute. The local model is weaker than you: not for exact counts or math, and check what matters. DOWN or BUSY: do the job yourself.',
+    'Hand one job to the free local model on this PC: summarize, extract, classify, compare or draft, or find what files say about a topic. Pass files by path: the app reads them, not you, so big files cost you only the short answer; never paste file text into the task. One job at a time; it can take a minute. The local model is weaker than you: not for exact counts or math (it guesses) or exact words (Grep finds them); a "none" or "not found" from it proves nothing; check what matters. DOWN or BUSY: do the job yourself.',
     {
-      task: z.string().min(1).describe('The job, complete and specific: what to find, extract or write, and the form of the answer'),
+      task: z.string().min(1).describe('The job, complete and specific: what to find, extract or write, and the form of the answer. Files go in files, never their text here'),
       files: z.array(z.string()).max(CAPS.files).optional().describe('Paths, absolute or relative to the chat folder. The app reads them for the local model; you never see their text'),
       max_words: z.number().int().min(20).max(2000).optional().describe('Longest answer you want (default 300)'),
     },
