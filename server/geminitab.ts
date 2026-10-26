@@ -80,11 +80,12 @@ function labelOf(base: string): string {
 //   Both write files without asking in a headless run (default mode at once, plan mode once told "go ahead"; tested
 //   2026-10-26), so these runs see the chat's folder read-only (readOnly), or a file write is the tripwire.
 // - AUTO-EDIT: accept-edits. It may change files in the folder; commands are refused unless agy's own settings allow them.
-// - AUTO: agy's auto mode (edits, and the commands its checker finds safe). Where Google does not offer it for the
-//   account, agy says so and runs its default mode: file changes yes, commands no.
-// - BYPASS is not offered (NO_BYPASS): agy has none of Claude Code's hooks, so nothing would guard its commands.
+// - AUTO: also accept-edits. agy's own auto mode runs the commands its checker finds safe, and agy has none of Claude
+//   Code's hooks (such as a block on writes to a production org), so Gemini chats never use it: no mode runs commands
+//   unless agy's own settings allow them.
+// - BYPASS is not offered (NO_BYPASS): it is AUTO.
 export function agyMode(mode: string): string {
-  return mode === 'plan' ? 'plan' : mode === 'acceptEdits' ? 'accept-edits' : mode === 'auto' || mode === 'bypassPermissions' ? 'auto' : '';
+  return mode === 'plan' ? 'plan' : mode === 'acceptEdits' || mode === 'auto' || mode === 'bypassPermissions' ? 'accept-edits' : '';
 }
 const READ_ONLY = '[Note from the Phosphor-OS app: this chat is in ASK FIRST mode. Do not create, change or delete any file and do not run commands: read and answer only. If the request needs changes, say what you would change; the user can allow changes by switching the chat to AUTO-EDIT.]';
 export const NO_BYPASS = "BYPASS is not offered for Gemini: agy has none of Claude Code's hooks, so nothing would guard its commands. This chat uses AUTO.";
@@ -136,7 +137,7 @@ const ACTIONS: Record<string, string> = { command: 'run a command', unsandboxed:
 
 export function deniedNote(denied: Denied[], mode: string): string {
   const what = [...new Set(denied.map((d) => ACTIONS[d.action ?? ''] ?? `use ${d.display_name || d.action || 'a tool'}`))].join(', ');
-  return `Gemini wanted to ${what}, which ${MODE_NAMES[mode] ?? 'this mode'} does not allow, so it stopped there. AUTO-EDIT lets it change files in this folder; commands and web pages need an allow rule in agy's own settings (run \`agy\` in a terminal, then /permissions).`;
+  return `Gemini wanted to ${what}, which ${MODE_NAMES[mode] ?? 'this mode'} does not allow, so it stopped there. AUTO-EDIT lets it change files in this folder. Gemini chats run no commands and open no web pages (agy has none of Claude Code's safety hooks): ask Claude for those.`;
 }
 
 // An error from agy, in plain words.
@@ -229,7 +230,6 @@ export class GeminiChat {
   private queue: Job[] = [];
   private run?: Run;
   private gone = false;
-  private toldNoAuto = false;
 
   constructor(
     private host: GeminiHost,
@@ -463,10 +463,6 @@ export class GeminiChat {
     else if (fail) this.note(problem(fail));
     if (run.asked && this.conversation !== run.asked) this.note('agy could not find the earlier conversation, so this message started a new one: Gemini does not remember the messages above.');
     if (r?.denied_actions?.length) this.note(deniedNote(r.denied_actions, run.mode));
-    if (/--mode auto is not available/.test(run.stderr) && !this.toldNoAuto) {
-      this.toldNoAuto = true;
-      this.note('AUTO is not available for this Google account in agy, so Gemini ran in its default mode: it may change files in this folder, but not run commands.');
-    }
     const s = this.host.state.stats;
     s.turns++;
     s.lastTurnMs = Date.now() - run.started;

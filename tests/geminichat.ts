@@ -55,7 +55,7 @@ const replies = (t: T) => t.state.items.filter((i): i is Extract<Item, { kind: '
   check('models: one entry per Gemini model; agy\'s Claude and GPT models left out', list.map((m) => m.value).join() === 'gemini:gemini-4-argon,gemini:gemini-3.8-flash', list.map((m) => m.value).join());
   check('models: names without the level, levels low to high', list[0].label === 'Gemini 4 Argon' && list[1].label === 'Gemini 3.8 Flash' && list[0].efforts.join() === 'low,medium,high');
   check('models: asked from agy itself', (await geminiModels()).length === 2);
-  check("modes: ASK FIRST agy's default, PLAN ONLY plan, AUTO-EDIT accept-edits, AUTO and BYPASS auto", ['default', 'plan', 'acceptEdits', 'auto', 'bypassPermissions', ''].map(agyMode).join() === ',plan,accept-edits,auto,auto,');
+  check("modes: ASK FIRST agy's default, PLAN ONLY plan, AUTO-EDIT, AUTO and BYPASS accept-edits (never agy's auto mode: it runs commands)", ['default', 'plan', 'acceptEdits', 'auto', 'bypassPermissions', ''].map(agyMode).join() === ',plan,accept-edits,accept-edits,accept-edits,');
   check('thinking level held to the model\'s own', fitEffort('gemini:gemini-4-argon', 'xhigh') === 'high' && fitEffort('gemini:gemini-4-argon', 'low') === 'low' && fitEffort('gemini:gemini-4-argon', '') === undefined);
 }
 
@@ -107,7 +107,7 @@ const conv = '698555f5-d6e6-48b4-ae34-0ab407023a76';
   await play(denied, 'denied', 'Run the shell command: ls -la . Then tell me how many files are in this folder.');
   await play(denied, 'denied', 'Run it again.');
   check('a refused command: a Run line and a note naming it and the mode', tools(denied)[0]?.name === 'Run' && tools(denied)[0].detail === 'ls -la' && notes(denied).filter((n) => /wanted to run a command, which AUTO does not allow/.test(n)).length === 2, JSON.stringify(notes(denied)));
-  check('AUTO not offered for the account: said once', notes(denied).filter((n) => /AUTO is not available/.test(n)).length === 1);
+  check('AUTO runs as accept-edits; a refused command is not followed by advice to allow it in agy', flag(lastArgs(), '--mode') === 'accept-edits' && !notes(denied).some((n) => /allow rule|\/permissions/.test(n)), JSON.stringify(notes(denied)));
   check('no empty reply', replies(denied).length === 0);
 
   // Without bubblewrap, ASK FIRST and PLAN ONLY stop at the first file write (agy's default and plan modes both write).
