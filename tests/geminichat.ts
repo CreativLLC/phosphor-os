@@ -142,6 +142,9 @@ const conv = '698555f5-d6e6-48b4-ae34-0ab407023a76';
   await idle(st);
   check('STOP: the run ends at once, the waiting message is dropped', !st.state.meta.busy && notes(st).join('|') === 'Stopped before it was sent.|Stopped.', JSON.stringify(notes(st)));
   check('STOP: the waiting message never ran', readFileSync(join(tmp, 'argv.log'), 'utf8').trim().split('\n').length === runs);
+  const back = new Tab(() => {}, { cwd, model: 'gemini:gemini-3.8-flash', gemini: st.geminiId });
+  await back.loadHistory();
+  check('notes from a run are saved with the chat', notes(back).join('|') === 'Stopped before it was sent.|Stopped.', JSON.stringify(notes(back)));
 
   const signin = newTab();
   await play(signin, 'signin', 'hi');

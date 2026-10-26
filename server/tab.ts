@@ -230,7 +230,6 @@ export class Tab {
           if (item?.kind === 'claude') item.text += text;
           this.emit({ t: 'delta', tab: this.id, id, text });
         },
-        note: (text) => this.note(text),
         busy: (on) => this.setBusy(on),
         activity: (text) => this.setActivity(text),
         patch: (key) => this.patch(key),

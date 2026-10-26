@@ -151,7 +151,6 @@ export type GeminiHost = {
   add(item: Item): void;
   update(id: string, fields: Record<string, unknown>): void;
   delta(id: string, text: string): void; // more text for a reply being written
-  note(text: string): void;
   busy(on: boolean): void;
   activity(text: string): void;
   patch(key: PatchKey): void;
@@ -221,7 +220,7 @@ export class GeminiChat {
   // SIGKILL if it is still there seconds later. Only this run's own process, by its PID.
   stop(): void {
     const dropped = this.queue.splice(0).length;
-    if (dropped && !this.gone) this.host.note(dropped === 1 ? 'Stopped before it was sent.' : `Stopped: ${dropped} messages were not sent.`);
+    if (dropped && !this.gone) this.note(dropped === 1 ? 'Stopped before it was sent.' : `Stopped: ${dropped} messages were not sent.`);
     const run = this.run;
     if (!run) return;
     run.stopped = true;
@@ -277,6 +276,11 @@ export class GeminiChat {
   private push(item: Item): void {
     this.items.push(item);
     this.host.add(item);
+  }
+
+  // Saved with the chat, so a restart keeps why a reply is short or missing.
+  private note(text: string): void {
+    this.push({ id: randomUUID(), kind: 'note', text });
   }
 
   private next(): void {
@@ -407,17 +411,17 @@ export class GeminiChat {
     // No reply streamed: the result's text, or plain output (agy answers some slash commands, like /quota, as text).
     const text = run.reply || run.stopped ? '' : (r?.response ?? '').trim() || (r ? '' : run.plain.trim());
     if (text) this.push({ id: randomUUID(), kind: 'claude', text, at: Date.now(), who: run.who });
-    if (run.picture && this.conversation) await this.pictures(run).catch((e) => this.host.note(`Gemini made a picture, but it could not be shown: ${firstLine(e)}`));
+    if (run.picture && this.conversation) await this.pictures(run).catch((e) => this.note(`Gemini made a picture, but it could not be shown: ${firstLine(e)}`));
     const fail = r ? (r.status === 'SUCCESS' ? '' : r.error || r.status || 'error') : code === 0 ? '' : run.error || lastError(run.stderr) || `agy ended with code ${code}`;
-    if (run.timedOut) this.host.note(problem('timeout'));
-    else if (run.tripped) this.host.note(`Gemini changed ${run.tripped}, which ASK FIRST does not allow, so it was stopped there. Check that file. To let Gemini change files, pick AUTO-EDIT.`);
-    else if (run.stopped) this.host.note('Stopped.');
-    else if (fail) this.host.note(problem(fail));
-    if (run.asked && this.conversation !== run.asked) this.host.note('agy could not find the earlier conversation, so this message started a new one: Gemini does not remember the messages above.');
-    if (r?.denied_actions?.length) this.host.note(deniedNote(r.denied_actions, run.mode));
+    if (run.timedOut) this.note(problem('timeout'));
+    else if (run.tripped) this.note(`Gemini changed ${run.tripped}, which ASK FIRST does not allow, so it was stopped there. Check that file. To let Gemini change files, pick AUTO-EDIT.`);
+    else if (run.stopped) this.note('Stopped.');
+    else if (fail) this.note(problem(fail));
+    if (run.asked && this.conversation !== run.asked) this.note('agy could not find the earlier conversation, so this message started a new one: Gemini does not remember the messages above.');
+    if (r?.denied_actions?.length) this.note(deniedNote(r.denied_actions, run.mode));
     if (/--mode auto is not available/.test(run.stderr) && !this.toldNoAuto) {
       this.toldNoAuto = true;
-      this.host.note('AUTO is not available for this Google account in agy, so Gemini ran in its default mode: it may change files in this folder, but not run commands.');
+      this.note('AUTO is not available for this Google account in agy, so Gemini ran in its default mode: it may change files in this folder, but not run commands.');
     }
     const s = this.host.state.stats;
     s.turns++;
