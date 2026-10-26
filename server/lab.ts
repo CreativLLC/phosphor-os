@@ -407,6 +407,8 @@ const TYPES: Record<string, string> = {
 // - service workers: reading navigator.serviceWorker throws. It is taken away, so "'serviceWorker' in navigator" is false.
 // - root paths in code ("/models/car.glb" in fetch, XMLHttpRequest, picture and sound sources) are pointed at the
 //   site's folder, as rewrite() does for the page itself.
+// - alert, confirm and prompt: a blocking box would cover the whole app, so they show a short note inside the page
+//   (confirm says yes, prompt gives its default). A broken page once called alert() on every brush stroke.
 // - pictures and sounds from this server load the CORS way (crossOrigin "anonymous"; the viewer allows any origin).
 //   One loaded the plain way "taints" a canvas, so WebGL textures and canvas reads (toDataURL, getImageData) throw.
 //   <img> tags in the page get the attribute in rewrite().
@@ -423,6 +425,8 @@ function cors(el,u){try{if(el.crossOrigin===null&&new URL(u,location.href).host=
 var sa=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if((this instanceof HTMLImageElement||this instanceof HTMLMediaElement)&&String(n).toLowerCase()==="src"){v=fix(v);cors(this,v);return sa.call(this,n,v)}return sa.apply(this,arguments)};
 var F=window.fetch;if(F)window.fetch=function(i,o){if(typeof i==="string"||i instanceof URL)i=fix(i);else if(i&&i.url&&fix(i.url)!==i.url)i=new Request(fix(i.url),i);return F.call(this,i,o)};
 var O=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=fix(u);return O.apply(this,arguments)};
+var nb,nt;function note(m){try{if(!document.body)return;if(!nb){nb=document.createElement("div");nb.style.cssText="position:fixed;top:8px;right:8px;z-index:2147483647;max-width:60%;padding:8px 12px;background:#111;color:#ffb000;font:13px/1.4 monospace;border:1px solid #ffb000;white-space:pre-wrap;pointer-events:none"}nb.textContent=String(m).slice(0,400);document.body.appendChild(nb);clearTimeout(nt);nt=setTimeout(function(){nb.remove()},5000)}catch(e){}}
+window.alert=function(m){note(m)};window.confirm=function(m){note(m);return true};window.prompt=function(m,d){note(m);return d===undefined?"":String(d)};
 })();`;
   return `<script>${js}</script>`;
 }
@@ -487,7 +491,7 @@ export function serveLabFile(res: ServerResponse, url: URL): void {
   res.removeHeader('X-Frame-Options');
   res.writeHead(200, {
     'Content-Type': type,
-    'Content-Security-Policy': "sandbox allow-scripts allow-forms allow-modals allow-pointer-lock; frame-ancestors 'self'",
+    'Content-Security-Policy': "sandbox allow-scripts allow-forms allow-pointer-lock; frame-ancestors 'self'",
     'Access-Control-Allow-Origin': '*',
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',

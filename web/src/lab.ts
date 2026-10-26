@@ -51,7 +51,7 @@ function effortText(t: LabTestFull, r: LabResult): string {
 }
 
 const RANGES: [string, string, number][] = [['30d', '30 DAYS', 30], ['90d', '90 DAYS', 90], ['1y', '1 YEAR', 366], ['all', 'ALL', Infinity]];
-const SANDBOX = 'allow-scripts allow-forms allow-modals allow-pointer-lock'; // same as the server's header
+const SANDBOX = 'allow-scripts allow-forms allow-pointer-lock'; // same as the server's header (no allow-modals: no box over the app)
 
 // ------------------------------------------------------------ public
 

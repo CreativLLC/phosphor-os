@@ -116,6 +116,7 @@ A page a model made is unknown code. It must not reach the Phosphor API, which c
 - Pages are served from `/lab/v/<random key per test>/<result>/...` with the header `Content-Security-Policy: sandbox allow-scripts allow-pointer-lock`. The page then has no origin: it cannot read cookies or call the API with the login. The login cookie is `SameSite=Lax`; check in phase 1 that a sandboxed page's requests do not carry it.
 - The key in the path lets the page load its own files without the login cookie. A key gives read-only access to one test only.
 - The iframe also has `sandbox="allow-scripts"`.
+- No `allow-modals` (2026-10-26): a broken page called `alert()` on every brush stroke and the box covered the whole app. The viewer's script turns `alert`, `confirm` and `prompt` into a short note inside the page (confirm says yes, prompt gives its default).
 - Results that need a server (`npm run dev`) start on demand on a local port, in the same box, and stop when the card closes (phase 2).
 
 ## 7. Code map (new files)
