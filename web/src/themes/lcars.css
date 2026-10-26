@@ -1014,6 +1014,14 @@ html[data-theme='lcars'] {
     background: var(--lc-butter);
   }
 
+  #cleanup {
+    background: var(--lc-peach);
+  }
+
+  #cleanup:hover {
+    background: #ffe0bd;
+  }
+
   #dictate .dict-meter {
     left: 16px;
     right: 16px;

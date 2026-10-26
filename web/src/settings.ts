@@ -1,5 +1,6 @@
 import './settings.css';
 import { alertsSection } from './alerts.ts';
+import { cleanupSection } from './cleanup.ts';
 import { funSection } from './funsection.ts';
 import { securitySection } from './security.ts';
 import { THEMES, isThemeId, themeOf, type Theme, type ThemeId } from './themes.ts';
@@ -170,6 +171,7 @@ export function mountSettings(root: HTMLElement): void {
       { label: 'L', value: 'l', title: 'Large text' },
     ]),
     funSection(),
+    cleanupSection(),
     securitySection(),
     alertsSection(),
     el('div', 'set-foot', 'Display settings are saved in this browser.'),

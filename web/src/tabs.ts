@@ -1,4 +1,5 @@
 import type { FoldersResponse, TabState } from '../../shared/protocol.ts';
+import { firstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
 import { store, working } from './store.ts';
 import { shellApi } from './shellapi.ts';
@@ -128,24 +129,30 @@ function closeTab(id: string): void {
   send({ t: 'close_tab', tab: id });
 }
 
-// Pick a folder for the new chat. Claude works inside that folder.
+// Pick a folder for the new chat. Claude works inside that folder. The first message is optional: typed or dictated
+// here, it waits in the new chat's message box (firstmsg.ts).
 export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
   const list = el('div', 'folder-list');
+  const first = firstMessage(dialog, 'chat');
   const cancel = button('CANCEL', () => dialog.close());
   const project = button('NEW PROJECT…', () => newProject(dialog), 'folder project-btn');
   project.title = 'A project: one lead chat that starts and steers thread chats, with a shared memory file';
-  dialog.replaceChildren(el('h2', '', 'NEW CHAT: PICK A FOLDER'), list, el('div', 'buttons', ''));
+  dialog.replaceChildren(el('h2', '', 'NEW CHAT: PICK A FOLDER'), first.block, list, el('div', 'buttons', ''));
   dialog.lastElementChild!.append(project, cancel);
   dialog.showModal();
+  dialog.tabIndex = -1;
+  dialog.focus(); // not the message box: on a phone that would raise the keyboard over the folders
   list.append(el('div', 'empty', 'Loading…'));
+  const start = async (cwd: string) => {
+    const then = await first.take();
+    send({ t: 'new_tab', cwd, req: newReq(then) });
+    dialog.close();
+  };
   try {
     const data = (await (await fetch('/api/folders')).json()) as FoldersResponse;
     list.replaceChildren(
       ...data.folders.map((f, i) => {
-        const b = button(i === 0 ? `${f.name} (whole workspace)` : f.name, () => {
-          send({ t: 'new_tab', cwd: f.path, req: newReq() });
-          dialog.close();
-        }, 'folder');
+        const b = button(i === 0 ? `${f.name} (whole workspace)` : f.name, () => void start(f.path), 'folder');
         b.title = f.path;
         return b;
       }),
@@ -153,30 +160,29 @@ export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
   } catch {
     // Demo mode or server down: offer the current folder only.
     const cwd = store.current()?.info.cwd ?? '';
-    list.replaceChildren(button(folderName(cwd) || 'Default folder', () => {
-      send({ t: 'new_tab', cwd, req: newReq() });
-      dialog.close();
-    }, 'folder'));
+    list.replaceChildren(button(folderName(cwd) || 'Default folder', () => void start(cwd), 'folder'));
   }
 }
 
-// A new project: its name, then its lead chat opens (in the workspace folder).
+// A new project: its name, then its lead chat opens (in the workspace folder). The first message is optional too.
 function newProject(dialog: HTMLDialogElement): void {
   const input = el('input', 'project-name');
   input.placeholder = 'Project name, for example "YT: Claude video"';
   input.maxLength = 60;
-  const create = () => {
+  const first = firstMessage(dialog, 'project lead chat');
+  const create = async () => {
     const name = input.value.trim();
     if (!name) return input.focus();
-    send({ t: 'new_project', name, req: newReq() });
+    const then = await first.take();
+    send({ t: 'new_project', name, req: newReq(then) });
     dialog.close();
   };
   input.onkeydown = (e) => {
-    if (e.key === 'Enter') create();
+    if (e.key === 'Enter') void create();
   };
   const buttons = el('div', 'buttons');
-  buttons.append(button('CREATE', create), button('CANCEL', () => dialog.close()));
+  buttons.append(button('CREATE', () => void create()), button('CANCEL', () => dialog.close()));
   const help = el('p', 'project-help', 'The lead chat splits the work into thread chats (one per job), starts them, and checks on them. Threads show next to it in the tab bar and in THREADS on the left. All of them share one memory file.');
-  dialog.replaceChildren(el('h2', '', 'NEW PROJECT'), help, input, buttons);
+  dialog.replaceChildren(el('h2', '', 'NEW PROJECT'), help, input, first.block, buttons);
   input.focus();
 }
