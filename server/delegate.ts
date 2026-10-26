@@ -224,7 +224,9 @@ export async function runLocal(o: {
         stream: true,
         system: o.system,
         messages: [{ role: 'user', content: o.prompt }],
-        output_config: { effort: 'low' }, // the relay makes it Qwen's reasoning_effort; a short think is enough here
+        // No thinking: on a 69K-token log even Qwen's low level thought through 1,900 tokens and never answered;
+        // without it the same job answered right in 43 s.
+        chat_template_kwargs: { enable_thinking: false },
       }),
       signal: abort.signal,
     });
@@ -462,9 +464,10 @@ export function askLocalTool(chat: DelegateChat, deps: Deps = LIVE) {
             if (!pick.ok) return fail(pick.why, pick.text);
             worker = pick.label;
             const words = args.max_words ?? 300;
-            const maxTokens = Math.min(8192, 1536 + words * 2);
-            // Room for the files: the model's window less the answer and the prompt, at about 2.5 characters a token.
-            const room = Math.max(8000, Math.min(CAPS.totalChars, Math.floor((pick.context - maxTokens - 2048) * 2.5)));
+            const maxTokens = Math.min(8192, 2048 + words * 2); // room for a model that thinks anyway (Gemma)
+            // Room for the files: the model's window less the answer and the prompt. Logs are dense: 1.6 characters a
+            // token measured (112K characters = 69K tokens), so that is the rate assumed.
+            const room = Math.max(8000, Math.min(CAPS.totalChars, Math.floor((pick.context - maxTokens - 2048) * 1.6)));
             const { files, problems } = readJobFiles(args.files ?? [], chat.cwd, chat.roots, room);
             if (args.files?.length && !files.length) return fail('FAILED', `no file could be read: ${problems.join('; ')}`);
             const parts = files.map((f) => `<file path="${f.path}"${f.cut ? ` note="cut: its first ${f.text.length} of ${f.size} characters"` : ''}>\n${f.text}\n</file>`);

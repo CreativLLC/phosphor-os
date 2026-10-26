@@ -182,7 +182,7 @@ const base = { url: 'http://relay.test', key: 'k', model: 'qwen', system: 's', p
   check('answer text from the text pieces, thinking left out', r.text === 'The log shows three errors.', JSON.stringify(r));
   check("the model's own token counts", r.inTokens === 1200 && r.outTokens === 80 && !r.cut);
   check('phases: reading, thinking, writing', phases.join() === 'reading,thinking,writing', phases.join());
-  check('request: streamed, low effort, the cap, the key', sent.stream === true && (sent.output_config as { effort?: string })?.effort === 'low' && sent.max_tokens === 900 && sent.model === 'qwen' && auth === 'Bearer k', JSON.stringify(sent));
+  check('request: streamed, no thinking, the cap, the key', sent.stream === true && (sent.chat_template_kwargs as { enable_thinking?: boolean })?.enable_thinking === false && sent.max_tokens === 900 && sent.model === 'qwen' && auth === 'Bearer k', JSON.stringify(sent));
   const cut = await runLocal({ ...base, fetch: (async () => sse(answer('<think>inline</think>Short.', { stop: 'max_tokens' }))) as typeof fetch });
   check('hit the length limit: marked; inline thinking taken out', cut.cut && cut.text === 'Short.', JSON.stringify(cut));
   const refused = await runLocal({ ...base, fetch: (async () => json({ type: 'error', error: { message: 'model not found' } }, 404)) as typeof fetch }).catch((e) => e);
