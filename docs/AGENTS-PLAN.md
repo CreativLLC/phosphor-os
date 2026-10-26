@@ -1,6 +1,7 @@
 # Any agent: plan for an agent-neutral Phosphor-OS
 
 Status: plan only, no code changed. Written 2026-10-12 on branch `night/any-agent`.
+Built since, outside this plan: Gemini chat (2026-10-25), one headless `agy -p` run per message, no ACP: `server/geminitab.ts`, PLAN.md "Gemini chat". It sets `Info.agent`, the first step of "Protocol changes" below.
 Goal: anyone can bring their own agent. A Claude plan, a ChatGPT plan (Codex), OpenRouter, or a local model.
 
 ## 1. What "agent" means here
