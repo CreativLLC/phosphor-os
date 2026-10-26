@@ -1,6 +1,6 @@
 // Phosphor-OS: Omarchy 4.0.4's plugins/bar/indicators/Dictation.qml (MIT), changed to show Phosphor-OS DICTATE
-// (Super+H in any app, the phosphor-dictate script next to this file) instead of voxtype. The state comes from
-// the one-word file the script writes; a click starts or stops a take like Super+H.
+// (Ctrl+Space in any app, the phosphor-dictate script next to this file) instead of voxtype. The state comes from
+// the one-word file the script writes; a click starts or stops a take like Ctrl+Space.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -16,8 +16,8 @@ BarIndicator {
   active: state === "recording" || state === "transcribing"
   activeText: state === "transcribing" ? "󰔟" : "󰍬"
   inactiveText: "󰍬"
-  activeTooltipText: state === "transcribing" ? "Typing what you said…" : "Listening: Super+H or click to type it"
-  inactiveTooltipText: "Dictate in any app (Super+H)"
+  activeTooltipText: state === "transcribing" ? "Typing what you said…" : "Listening: Ctrl+Space or click to type it"
+  inactiveTooltipText: "Dictate in any app (Ctrl+Space)"
 
   FileView {
     path: root.stateHome + "/phosphor-os/dictate"
