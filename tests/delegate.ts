@@ -323,6 +323,8 @@ const ask = async (d: Deps, args: Record<string, unknown>, extra: unknown = {}) 
   check('local: the model that holds the card, medium, AUTO off', same(await threadModel('local', lead, { efforts, pick: async () => ok }), { model: 'local:qwen', effort: 'medium', auto: false }));
   const busy = await threadModel('local', lead, { efforts, pick: async () => ({ ok: false, why: 'BUSY', text: 'the image model has the GPU' }) });
   check('local while BUSY: an error, so the lead picks another', 'error' in busy && /LOCAL MODEL BUSY: the image model has the GPU\. Pick another worker\./.test(busy.error), JSON.stringify(busy));
+  const unlisted = await threadModel('local', lead, { efforts, pick: async () => ({ ok: true, name: 'other', label: 'other', context: 32768 }) });
+  check('local, the held model not in the picker: BUSY, no swap to another model', 'error' in unlisted && /LOCAL MODEL BUSY: other has the GPU/.test(unlisted.error), JSON.stringify(unlisted));
   check('sonnet: the lead\'s level held to what sonnet has', same(await threadModel('sonnet', lead, { efforts }), { model: 'sonnet', effort: 'high', auto: false }));
   check('haiku: no thinking levels, none set', same(await threadModel('haiku', lead, { efforts }), { model: 'haiku', auto: false }));
   check('opus with the model list not loaded: no level set', same(await threadModel('opus', lead, { efforts }), { model: 'opus', auto: false }));

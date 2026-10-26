@@ -551,9 +551,9 @@ export async function threadModel(
   if (worker === 'local') {
     const p = await (deps.pick ?? (() => pickLocal(localModel)))();
     if (!p.ok) return { error: `LOCAL MODEL ${p.why}: ${p.text}. Pick another worker.` };
-    const value = p.value ?? localModel?.models.find((x) => !localModel?.urls[x.name])?.value;
-    if (!value) return { error: 'LOCAL MODEL DOWN: no local model can run a chat. Pick another worker.' };
-    return { model: value, effort: 'medium', auto: false };
+    // A model held but not in the picker cannot run a chat here, and another one would push it out (a swap).
+    if (!p.value) return { error: `LOCAL MODEL BUSY: ${p.label} has the GPU and is not in the model picker. Pick another worker.` };
+    return { model: p.value, effort: 'medium', auto: false };
   }
   const supported = deps.efforts(worker);
   const effort = lead.effort && supported ? clampEffort(lead.effort, supported) : '';
