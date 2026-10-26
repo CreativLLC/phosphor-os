@@ -31,6 +31,12 @@ LIVE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/phosphor-dictate-live.mjs"
 MAX_SECONDS=300 # the server takes up to 5 minutes in one piece
 
 mkdir -p "${STATE%/*}" && mkdir -p -m 700 "$RUN" || exit 1
+# One at a time: a press while a take is still starting waits for it, then stops it like any second press. Two at once
+# both started a take, and the one the PID file lost recorded unseen for 5 minutes, then pasted.
+if [[ ${1:-} != open ]]; then
+  exec 9>"$RUN/lock"
+  flock -w 20 9 || exit 0
+fi
 
 set_state() { printf '%s\n%s' "$1" "${2:-}" >"$STATE"; } # word [short reason, after error]
 state() { head -n1 "$STATE" 2>/dev/null | grep . || echo idle; }
@@ -70,7 +76,7 @@ login() {
   pw=$(env_value PHOSPHOR_PASSWORD "$DIR/.env")
   [[ -n $pw ]] || pw=$(env_value RETRO_PASSWORD "$DIR/.env")
   [[ -n $pw ]] || return 1
-  (umask 077; printf '%s' "$pw" | curl -s -o /dev/null -c "$JAR" --data-urlencode 'password@-' "$URL/login") || return 3
+  (umask 077; printf '%s' "$pw" | curl -s -m 5 -o /dev/null -c "$JAR" --data-urlencode 'password@-' "$URL/login") || return 3
   grep -q rcs "$JAR" 2>/dev/null
 }
 
@@ -83,7 +89,7 @@ warm() {
     ((r == 0)) || return $((r == 3 ? 3 : 2))
   fi
   for _ in 1 2; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X POST "$URL/api/voice/warm") || return 3
+    code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' -b "$JAR" -X POST "$URL/api/voice/warm") || return 3 # a hung server is down
     [[ $code == 401 ]] || return 0
     login
     r=$?
@@ -101,11 +107,14 @@ start() {
     2) set_state error "LOGIN FAILED"; say "Can't log in to Phosphor-OS. Is the app's server running?" critical; return 1 ;;
     3) set_state error "SERVER DOWN"; say "Phosphor-OS is not answering on port $PORT." critical; return 1 ;;
   esac
-  DICT_URL=$URL DICT_APP=$DIR DICT_JAR=$JAR DICT_STATE=$STATE DICT_LEVEL="$RUN/level" DICT_MAX=$MAX_SECONDS \
-    setsid -f "$node" "$LIVE" </dev/null >/dev/null 2>&1
-  # setsid -f does not say the PID: find the take by its script path (only ours runs this file).
-  for _ in $(seq 20); do
-    pgrep -n -f -- "$LIVE" >"$PID" && return 0
+  rm -f "$PID"
+  DICT_URL=$URL DICT_APP=$DIR DICT_JAR=$JAR DICT_STATE=$STATE DICT_LEVEL="$RUN/level" DICT_MAX=$MAX_SECONDS DICT_PID=$PID \
+    setsid -f "$node" "$LIVE" </dev/null >/dev/null 2>&1 9>&- # the take must not hold the lock
+  # The take writes its PID once it listens for the stop signal: a stop sent sooner would be lost (and Node opens its
+  # debugger on a SIGUSR1 it does not handle).
+  for _ in $(seq 60); do
+    taking && return 0
+    [[ $(state) == error ]] && return 1
     sleep 0.05
   done
   set_state error FAILED

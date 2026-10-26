@@ -441,6 +441,8 @@ dt press; sleep 0.8; dt release; untildone
 check "hold to talk: press starts, release stops and pastes" test "$(cat "$h/typed" 2>/dev/null)" == "Hello there. "
 fresh; dt press; sleep 0.8; dt press; untildone; dt release; sleep 0.3
 check "tap, tap, then a late release: one take, nothing more" bash -c "[[ \$(cat '$h/typed') == 'Hello there. ' && \$(head -n1 '$h/.local/state/phosphor-os/dictate') == done ]] && [[ ! -e '$h/run/phosphor-dictate/hold' ]]"
+fresh; rm -f "$h/stub.log"; dt press & first=$!; dt press; wait "$first"; untildone
+check "two presses at once: one take, started and stopped (none left recording unseen)" bash -c "[[ \$(grep -c '/api/voice/warm' '$h/stub.log') == 1 && \$(head -n1 '$h/.local/state/phosphor-os/dictate') =~ ^(done|error)$ ]]"
 rm -f "$h/typed"; dt toggle; sleep 0.5; take=$(cat "$h/run/phosphor-dictate/take.pid"); dt cancel; sleep 0.5
 check "cancel: idle, nothing goes in, the take gone" bash -c "[[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == idle && ! -e '$h/typed' ]] && ! kill -0 $take 2>/dev/null"
 rm -f "$h/stub.log"; FAKE_DOWN=1 dt toggle

@@ -7,7 +7,7 @@
 // Env: DICT_URL (http://127.0.0.1:PORT), DICT_APP (the app's folder: its ws package and shared/dictate.mjs),
 // DICT_JAR (curl cookie jar with the login), DICT_STATE (state file: line 1 recording|transcribing|done|error|idle,
 // then the text so far, or a short reason after error), DICT_LEVEL (the mic's level, 0 to 1, a few times a second),
-// DICT_MAX (seconds, then it stops by itself).
+// DICT_MAX (seconds, then it stops by itself), DICT_PID (this take's PID goes there once it takes the signals).
 import { spawn } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -202,6 +202,7 @@ process.on('SIGTERM', () => {
   rec.kill('SIGINT');
   void finish('');
 });
+if (process.env.DICT_PID) writeFileSync(process.env.DICT_PID, String(process.pid));
 
 // The live path failed: the whole take as one WAV.
 let sentOnce = false;
