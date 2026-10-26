@@ -2,7 +2,7 @@
 # The Phosphor-OS look for Omarchy 4: theme, VT323 font, the bar at the bottom with a taskbar, no idle lock,
 # the screensaver (the app's flight scene, on every monitor), notifications that wait in a bar counter until dismissed, the indicator
 # toggles in a popup over the clock, a night light schedule (a systemd user timer), the mic indicator and the
-# floating mic for DICTATE in any app (Ctrl+Space; the key itself is in os/hyprland/phosphor-os.lua).
+# floating mic for DICTATE in any app (Super+H; the key itself is in os/hyprland/phosphor-os.lua).
 # docs/OMARCHY.md lists every change, why, and how to undo it.
 #
 # Run:  bash os/omarchy/desktop.sh [--theme NAME] [--dry-run] [--undo]

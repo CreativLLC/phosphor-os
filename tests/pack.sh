@@ -443,38 +443,41 @@ check "server down: says so, and the floating mic shows why" bash -c "grep -q 'n
 kill "$FAKEV" 2>/dev/null
 echo recording >"$h/.local/state/phosphor-os/dictate"; dt reset
 check "reset at login: a cut-off take leaves no mic dot" test "$(dstate)" == idle
-check "Hyprland: Ctrl+Space dictates, and in Phosphor-OS goes on to the app" bash -c "grep -q 'hl.bind(\"CTRL + SPACE\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'w.class == \"phosphor-os\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'dictate .. \" reset\"' '$R/os/hyprland/phosphor-os.lua'"
+check "Hyprland: Super+H dictates, and in Phosphor-OS presses the app's Ctrl+Space" bash -c "grep -q 'hl.bind(\"SUPER + H\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'w.class == \"phosphor-os\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'dictate .. \" reset\"' '$R/os/hyprland/phosphor-os.lua'"
 check "the mic indicator is the pack's (both loaders)" bash -c "grep -q 'indicatorUrl(indicatorSlot.indicatorId)' '$CK/Indicators.qml' && grep -q 'indicators.indicatorUrl(' '$CK/BarWidget.qml' && grep -q 'phosphor-os/dictate' '$CK/Dictation.qml'"
-# The key in Hyprland's Lua with a stand-in hl: a tap only presses; a hold (timers fired by hand) also releases.
+# The key in Hyprland's Lua with a stand-in hl: a tap only presses; a hold (timers fired by hand) also releases;
+# in Phosphor-OS it sends the app's own DICTATE key; nothing takes Ctrl + Space from other apps.
 cat >"$T/keys.lua" <<'LUA'
 phosphor_os_dir = arg[1]
-local fns, timers, cmds, down, active = {}, {}, {}, true, "discord"
+local fns, timers, cmds, keys, down, active = {}, {}, {}, {}, true, "discord"
 local any = setmetatable({}, { __index = function() return function() return {} end end })
 hl = setmetatable({
   bind = function(keys, fn) fns[keys] = fn end,
   timer = function(fn) table.insert(timers, fn) end,
   dispatch = function(d) if d.exec then table.insert(cmds, d.exec) end end,
   get_active_window = function() return { class = active } end,
-  is_key_down = function(k) return k == "space" and down end,
-  dsp = setmetatable({ exec_cmd = function(c) return { exec = c } end, window = any }, { __index = function() return function() return {} end end }),
+  is_key_down = function(k) return k == "h" and down end,
+  dsp = setmetatable({ exec_cmd = function(c) return { exec = c } end, window = any,
+    send_key_state = function(k) table.insert(keys, k.mods .. "+" .. k.key .. ":" .. k.state) return {} end }, { __index = function() return function() return {} end end }),
 }, { __index = function() return function() end end })
 dofile(phosphor_os_dir .. "/os/hyprland/phosphor-os.lua")
 local function run_timers(n) for _ = 1, n do local t = table.remove(timers, 1); if not t then return end; t() end end
 local function say(name, ok) print((ok and "ok " or "BAD ") .. name) end
-fns["CTRL + SPACE"](); down = false; run_timers(5)
+fns["SUPER + H"](); down = false; run_timers(5)
 say("tap: press only", #cmds == 1 and cmds[1]:match(" press$") ~= nil and #timers == 0)
-cmds = {}; down = true; fns["CTRL + SPACE"](); run_timers(10); down = false; run_timers(5)
+cmds = {}; down = true; fns["SUPER + H"](); run_timers(10); down = false; run_timers(5)
 say("hold: press, then release when the key comes up", #cmds == 2 and cmds[2]:match(" release$") ~= nil)
-cmds = {}; active = "phosphor-os"; fns["CTRL + SPACE"]()
-say("in Phosphor-OS: handed on to the app", #cmds == 0)
-cmds = {}; active = "discord"; rawset(hl, "is_key_down", false); timers = {}; fns["CTRL + SPACE"]()
+cmds = {}; timers = {}; active = "phosphor-os"; fns["SUPER + H"](); run_timers(1)
+say("in Phosphor-OS: the app's own DICTATE key, down then up", #cmds == 0 and table.concat(keys, " ") == "CTRL+space:down CTRL+space:up")
+cmds = {}; active = "discord"; rawset(hl, "is_key_down", false); timers = {}; fns["SUPER + H"]()
 say("Hyprland 0.55 (no is_key_down): tap only", #cmds == 1 and #timers == 0)
+say("Ctrl + Space is left to the apps", fns["CTRL + SPACE"] == nil)
 LUA
 if command -v lua >/dev/null; then
   lua "$T/keys.lua" "$R" >"$T/keys.out" 2>&1
-  check "Ctrl+Space: tap = press only; hold = press and release; Phosphor-OS keeps the key; tap only without is_key_down" bash -c "[[ \$(grep -c '^ok ' '$T/keys.out') == 4 ]]"
+  check "Super+H: tap = press only; hold = press and release; Phosphor-OS gets its Ctrl+Space; tap only without is_key_down; Ctrl+Space not taken" bash -c "[[ \$(grep -c '^ok ' '$T/keys.out') == 5 ]]"
 else
-  echo "SKIP: Ctrl+Space key logic (no lua)"
+  echo "SKIP: Super+H key logic (no lua)"
 fi
 mkhome W; q W bash "$D"
 h=$T/W/.config/omarchy

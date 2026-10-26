@@ -716,7 +716,7 @@ desktop_step() {
   fi
   hypr_reload
 
-  # DICTATE in any app (Ctrl+Space, the floating mic) pastes through the clipboard. Omarchy has wl-clipboard.
+  # DICTATE in any app (Super+H, the floating mic) pastes through the clipboard. Omarchy has wl-clipboard.
   if ! command -v wl-copy >/dev/null || ! command -v wl-paste >/dev/null; then
     if command -v pacman >/dev/null && ask "Needs sudo: install wl-clipboard, for DICTATE in any app (sudo pacman -S --needed wl-clipboard)?"; then
       run sudo pacman -S --needed wl-clipboard || warn "pacman failed: DICTATE in any app needs wl-copy and wl-paste."

@@ -7,14 +7,14 @@
 //   widget's entry in shell.json.
 // - Hover the clock: all the indicator toggles pop up above it, each with what a click does. Move away: they go.
 //   The toggles are Omarchy's indicator files, loaded as they are, so their logic stays upstream; dictation is the
-//   pack's Dictation.qml (Ctrl+Space in any app, phosphor-dictate).
+//   pack's Dictation.qml (Super+H in any app, phosphor-dictate).
 // The manifest says clonedFrom omarchy.indicators: that is what lets the toggles reach the DND, night light and
 // stay-awake services (the shell gives those only to the indicators). Layout entry in shell.json:
 // { "id": "phosphor-os.clock", "format": "dddd h:mm AP", ... }
 // Night light: a click on its row switches it at the warmth set here (Omarchy's own is a fixed 4000 K); a right
 // click opens its options (warmth, schedule). Settings and the schedule: the phosphor-nightlight script next to
 // this file (a systemd user timer runs it every minute; desktop.sh installs it).
-// DICTATE in any app (Ctrl+Space, phosphor-dictate): while a take runs, a box above the bar on the focused monitor
+// DICTATE in any app (Super+H, phosphor-dictate): while a take runs, a box above the bar on the focused monitor
 // says LISTENING (then TYPING) and shows the words heard so far. It never takes clicks or the keyboard.
 import QtQuick
 import Quickshell
@@ -114,7 +114,7 @@ BarWidget {
         }
         Text {
           textFormat: Text.PlainText
-          text: root.dictState === "recording" ? "LISTENING  (Ctrl+Space to type it)" : "TYPING…"
+          text: root.dictState === "recording" ? "LISTENING  (Super+H to type it)" : "TYPING…"
           color: root.dictFg
           font.family: root.dictFont
           font.pixelSize: Style.font.title

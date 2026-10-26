@@ -1,5 +1,5 @@
 // Phosphor-OS floating mic: DICTATE in any app with a click. The take is the clock plugin's phosphor-dictate, the
-// same one Ctrl+Space runs. A small round mic over every window on its monitor, on every workspace; full screen
+// same one Super+H runs. A small round mic over every window on its monitor, on every workspace; full screen
 // video and games cover it. It never takes the keyboard from the program you type in (a layer-shell surface with no
 // keyboard focus), so the words go where the cursor was.
 //   Click: start; click again: the words go in at the cursor.
@@ -127,7 +127,7 @@ Scope {
     } else if (id === "hide") {
       save({ icon: false })
       bubble = ""
-      Quickshell.execDetached(["notify-send", "-a", "DICTATE", "DICTATE", "The floating mic is hidden. Phosphor-OS shows it again: SETTINGS > VOICE > FLOATING MIC. Ctrl+Space still dictates."])
+      Quickshell.execDetached(["notify-send", "-a", "DICTATE", "DICTATE", "The floating mic is hidden. Phosphor-OS shows it again: SETTINGS > VOICE > FLOATING MIC. Super+H still dictates."])
     } else {
       Quickshell.execDetached(["bash", script, "open"])
       bubble = ""
@@ -449,7 +449,7 @@ Scope {
         // the hint and the error: one or a few lines
         Repeater {
           model: root.bubble === "hint"
-            ? ["DICTATE IN ANY APP", "Click, talk, click again.", "Ctrl+Space: tap, or hold to talk.", "Right click: options. Drag: move."]
+            ? ["DICTATE IN ANY APP", "Click, talk, click again.", "Super+H: tap, or hold to talk.", "Right click: options. Drag: move."]
             : root.bubble === "error" ? [root.reason || "FAILED"] : []
           Text {
             required property var modelData

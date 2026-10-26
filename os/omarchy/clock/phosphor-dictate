@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Phosphor-OS DICTATE in any app: tap Ctrl+Space (or click the floating mic), talk, tap again; or hold Ctrl+Space
-# while you talk. The words go in where the cursor is.
+# Phosphor-OS DICTATE in any app: tap Super+H (or click the floating mic), talk, tap again; or hold Super+H while
+# you talk. The words go in where the cursor is.
 # A take is phosphor-dictate-live.mjs (next to this file), run by the app's Node in the background: it streams the
 # default microphone to the Phosphor-OS server's speech engine (the same one the app uses, on this PC), writes
 # what it hears so far for the bar's overlay, and pastes the text into the focused program when you stop
 # (phosphor-dictate-paste.mjs; CLEAN UP in ~/.config/phosphor-os/dictate.json tidies it first).
 #
 #   phosphor-dictate toggle   start, or stop and put the words in (a click on the floating mic or the clock's mic)
-#   phosphor-dictate press    the same, for Ctrl+Space going down (os/hyprland/phosphor-os.lua)
-#   phosphor-dictate release  Ctrl+Space came up after a long hold: stop the take that press started (push to talk)
+#   phosphor-dictate press    the same, for Super+H going down (os/hyprland/phosphor-os.lua)
+#   phosphor-dictate release  Super+H came up after a long hold: stop the take that press started (push to talk)
 #   phosphor-dictate cancel   stop, nothing goes in
 #   phosphor-dictate reset    forget a take left over from before a crash or logout (runs at login)
 #   phosphor-dictate open     bring the Phosphor-OS app to the front (the floating mic's menu)

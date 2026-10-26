@@ -50,7 +50,7 @@ export function mountDictate(opts) {
   const info = () => {
     const s = settings();
     const where = LINUX ? (packInstalled() ? 'pack' : 'none') : WIN || MAC ? 'app' : 'none';
-    return { where, icon: s.icon, cleanup: s.cleanup, keys: LINUX ? 'Ctrl+Space (tap, or hold to talk)' : 'Ctrl+Alt+D' };
+    return { where, icon: s.icon, cleanup: s.cleanup, keys: LINUX ? 'Super+H (tap, or hold to talk)' : 'Ctrl+Alt+D' };
   };
   const save = (patch) => {
     const next = { ...settings(), ...patch };

@@ -12,7 +12,7 @@ import { button, confirmBox, el, toast } from './ui.ts';
 
 type Keyboard = { token: string; base: string | null; model: string };
 
-const DEMO_INFO: DictateInfo = { where: 'pack', icon: true, cleanup: false, keys: 'Ctrl+Space (tap, or hold to talk)' };
+const DEMO_INFO: DictateInfo = { where: 'pack', icon: true, cleanup: false, keys: 'Super+H (tap, or hold to talk)' };
 const DEMO_KEYBOARD: Keyboard = { token: 'phos_demo0000000000000000000000000000000000k3y', base: 'https://your-pc.your-tailnet.ts.net/v1/', model: 'parakeet-tdt-0.6b-v2' };
 
 export function voiceSection(): HTMLElement {

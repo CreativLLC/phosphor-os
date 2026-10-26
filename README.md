@@ -43,7 +43,7 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 | The session HUD, chat tabs, AUTO, UNDO | yes | yes |
 | DOCS, TODAY, the phone over Tailscale | yes | yes |
 | Dictation inside the app | yes | yes |
-| Dictation in any app (`Ctrl + Space`) | | yes |
+| Dictation in any app (`Super + H`) | | yes |
 | Theme, font and bar for the whole OS; taskbar; launcher on the Super key | | yes |
 | Notifications that wait in the bar; clock popup with your events; night light | | yes |
 | The screensaver for the whole computer | | yes |
@@ -80,7 +80,7 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 - Notifications that wait in a bar counter until you dismiss them
 - Clock popup with a calendar and your events, and night light with warmth and a schedule
 - The app's screensaver (flight over a grid, sleeping crew, big clock) as the whole computer's screensaver
-- Dictate anywhere: a floating mic and `Ctrl + Space` put your words into any app (see below)
+- Dictate anywhere: a floating mic and `Super + H` put your words into any app (see below)
 
 **Just ask Claude to change anything.** The agent runs on your PC and can edit this desktop. The rule: every OS
 change goes into the pack, so it can be undone (see [CONTRIBUTING.md](CONTRIBUTING.md)).
@@ -200,7 +200,7 @@ DICTATE).
 - **Floating mic** (desktop flavor): click it, talk, click again. The words go in where the cursor is, in the window
   that has the keyboard (with Omarchy's focus-follows-mouse, the window the pointer last passed over). Drag it
   anywhere; right click: CLEAN UP on or off, HIDE THE MIC, OPEN PHOSPHOR-OS. SETTINGS > VOICE shows it again.
-- **`Ctrl + Space`** in any app: tap to start and tap again to stop, or hold it while you talk.
+- **`Super + H`** in any app (in Phosphor-OS: its own `Ctrl + Space`): tap to start and tap again to stop, or hold it while you talk.
 - **CLEAN UP** tidies the words first (filler words, false starts); without it, or if it fails, they go in as said.
 - The words are pasted (terminals get `Ctrl + Shift + V`) and your clipboard comes back afterwards. Windows and Mac
   (app flavor) have the same floating mic and `Ctrl + Alt + D`, not tested yet; the Mac needs Accessibility for

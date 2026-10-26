@@ -265,12 +265,12 @@ This file is the build record: what exists and how it works. Install and use: `R
   `screen`, `x`, `y` as 0..1 of the screen's usable room), right click: CLEAN UP, HIDE THE MIC, OPEN PHOSPHOR-OS.
   It runs the clock plugin's `phosphor-dictate toggle` and shows its state file (idle, recording, transcribing, done,
   error + a short reason) and the level file. An app window was not used: Hyprland gives `no_focus` windows no clicks.
-- **The take (Linux):** `os/omarchy/clock/phosphor-dictate` (`press`/`release` for `Ctrl + Space`, `toggle` for clicks,
+- **The take (Linux):** `os/omarchy/clock/phosphor-dictate` (`press`/`release` for `Super + H`, `toggle` for clicks,
   `open`) and `phosphor-dictate-live.mjs` (pw-record to `/ws/voice`). At the end the words are pasted by
   `phosphor-dictate-paste.mjs`: `wl-copy --sensitive`, the paste key with Hyprland's `send_key_state` down and up
   (`Ctrl + V`, terminals `Ctrl + Shift + V`), then the old clipboard back after 1 s if ours is still there; no window
   with the keyboard: the words stay on the clipboard. Not Hyprland: `wtype` presses the key.
-- **Hold to talk:** the bind in `os/hyprland/phosphor-os.lua` sends `press`, then watches `hl.is_key_down("space")`
+- **Hold to talk:** the bind in `os/hyprland/phosphor-os.lua` sends `press`, then watches `hl.is_key_down("h")`
   every 50 ms; held over 450 ms, letting go sends `release` (stops the take that press started). A tap leaves it
   running until the next tap.
 - **CLEAN UP:** `shared/dictate.mjs` `cleanUp` calls `POST /api/voice/cleanup` `{ text, style: "plain" }` (built by
@@ -299,7 +299,7 @@ This file is the build record: what exists and how it works. Install and use: `R
   (real speech from a recording through the real engine), the words were pasted into a foot terminal
   (`Ctrl + Shift + V`) and a Chromium text box (`Ctrl + V`) with the keyboard focus never moving, the old clipboard
   came back, CLEAN UP fell back on a 404, HIDE, OPEN and IPC `show` worked. Not tested: a real mouse drag (the nested
-  test can only send synthetic buttons, which Hyprland does not hold) and the real `Ctrl + Space` hold on hardware.
+  test can only send synthetic buttons, which Hyprland does not hold) and the real `Super + H` hold on hardware.
 
 ## Alerts (push), built 2026-10-12
 
@@ -403,7 +403,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | Month view (opened from the TODAY heading) | `GET /api/calendar` (`calendarRange` in `server/calendar.ts`), `web/src/calendar.ts`, `calendar.css`, `calfmt.ts` (shared text helpers, EDIT / + NEW links), `demoMonth` in `demo.ts`; Google Calendar links (EDIT, + NEW): `server/gcal.ts` (pure, tested) |
 | Files UI | `files.ts`, `files.css` |
 | Voice | `server/voice.ts`, `server/voice-worker.mjs`, `web/src/voice.ts`, `voice.css`, `scripts/setup-voice.ps1` |
-| Dictate anywhere + PHONE KEYBOARD | `shared/dictate.mjs`, `os/omarchy/dictate/` (floating mic), `os/omarchy/clock/phosphor-dictate*` (the take, paste), `os/hyprland/phosphor-os.lua` (`Ctrl + Space`), `shell/dictate.mjs`, `shell/paste.cs`, `web/dictate.html`, `web/src/dictatefloat.ts`, `web/src/voicesettings.ts` (SETTINGS > VOICE), `server/voiceapi.ts` (`/v1/*`), `tests/dictate-anywhere.ts` |
+| Dictate anywhere + PHONE KEYBOARD | `shared/dictate.mjs`, `os/omarchy/dictate/` (floating mic), `os/omarchy/clock/phosphor-dictate*` (the take, paste), `os/hyprland/phosphor-os.lua` (`Super + H`), `shell/dictate.mjs`, `shell/paste.cs`, `web/dictate.html`, `web/src/dictatefloat.ts`, `web/src/voicesettings.ts` (SETTINGS > VOICE), `server/voiceapi.ts` (`/v1/*`), `tests/dictate-anywhere.ts` |
 | Desktop app | `shell/main.mjs`, `shell/web.mjs`, `shell/preload.cjs`, `scripts/setup-shell.ps1` |
 | Websites (page) | `web/src/programs.ts`, `browser.ts`, `sitebox.ts`, `browser.css`, `shellapi.ts` |
 | Plan usage meter | `server/usage.ts` (`GET /api/usage`, experimental SDK usage call, cached), `web/src/usage.ts`, `usage.css` |
