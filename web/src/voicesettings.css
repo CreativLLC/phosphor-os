@@ -1,0 +1,65 @@
+/* SETTINGS > VOICE (voicesettings.ts): the floating mic and PHONE KEYBOARD. Rows reuse .set-label and .seg. */
+
+.set-voice {
+  margin-top: 8px;
+  padding: 8px 12px 0;
+  border-top: 1px dashed var(--line, var(--ph-dim));
+}
+
+.set-voice .set-sub {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 2px;
+  margin: 6px 0 3px;
+}
+
+.voice-note {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.25;
+  margin: 6px 0 2px;
+}
+
+.voice-phone-btn {
+  width: 100%;
+  margin-top: 10px;
+  letter-spacing: 2px;
+}
+
+.voice-phone-body[hidden] {
+  display: none;
+}
+
+.voice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.voice-row button {
+  flex: 1 1 auto;
+  padding: 3px 6px;
+  letter-spacing: 1px;
+}
+
+.voice-val {
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-sm);
+  user-select: all;
+}
+
+.voice-steps {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.25;
+}
+
+.voice-steps li + li {
+  margin-top: 3px;
+}

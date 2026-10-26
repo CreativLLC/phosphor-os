@@ -33,6 +33,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { adoptOldEnv, appFolder, envFileValue } from '../shared/names.mjs';
+import { mountDictate } from './dictate.mjs';
 import { mountWeb } from './web.mjs';
 
 const WIN = process.platform === 'win32';
@@ -319,6 +320,8 @@ function createWindow(show) {
   });
 
   web = mountWeb({ win, isApp, prefs, savePrefs, onFullscreenKey: () => setFullscreen(!win.isFullScreen()) });
+  // DICTATE in any app: the floating mic (Windows, Mac) or the pack's settings (Linux): shell/dictate.mjs
+  mountDictate({ prefs, savePrefs, isApp, base: BASE, preload: join(ROOT, 'shell', 'preload.cjs'), partition: PARTITION, globalKeys: GLOBAL_KEYS, showApp: showWindow });
   if (show) showWindow();
 }
 

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-phosphor="amber" data-crt="off" data-size="m">
+  <head>
+    <meta charset="utf-8" />
+    <title>Phosphor-OS DICTATE</title>
+    <script>
+      // The app's theme (same key as src/settings.ts), so the floating mic matches it. No CRT effects in a 64 px window.
+      (function () {
+        var d = document.documentElement, s = {};
+        try { s = JSON.parse(localStorage.getItem('phosphor.settings') || '{}') || {}; } catch (e) {}
+        var t = s.theme || s.phosphor;
+        t = typeof t === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(t) ? t : 'amber';
+        d.dataset.theme = t;
+        if (t === 'green') d.dataset.phosphor = 'green';
+      })();
+    </script>
+  </head>
+  <body class="dictate-float">
+    <button id="mic" type="button" aria-label="Dictate in any app" data-state="idle">
+      <span class="mic-ring" aria-hidden="true"></span>
+      <svg class="mic-glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <g class="g-mic"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M6 11a6 6 0 0 0 12 0M12 17v4M8.5 21h7" /></g>
+        <path class="g-done" d="M5 12.5l4.5 4.5L19 7.5" />
+        <path class="g-error" d="M12 4v10M12 18.5v.5" />
+        <circle class="g-work" cx="12" cy="12" r="8" />
+      </svg>
+    </button>
+    <script type="module" src="/src/dictatefloat.ts"></script>
+  </body>
+</html>
