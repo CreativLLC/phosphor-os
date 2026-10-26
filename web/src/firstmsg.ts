@@ -8,9 +8,10 @@ import { button, el } from './ui.ts';
 
 export type FirstMessage = {
   block: HTMLElement;
-  // Call when the dialog is about to start the chat: stops a running dictation, then gives what to run when the new
-  // chat is open (newReq's `then`), or undefined when the box is empty.
-  take: () => Promise<((tab: string) => void) | undefined>;
+  // Call when the dialog is about to start the chat: stops a running dictation and waits for its words, then gives what
+  // to run when the new chat is open (newReq's `then`), or undefined when the box is empty. null: do not start (a
+  // second tap while it waited, or the dialog was closed or turned into NEW PROJECT meanwhile).
+  take: () => Promise<((tab: string) => void) | undefined | null>;
 };
 
 export function firstMessage(dialog: HTMLDialogElement, where: string): FirstMessage {
@@ -36,10 +37,16 @@ export function firstMessage(dialog: HTMLDialogElement, where: string): FirstMes
     { once: true },
   );
 
+  let taking = false;
   return {
     block,
     take: async () => {
-      if (isDictating()) await stopDictation(); // its last words go into the text, like SEND
+      if (taking) return null;
+      taking = true;
+      // A running dictation ends and its words go in first, also a slow CLEAN UP AFTER DICTATING: unlike SEND (6 s at
+      // most), this waits, because closing the dialog drops words that are not in the box yet. Esc skips a clean-up.
+      while (isDictating()) await stopDictation();
+      if (!dialog.open || !dialog.contains(block)) return null;
       const text = box.value.trim();
       if (!text) return undefined;
       return () => {

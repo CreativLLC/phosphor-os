@@ -145,6 +145,7 @@ export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
   list.append(el('div', 'empty', 'Loading…'));
   const start = async (cwd: string) => {
     const then = await first.take();
+    if (then === null) return; // a second tap, or CANCEL while the first message's words came in
     send({ t: 'new_tab', cwd, req: newReq(then) });
     dialog.close();
   };
@@ -174,6 +175,7 @@ function newProject(dialog: HTMLDialogElement): void {
     const name = input.value.trim();
     if (!name) return input.focus();
     const then = await first.take();
+    if (then === null) return;
     send({ t: 'new_project', name, req: newReq(then) });
     dialog.close();
   };
