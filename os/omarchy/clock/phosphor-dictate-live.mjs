@@ -14,7 +14,7 @@ import { homedir } from 'node:os';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { pasteText } from './phosphor-dictate-paste.mjs';
+import { focusedWindow, pasteText } from './phosphor-dictate-paste.mjs';
 
 const { DICT_URL: url = '', DICT_APP: app = '', DICT_JAR: jar = '', DICT_STATE: stateFile = '', DICT_LEVEL: levelFile = '' } = process.env;
 const MAX_S = Number(process.env.DICT_MAX) || 300;
@@ -39,7 +39,7 @@ try {
   setState('error', 'FAILED');
   process.exit(1);
 }
-const { cleanUp, finalText, joinPhrase, pasteKeys, readSettings, settingsFile } = lib;
+const { cleanUp, finalText, joinPhrase, pasteKeys, pasteWords, readSettings, settingsFile } = lib;
 
 let text = '';
 let partial = '';
@@ -70,8 +70,9 @@ async function finish(final, why = '') {
   if (settings.cleanup) out = (await cleanUp(out, { url, headers })).text; // any failure: the words as they were
   // Let go of the keys first: a still-held Ctrl would turn the paste into another shortcut.
   await new Promise((ok) => setTimeout(ok, 150));
-  const r = await pasteText(finalText(out), { keysFor: (win) => pasteKeys('linux', win) }).catch(() => ({ ok: false, why: 'NO CLIPBOARD' }));
+  const r = await pasteText(finalText(out), { keysFor: (win) => pasteKeys('linux', win), wordsFor: (win, t) => pasteWords('linux', win, t), target }).catch(() => ({ ok: false, why: 'NO CLIPBOARD' }));
   if (!r.ok) say('Could not put the words in: wl-copy did not work (install wl-clipboard).');
+  else if (r.moved) say('The keyboard went to another window while DICTATE worked: the words are on the clipboard. Paste them with Ctrl+V.', 'normal');
   else if (r.copied) say('No program had the keyboard: the words are on the clipboard. Paste them with Ctrl+V.', 'normal');
   setState(r.ok ? 'done' : 'error', r.ok ? '' : r.why);
   process.exit(0);
@@ -119,6 +120,7 @@ let ws = null;
 let live = false; // open and still usable
 let liveFailed = !WebSocket;
 let stopping = false;
+let target; // the window that had the keyboard when the take stopped: the words go only there
 let doneTimer;
 if (WebSocket) {
   ws = new WebSocket(`${url.replace(/^http/, 'ws')}/ws/voice`, { headers });
@@ -189,6 +191,7 @@ function sendEnd() {
 function stop() {
   if (stopping || finished) return;
   stopping = true;
+  target = focusedWindow();
   rmSync(levelFile, { force: true });
   setState('transcribing', preview());
   rec.kill('SIGINT');

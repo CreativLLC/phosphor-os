@@ -269,7 +269,8 @@ This file is the build record: what exists and how it works. Install and use: `R
   `open`) and `phosphor-dictate-live.mjs` (pw-record to `/ws/voice`). At the end the words are pasted by
   `phosphor-dictate-paste.mjs`: `wl-copy --sensitive`, the paste key with Hyprland's `send_key_state` down and up
   (`Ctrl + V`, terminals `Ctrl + Shift + V`), then the old clipboard back after 1 s if ours is still there; no window
-  with the keyboard: the words stay on the clipboard. Not Hyprland: `wtype` presses the key.
+  with the keyboard, or another one than at the stop (`focusedWindow`): the words stay on the clipboard. Terminals get one
+  line (`pasteWords`: a line break would run a command). Not Hyprland: `wtype` presses the key.
 - **Hold to talk:** the bind in `os/hyprland/phosphor-os.lua` sends `press`, then watches `hl.is_key_down("h")`
   every 50 ms; held over 450 ms, letting go sends `release` (stops the take that press started). A tap leaves it
   running until the next tap.

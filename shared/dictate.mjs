@@ -41,6 +41,13 @@ export function pasteKeys(platform, win) {
   return { mods: 'CTRL', key: 'v' };
 }
 
+// The words as the focused program gets them: a terminal gets one line, since a line break there runs the line before
+// it as a command wherever the shell does not guard pastes (CLEAN UP may answer in paragraphs).
+export function pasteWords(platform, win, text) {
+  const t = String(text ?? '');
+  return platform === 'linux' && isTerminal(win) ? t.replace(/\s*[\x00-\x1f\x7f-\x9f]+\s*/g, ' ') : t;
+}
+
 // One more phrase onto the text so far, as the app's DICTATE joins them: a capital at a sentence start, one space
 // between. joinPrev: the speech engine heard no sentence end at the last pause, so that period goes.
 export function joinPhrase(text, raw, joinPrev = false) {

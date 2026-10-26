@@ -329,7 +329,7 @@ STUB
 cat >"$T/vstubs/hyprctl" <<'STUB'
 #!/bin/bash
 case $1 in
-  activewindow) cat "$HOME/window.json" 2>/dev/null || echo '{}' ;;
+  activewindow) echo asked >>"$HOME/aw.log"; cat "$HOME/window.json" 2>/dev/null || echo '{}' ;;
   dispatch)
     echo "$2" >>"$HOME/keys.log"
     [[ $2 == *'state = "down"'* ]] && cat "$HOME/clip" >>"$HOME/typed"
@@ -413,6 +413,11 @@ check "the cookie jar is private" test "$(stat -c %a "$h/run/phosphor-dictate/co
 window '{"address":"0x2","class":"com.mitchellh.ghostty","initialClass":"com.mitchellh.ghostty","tags":["terminal*"]}'; fresh
 dt toggle; sleep 0.8; dt toggle; untildone
 check "a terminal gets Ctrl+Shift+V" bash -c "[[ \$(cat '$h/typed') == 'Hello there. ' ]] && grep -q 'mods = \"CTRL SHIFT\", key = \"v\"' '$h/keys.log'"
+window '{"address":"0x1","class":"discord","initialClass":"discord","tags":[]}'; fresh; rm -f "$h/aw.log"
+dt toggle; sleep 0.8; dt toggle
+for _ in $(seq 50); do [[ -s $h/aw.log ]] && break; sleep 0.02; done # the stop noted the window; the paste comes later
+window '{"address":"0x2","class":"com.mitchellh.ghostty","initialClass":"com.mitchellh.ghostty","tags":["terminal*"]}'; untildone
+check "the keyboard went to another window while it worked: no key, the words stay on the clipboard" bash -c "[[ ! -e '$h/keys.log' && \$(cat '$h/clip') == 'Hello there. ' ]]"
 window '{}'; fresh; rm -f "$h/stub.log"
 dt toggle; sleep 0.8; dt toggle; untildone
 check "no program has the keyboard: no key, the words stay on the clipboard, a note says so" bash -c "[[ ! -e '$h/keys.log' && \$(cat '$h/clip') == 'Hello there. ' ]] && grep -q 'notify-send.*on the clipboard' '$h/stub.log'"

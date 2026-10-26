@@ -198,8 +198,8 @@ Talk into any app on the PC, free and with no word limit: the speech engine runs
 DICTATE).
 
 - **Floating mic** (desktop flavor): click it, talk, click again. The words go in where the cursor is, in the window
-  that has the keyboard (with Omarchy's focus-follows-mouse, the window the pointer last passed over). Drag it
-  anywhere; right click: CLEAN UP on or off, HIDE THE MIC, OPEN PHOSPHOR-OS. SETTINGS > VOICE shows it again.
+  that has the keyboard (with Omarchy's focus-follows-mouse, the window the pointer last passed over); if the
+  keyboard moves to another window before they are ready, they stay on the clipboard. Drag it anywhere; right click: CLEAN UP on or off, HIDE THE MIC, OPEN PHOSPHOR-OS. SETTINGS > VOICE shows it again.
 - **`Super + H`** in any app (in Phosphor-OS: its own `Ctrl + Space`): tap to start and tap again to stop, or hold it while you talk.
 - **CLEAN UP** tidies the words first (filler words, false starts); without it, or if it fails, they go in as said.
 - The words are pasted (terminals get `Ctrl + Shift + V`) and your clipboard comes back afterwards. Windows and Mac

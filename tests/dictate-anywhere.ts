@@ -11,9 +11,9 @@ import { createServer, request, type IncomingMessage, type ServerResponse } from
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cleanUp, finalText, isTerminal, joinPhrase, pasteKeys, readSettings, settingsFile } from '../shared/dictate.mjs';
+import { cleanUp, finalText, isTerminal, joinPhrase, pasteKeys, pasteWords, readSettings, settingsFile } from '../shared/dictate.mjs';
 import { type ApiDeps, handleKeyboardToken, handleVoiceApi, keyboardToken, MODEL_ID, parseMultipart, sniffAudio, toPcm } from '../server/voiceapi.ts';
-import { pasteText } from '../os/omarchy/clock/phosphor-dictate-paste.mjs';
+import { focusedWindow, pasteText } from '../os/omarchy/clock/phosphor-dictate-paste.mjs';
 
 let pass = 0;
 let fail = 0;
@@ -37,6 +37,8 @@ try {
   check('no window or junk: not a terminal', !isTerminal(null) && !isTerminal({}) && !isTerminal({ tags: 'terminal' } as never));
   check('Mac: Command+V; Windows: Ctrl+V, terminals too', pasteKeys('darwin', win('Alacritty')).mods === 'SUPER' && pasteKeys('win32', win('Alacritty')).mods === 'CTRL');
   check('the key is v', pasteKeys('linux', win('foot')).key === 'v');
+  check('a terminal gets one line: a line break would run a command', pasteWords('linux', win('kitty'), 'One.\n\nrm -rf x\r\n') === 'One. rm -rf x ');
+  check('other programs get the lines as they are', pasteWords('linux', win('discord'), 'a\nb') === 'a\nb' && pasteWords('darwin', win('Alacritty'), 'a\nb') === 'a\nb');
 
   // ---------------------------------------------------------------- joining, the final text, settings
   let t = '';
@@ -138,6 +140,16 @@ try {
   };
   await pasteText('Hi. ', { keysFor, run: mine, sleep });
   check('paste: something copied in the meantime is left alone', userCopied.clip.data?.toString() === 'copied meanwhile');
+  d = desk(win('discord'), { data: Buffer.from('old'), type: 'text/plain', sensitive: false });
+  check('the focused window at the stop: its address', focusedWindow(d.run) === '0x1' && focusedWindow(desk(null, d.clip).run) === '');
+  p = await pasteText('Hi. ', { keysFor, target: '0x1', run: d.run, sleep });
+  check('paste: the window that had the keyboard at the stop still has it -> the words go in', p.ok && !p.moved && d.pasted() === 'Hi. ');
+  d = desk(win('discord'), { data: Buffer.from('old'), type: 'text/plain', sensitive: false });
+  p = await pasteText('Hi. ', { keysFor, target: '0x9', run: d.run, sleep });
+  check('paste: another window has the keyboard now -> no key, the words stay on the clipboard', p.moved === true && p.copied === true && d.pasted() === '' && d.clip.data?.toString() === 'Hi. ' && !d.log.some((l) => l.includes('dispatch')));
+  d = desk(win('kitty', ['terminal*']), { data: null, type: '', sensitive: false });
+  p = await pasteText('One.\nTwo. ', { keysFor, wordsFor: (w: object, t: string) => pasteWords('linux', w as never, t), run: d.run, sleep });
+  check('paste: a terminal gets the words on one line', p.ok && d.pasted() === 'One. Two. ');
   delete process.env.HYPRLAND_INSTANCE_SIGNATURE;
   d = desk(win('discord'), { data: null, type: '', sensitive: false });
   const wtype: string[] = [];

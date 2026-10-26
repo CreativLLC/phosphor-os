@@ -7,6 +7,7 @@ export function settingsFile(home: string): string;
 export function readSettings(text: string): DictateSettings;
 export function isTerminal(win: ActiveWindow): boolean;
 export function pasteKeys(platform: string, win: ActiveWindow): { mods: string; key: string };
+export function pasteWords(platform: string, win: ActiveWindow, text: string): string;
 export function joinPhrase(text: string, raw: string, joinPrev?: boolean): string;
 export function finalText(text: string): string;
 export const CLEANUP_TIMEOUT_MS: number;
