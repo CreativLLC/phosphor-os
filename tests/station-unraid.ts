@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { inspect } from 'node:util';
 import type { UnraidAlert, UnraidDisk, UnraidSummary } from '../shared/unraid.ts';
 import { Health } from '../server/stationhealth.ts';
+import { fmtBytes, fmtDay, fmtKb, fmtSpan, fmtSpeed, fmtUptime, pctOf } from '../web/src/unraidfmt.ts';
 import { UnraidWatch, takeSetup, unraidRoute } from '../server/unraid.ts';
 import { Link, NetError, PARTS, QUERIES, askPart, graphqlUrl, httpSend, netNote, parseDoc, parseUnraid, queryFor, unraidAlerts, type Part, type Reply, type Send } from '../server/unraidapi.ts';
 
@@ -704,6 +705,18 @@ const linkTo = (url: string, key = KEY, selfSigned = false) => new Link(graphqlU
   eq('health: a damaged file is read as far as it makes sense', new Health(file, () => t0).day('x').checks, 0);
   writeFileSync(file, 'nope');
   eq('health: an unreadable file starts empty', new Health(file, () => t0).day('x').checks, 0);
+}
+
+// ---------------------------------------------------------------- number words on the page
+
+{
+  eq('words: sizes', [fmtBytes(null), fmtBytes(999), fmtBytes(1500), fmtBytes(12e12), fmtBytes(150e9), fmtBytes(-1)], ['--', '999 B', '1.5 KB', '12.0 TB', '150 GB', '--']);
+  eq('words: Unraid sizes are KiB, shown as decimal TB like the disk\'s label', [fmtKb(11718885324), fmtKb(null), fmtKb(1953514584)], ['12.0 TB', '--', '2.0 TB']);
+  eq('words: percent used', [pctOf(8400000000, 11680000000), pctOf(null, 5), pctOf(1, 0), pctOf(10, 5), pctOf(0, 5)], [72, null, null, 100, 0]);
+  eq('words: uptime', [fmtUptime(1049400), fmtUptime(3 * 3600 + 12 * 60), fmtUptime(42 * 60), fmtUptime(30), fmtUptime(null)], ['12D 3H', '3H 12M', '42M', '<1M', '--']);
+  eq('words: spans', [fmtSpan(52440), fmtSpan(2052), fmtSpan(45), fmtSpan(null)], ['14H 34M', '34M 12S', '45S', '--']);
+  eq('words: a day', [fmtDay(new Date(2026, 9, 1, 12).getTime()), fmtDay(null)], ['2026-10-01', '--']);
+  eq('words: speed', [fmtSpeed('89.2'), fmtSpeed(''), fmtSpeed('n/a'), fmtSpeed('0')], ['89 MB/S', '', '', '']);
 }
 
 rmSync(tmp, { recursive: true, force: true });

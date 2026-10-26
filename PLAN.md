@@ -199,6 +199,26 @@ This file is the build record: what exists and how it works. Install and use: `R
   one at a time, 8 per 5 minutes. SKIN (desktop app): `shell/skins.mjs` inserts `shell/skins/<app>.css` into those
   sites' panes on every page (Nextcloud + AIO, *arr, Unraid login, Plex light, Immich untested, others frame only),
   in the app's theme (amber, green, lcars), and swaps it when the theme changes.
+  HEALTH (2026-10-26, `docs/STATION.md`): (1) every tile has a 24-hour uptime strip (96 blocks of 15 minutes, newest on the
+  right) and "24H 99.8% UP · AVERAGE 143 MS": `server/stationhealth.ts` counts every check into 15-minute cells
+  (`data/station-health.json`, about 2 KB a service, rolled daily). So the strip is not empty while you are away, a round
+  also runs every 10 minutes with nobody looking (`startStation()`; open STATION still checks every minute). (2) UNRAID
+  panel above the tiles, from Unraid's own read-only GraphQL API (built in since Unraid 7.2, the Unraid Connect plugin
+  before): array state, parity check (progress, last result), every disk (temperature, used, errors, SMART, spin), cache
+  pools, CPU, RAM, uptime, Docker, VMs, unread notices, UPS, backups (the last parity check; Unraid's API cannot say when
+  a flash backup last ran). `.env`: `PHOSPHOR_UNRAID_URL`, `PHOSPHOR_UNRAID_KEY` (a VIEWER-role key),
+  optional `PHOSPHOR_UNRAID_SELF_SIGNED=1`. `server/unraidapi.ts` holds the questions in one place (nine short documents,
+  one per part, so one part failing or a field an older Unraid lacks costs only itself: "Cannot query field" errors are
+  cut out of the question and it is asked again), `server/unraid.ts` polls (about 60 s while STATION is open, 10 minutes
+  otherwise), keeps the last answer and serves the cleaned summary at `GET /api/station/unraid` (login needed; `?peek=1`
+  does not count as "on screen"). (3) Alerts, as rows on the panel and a number on the STATION button (with services
+  that are DOWN): array not started, disk disabled or with errors, disk hot (Unraid's own temperature limits), parity
+  errors, container stopped (set to auto-start, or seen running and stopped within 24 h; `data/station-unraid.json`
+  remembers which ran), VM crashed, UPS on battery, unread Unraid alerts. No push alerts yet. Secrets: the key and the
+  address are taken out of `process.env` at start, live in a `Link` whose key cannot be printed, and never reach the page,
+  a log, `data/` or any chat (no chat tool, MCP tool or prompt line; `tests/station-unraid.ts` checks the wiring). Demo:
+  `/?demo=1` (`&unraid=off`, `&unraid=down`). Tests: `npx tsx tests/station-unraid.ts` (made-up fixtures from the
+  schema, a fake `send`, mock servers on loopback; never a real Unraid). Untested against a real server.
 
 ## Phone setup (Tailscale)
 
@@ -278,7 +298,8 @@ This file is the build record: what exists and how it works. Install and use: `R
 
 - SYS as a small panel in the lower left (a few key readings, always visible) that expands to the full SYS view.
 - DOCS connected to other services (Google Tasks, Google Drive, Nextcloud over WebDAV).
-- STATION health beyond UP: CPU, disks, containers, SMART, backups.
+- STATION: push alerts to the phone for Unraid alerts and services that are DOWN (the rules exist; only the sending is
+  missing); the flash backup's date (not in Unraid's API; Unraid Connect may have it).
 - Crew XP: agents earn XP and level up (decoration only; Claude never sees it).
 - Phone keyboard dictation everywhere on Android: an OpenAI-style `POST /v1/audio/transcriptions` with a token, for
   keyboards like Dictate Keyboard (github.com/DevEmperor/DictateKeyboard) that take a custom server.
@@ -375,7 +396,8 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | AUTO model | `shared/router.ts` (parse the pick, stickiness rule), `server/router.ts` (Haiku call), `Tab.send/route` in `server/tab.ts` (applies, tags, logs to `data/auto-router.jsonl`), `web/src/pickers.ts`, `scripts/auto-eval.ts` (router only, on recent chats), `tests/router.ts` |
 | HISTORY drawer | `Tabs.history/searchHistory` in `server/tabs.ts` (`GET /api/history[?all=1]`, `GET /api/history/search?q=`), `server/transcripts.ts` (entrypoint filter: this app's chats are `sdk-ts`; chat text, match, snippet, cache), tab name saved to its session in `Tab.saveSessionTitle`, `web/src/history.ts` (ALL CHATS toggle), `tests/history.ts` (`npx tsx tests/history.ts`) |
 | SDK update | `server/sdkupdate.ts` (hourly npm check, bell notice, `GET/POST /api/update`, 04:00 run), `shared/sdkversion.ts` (range rules), `scripts/update-sdk.sh`, `web/src/sdkupdate.ts`, `sdkupdate.css` (UPDATE chip), `tests/sdkversion.ts` |
-| STATION | `server/station.ts`, `server/lan.ts` (allowlist, probes, DISCOVER), `shared/station.ts`, `web/src/station.ts`, `station.css`, `shell/skins.mjs`, `shell/skins/*.css` |
+| STATION | `server/station.ts`, `server/lan.ts` (allowlist, probes, DISCOVER), `server/stationhealth.ts` (24-hour strip counts), `shared/station.ts`, `web/src/station.ts`, `station.css`, `stationdemo.ts` (demo data), `shell/skins.mjs`, `shell/skins/*.css` |
+| STATION > Unraid | `server/unraidapi.ts` (questions, request, cleaning, alert rules), `server/unraid.ts` (.env, polling, `GET /api/station/unraid`), `shared/unraid.ts`, `web/src/unraid.ts`, `unraid.css`, `unraidfmt.ts`, `tests/station-unraid.ts` + `tests/fixtures/unraid/`, `docs/STATION.md` |
 | LAB (Model Lab) | `server/lab.ts` (folders, `/api/lab/*`, sandboxed `/lab/v/<key>/` file viewer), `server/labrun.ts` (apps, bubblewrap box, runs, `PHOSPHOR_LAB_CLAUDE_TOKEN`), `shared/lab.ts`, `web/src/lab.ts`, `lab.css`, `tests/lab-live.ts` (real models, private port), plan `docs/MODEL-LAB.md` |
 | KEYWORDS (YouTube keyword check) | `server/keywords.ts` (signals, scores, runs in `data/keywords/`, `/api/keywords/*`), `shared/keywords.ts`, `scripts/keywords.ts` (command line, used by Claude), `web/src/keywords.ts`, `keywords.css`, `keywordsdemo.ts`, `tests/keywords.ts`; how it works `docs/KEYWORDS.md` |
 
