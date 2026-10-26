@@ -65,7 +65,7 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 - AUTO: picks the model and thinking level for each message
 - Undo from any of your messages (puts back the files the agent changed after it)
 - Projects: a lead chat splits big work into thread chats (one per job), starts and steers them, and gets their reports; they sit together in the tab bar and in THREADS, and share one memory file
-- Dictation: talk instead of type; the speech engine runs on your PC
+- Dictation: talk instead of type; the speech engine runs on your PC. CLEAN UP turns messy speech or typing into a clear request (fillers and restarts out, spoken corrections applied; the local model or Haiku does it), with UNDO
 
 **Around the chat**
 - DOCS: a document editor over plain Markdown files

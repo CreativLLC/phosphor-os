@@ -105,6 +105,10 @@
   padding: 0;
 }
 
+.first-msg + .buttons {
+  padding-top: 10px;
+}
+
 /* The dialog itself holds the focus when it opens, so a phone's keyboard stays down. */
 #newtab:focus {
   outline: none;
