@@ -467,8 +467,14 @@ const good: Send = async (q) => answer(q);
   await w13.refresh();
   w13.onScreen();
   clock += 61_000;
+  w13.onScreen(); // the open page asks every 15 s
   (w13 as unknown as { tick(): void }).tick();
+  await settle();
   eq('watch: a refused key is not asked again each minute', auths, 1);
+  clock += 10 * 60_000;
+  w13.onScreen();
+  await settle();
+  eq('watch: a refused key is asked again after 10 minutes', auths, 2);
 }
 
 // ---------------------------------------------------------------- "has stopped", remembered across restarts

@@ -100,11 +100,11 @@ export class UnraidWatch {
     this.timer = undefined;
   }
 
-  // A page has STATION open: answer from the last poll, and poll again when that is a minute old.
+  // A page has STATION open: answer from the last poll, and poll again when that is a minute old (same rule as tick).
   onScreen(): void {
     if (!this.configured) return;
     this.openAt = this.now();
-    if (!this.running && this.now() - this.at >= OPEN_MS) void this.refresh();
+    this.tick();
   }
 
   private tick(): void {
