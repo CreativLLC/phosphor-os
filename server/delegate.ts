@@ -40,16 +40,23 @@ export type JobFile = { path: string; real: string; text: string; size: number; 
 
 // Read the files of a job: relative paths start at the chat's folder; each must be inside one of `roots` after
 // following links, a regular text file, and not look like a secret. Files share `room` characters in order; a
-// file that does not fit is cut, and the ones after it are left out.
-export function readJobFiles(paths: string[], cwd: string, roots: string[], room = CAPS.totalChars): { files: JobFile[]; problems: string[] } {
-  const real = roots.flatMap((r) => {
+// file that does not fit is cut, and the ones after it are left out. The app's own folder (`appData`: its login key,
+// push keys, chats) is refused, also when the chat's folder holds it, except inside a root that lies in it (uploads,
+// a project's folder).
+export function readJobFiles(paths: string[], cwd: string, roots: string[], room = CAPS.totalChars, appData = DATA_DIR): { files: JobFile[]; problems: string[] } {
+  const realOf = (r: string) => {
     try {
       return [realpathSync(r)];
     } catch {
       return [];
     }
-  });
-  const inside = (p: string) => real.some((r) => p === r || p.startsWith(r.endsWith(sep) ? r : r + sep));
+  };
+  const real = roots.flatMap(realOf);
+  const under = (p: string, r: string) => p === r || p.startsWith(r.endsWith(sep) ? r : r + sep);
+  const inside = (p: string) => real.some((r) => under(p, r));
+  const data = realOf(appData);
+  const dataRoots = real.filter((r) => data.some((d) => under(r, d)));
+  const appOwn = (p: string) => data.some((d) => under(p, d)) && !dataRoots.some((r) => under(p, r));
   const shown = (p: string) => (p.startsWith(cwd + sep) ? relative(cwd, p) : p);
   const files: JobFile[] = [];
   const problems: string[] = [];
@@ -64,6 +71,7 @@ export function readJobFiles(paths: string[], cwd: string, roots: string[], room
       continue;
     }
     if (!inside(p)) problems.push(`${raw} (outside this chat's folders)`);
+    else if (appOwn(p)) problems.push(`${raw} (the app's own data)`);
     else if (SECRET.test(abs) || SECRET.test(p)) problems.push(`${raw} (looks like a secret file)`);
     else if (!statSync(p, { throwIfNoEntry: false })?.isFile()) problems.push(`${raw} (not a file)`);
     else if (left <= 0) problems.push(`${raw} (no room left in this job: ask about it in another one)`);

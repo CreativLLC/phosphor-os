@@ -58,6 +58,12 @@ symlinkSync(join(root, 'a.txt'), join(root, 'link-in.txt'));
   writeFileSync(join(root, 'env.ts'), 'export const env = 1;\n');
   writeFileSync(join(root, 'environment.md'), '# setup\n');
   check('names that only start like env: read', read(['env.ts', 'environment.md']).files.length === 2);
+  // The chat's folder holds the app's own folder (a chat at home): refused, except its uploads and project folders.
+  const app = join(root, 'app-data');
+  for (const d of ['uploads', 'projects/p1']) mkdirSync(join(app, d), { recursive: true });
+  for (const f of ['secret', 'push-keys.json', 'tabs.json', 'uploads/u.txt', 'projects/p1/PROJECT.md']) writeFileSync(join(app, f), 'x\n');
+  const appRead = readJobFiles(['app-data/secret', 'app-data/push-keys.json', 'app-data/tabs.json', 'app-data/uploads/u.txt', 'app-data/projects/p1/PROJECT.md'], root, [root, join(app, 'uploads'), join(app, 'projects/p1')], undefined, app);
+  check("the app's own data: refused, its uploads and the project's folder read", appRead.files.map((f) => f.path).join() === 'app-data/uploads/u.txt,app-data/projects/p1/PROJECT.md' && (appRead.problems.join().match(/the app's own data/g) ?? []).length === 3, JSON.stringify(appRead.problems));
   check('binary: refused', /not a text file/.test(why('bin.dat')));
   check('folder: refused', /not a file/.test(why('sub')));
   check('missing: refused', /not found/.test(why('nope.txt')));
