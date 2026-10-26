@@ -5,8 +5,7 @@
 //    mix in), or by wtype where this is not Hyprland.
 // 3. A moment later the clipboard gets back what it held before, if it still holds our words.
 // No program has the keyboard, or another one than when the take stopped: the words stay on the clipboard, to paste by
-// hand. Needs wl-clipboard (wl-copy,
-// wl-paste). `run` and `sleep` are only there so tests can stand in for the tools.
+// hand. Needs wl-clipboard (wl-copy, wl-paste). `run` and `sleep` are only there so tests can stand in for the tools.
 import { spawnSync } from 'node:child_process';
 
 const RESTORE_MS = 1000; // time for the program to read the clipboard after the key
@@ -88,17 +87,17 @@ async function sendKeys(run, sleep, { mods, key }) {
   return run('wtype', [...m.flatMap((x) => ['-M', x]), '-k', key, ...[...m].reverse().flatMap((x) => ['-m', x])]).status === 0;
 }
 
-// -> { ok, copied?, moved?, keys?, why? }. keysFor(win): the paste shortcut for that window (shared/dictate.mjs
+// -> { ok, copied?, moved?, keys? }. keysFor(win): the paste shortcut for that window (shared/dictate.mjs
 // pasteKeys); wordsFor(win, text): the words as that window gets them (pasteWords). target: focusedWindow() when the
 // take stopped; when another window has the keyboard now (moved), the words only go on the clipboard.
 export async function pasteText(text, { keysFor, wordsFor = (_win, t) => t, target, run = runTool, sleep = wait, restoreMs = RESTORE_MS }) {
   const win = activeWindow(run);
   const moved = !!win && target !== undefined && win.address !== undefined && win.address !== target;
-  if (!win || moved) return copy(run, text, false) ? { ok: true, copied: true, moved } : { ok: false, why: 'NO CLIPBOARD' };
+  if (!win || moved) return copy(run, text, false) ? { ok: true, copied: true, moved } : { ok: false };
   const keys = keysFor(win);
   text = wordsFor(win, text);
   const saved = saveClipboard(run);
-  if (!copy(run, text, true)) return { ok: false, why: 'NO CLIPBOARD' };
+  if (!copy(run, text, true)) return { ok: false };
   // wl-copy hands the clipboard to its background copy as it exits: wait until the clipboard holds the words.
   for (let i = 0; i < 10 && readText(run) !== text; i++) await sleep(30);
   if (!(await sendKeys(run, sleep, keys))) return { ok: true, copied: true };

@@ -23,7 +23,7 @@ BarWidget {
   readonly property bool revealInactiveIndicators: alwaysShowIndicators
   // Phosphor-OS: where Omarchy keeps the indicator files (their logic stays upstream).
   readonly property string indicatorDir: (Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy") + "/shell/plugins/bar/indicators/"
-  // Phosphor-OS: dictation is the pack's own (Dictation.qml here: Super+H in any app), the rest Omarchy's.
+  // Phosphor-OS: dictation is the pack's own (Dictation.qml here: Ctrl+Space in any app), the rest Omarchy's.
   function indicatorUrl(id) { return id === "Dictation" ? Qt.resolvedUrl("Dictation.qml") : Util.fileUrl(indicatorDir + id + ".qml") }
 
   signal refreshRequested()
