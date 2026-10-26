@@ -62,6 +62,24 @@
   letter-spacing: 2px;
 }
 
+/* Medium message box (561 to 760 px, one row of buttons: layout.css): the short label leaves the pickers room. Under
+   600 px the row does not fit even so while Claude works (STOP shows): it wraps instead of cutting ATTACH off. */
+@container (min-width: 561px) and (max-width: 760px) {
+  #cleanup .clean-long {
+    display: none;
+  }
+
+  #cleanup .clean-short {
+    display: inline;
+  }
+}
+
+@container (min-width: 561px) and (max-width: 600px) {
+  #composer .composer-tools {
+    flex-wrap: wrap;
+  }
+}
+
 /* SETTINGS: the note under the ON / OFF buttons. */
 .clean-help {
   color: var(--ph-dim);
