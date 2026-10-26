@@ -6,6 +6,7 @@ import { AUTO_MODEL, EFFORTS, MODES, type ClientEvent, type ServerEvent } from '
 import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPassword } from './auth.ts';
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
+import { handleCleanup } from './cleanup.ts';
 import { handleIdeas, startIdeas } from './ideas.ts';
 import { handleKeywords } from './keywords.ts';
 import { handleLab, serveLabFile, startLab } from './lab.ts';
@@ -175,6 +176,7 @@ const server = createServer(async (req, res) => {
     if (image) return serveImage(res, decodeURIComponent(image[1]));
     if (url.pathname.startsWith('/api/files/')) return await handleFiles(req, res, url, tabs);
     if (url.pathname === '/api/mcp' || url.pathname === '/api/commands') return await handleMcp(req, res, url, tabs);
+    if (url.pathname === '/api/voice/cleanup') return await handleCleanup(req, res);
     if (url.pathname === '/api/transcribe' || url.pathname === '/api/voice' || url.pathname.startsWith('/api/voice/')) return await handleVoice(req, res, url);
     if (url.pathname === '/api/push' || url.pathname.startsWith('/api/push/')) return await handlePush(req, res, url);
     if (url.pathname === '/api/usage') return sendJson(res, await usage(tabs, url.searchParams.has('details'), url.searchParams.has('fresh')));
