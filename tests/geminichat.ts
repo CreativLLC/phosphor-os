@@ -113,6 +113,10 @@ const conv = '698555f5-d6e6-48b4-ae34-0ab407023a76';
   await play(asked, 'followup', 'Create a file named moon.txt.');
   check('ASK FIRST: a file written anyway stops the run there, and the chat names the file', notes(asked).length === 1 && notes(asked)[0].startsWith(`Gemini changed ${join(cwd, 'moon.txt')}, which ASK FIRST does not allow`) && !asked.state.meta.busy && asked.state.stats.filesChanged.length === 1, JSON.stringify(notes(asked)));
 
+  const quota = newTab();
+  await play(quota, 'quota', '/quota');
+  check("an agy slash command: sent as typed (no ASK FIRST note in front), its table as a code block", lastArgs()[1] === '/quota' && replies(quota).length === 1 && replies(quota)[0].text.startsWith('```\nGemini Models\tWeekly Limit Remaining') && notes(quota).length === 0, JSON.stringify(replies(quota)));
+
   const plan = newTab({ mode: 'plan' });
   const planDir = join(tmp, 'brain', '04fbd7cc-376c-40ef-8920-b1807ffc560a');
   mkdirSync(planDir, { recursive: true });

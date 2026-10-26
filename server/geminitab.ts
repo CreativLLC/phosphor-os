@@ -175,6 +175,7 @@ type Run = {
   reply?: { id: string; step?: number }; // the reply being written
   tools: Map<number, string>; // step index -> tool line id
   picture: boolean; // the picture tool ran
+  command?: boolean; // agy answered a slash command itself (/quota: a table, shown as it is)
   result?: Result;
   error?: string; // an error event, or the process could not start
   plain: string; // output that is not an event (the answer to an agy slash command such as /quota)
@@ -291,7 +292,8 @@ export class GeminiChat {
     const base = this.model?.slice('gemini:'.length);
     const level = this.model ? fitEffort(this.model, effort) : undefined;
     const agy = agyMode(mode);
-    const prompt = [agy ? '' : READ_ONLY, job.text, job.files.length ? `${ATTACHED}\n${job.files.map((f) => `- ${f.path}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
+    const command = job.text.startsWith('/'); // an agy slash command (/quota, a skill): agy only sees it at the start
+    const prompt = [agy || command ? '' : READ_ONLY, job.text, job.files.length ? `${ATTACHED}\n${job.files.map((f) => `- ${f.path}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
     const args = ['-p', prompt.startsWith('-') ? ` ${prompt}` : prompt, '--output-format', 'stream-json', '--print-timeout', `${TIMEOUT_S}s`];
     if (agy) args.push('--mode', agy);
     if (base) args.push('--model', base);
@@ -340,6 +342,7 @@ export class GeminiChat {
       this.host.activity('Thinking');
     } else if (e.event === 'step_update' && e.step_update) this.step(run, e.step_update);
     else if (e.event === 'result' && e.result) run.result = e.result;
+    else if (e.event === 'command_result') run.command = true;
     else if (e.event === 'error') run.error = e.error?.message ?? e.message ?? 'error';
   }
 
@@ -410,7 +413,7 @@ export class GeminiChat {
     this.adopt(r?.conversation_id);
     // No reply streamed: the result's text, or plain output (agy answers some slash commands, like /quota, as text).
     const text = run.reply || run.stopped ? '' : (r?.response ?? '').trim() || (r ? '' : run.plain.trim());
-    if (text) this.push({ id: randomUUID(), kind: 'claude', text, at: Date.now(), who: run.who });
+    if (text) this.push({ id: randomUUID(), kind: 'claude', text: run.command ? `\`\`\`\n${text}\n\`\`\`` : text, at: Date.now(), who: run.who });
     if (run.picture && this.conversation) await this.pictures(run).catch((e) => this.note(`Gemini made a picture, but it could not be shown: ${firstLine(e)}`));
     const fail = r ? (r.status === 'SUCCESS' ? '' : r.error || r.status || 'error') : code === 0 ? '' : run.error || lastError(run.stderr) || `agy ended with code ${code}`;
     if (run.timedOut) this.note(problem('timeout'));
