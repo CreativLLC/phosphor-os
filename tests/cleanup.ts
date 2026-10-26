@@ -121,7 +121,8 @@ const args: AskArgs = { system: 'SYS', user: 'USER', maxTokens: 123, timeoutMs: 
   const text = await m!.ask(args);
   const call = r.seen[1];
   const body = JSON.parse(String(call.init?.body));
-  check('local: one POST to /v1/messages, the answer text only (thinking left out)', text === 'Add a button.' && call.url === 'http://router.test/v1/messages' && call.init?.method === 'POST' && r.seen.length === 2);
+  check('local: one POST to /v1/messages, the answer text only (thinking left out)', text === 'Add a button.' && new URL(call.url).pathname === '/v1/messages' && call.init?.method === 'POST' && r.seen.length === 2);
+  check('local: the POST asks the router not to load the model (unloaded since the check: no reload)', new URL(call.url).searchParams.get('autoload') === 'false', call.url);
   check('local: the default model, no thinking, temperature 0, the prompt and the cap', body.model === 'qwen' && body.chat_template_kwargs.enable_thinking === false && body.temperature === 0 && body.system === 'SYS' && body.messages[0].content === 'USER' && body.max_tokens === 123 && body.stream === undefined);
   check('local: the key goes in the header, never the body', (call.init?.headers as Record<string, string>).authorization === 'Bearer secret-key' && !String(call.init?.body).includes('secret-key'));
   check('local: the call has a timeout', call.init?.signal instanceof AbortSignal);

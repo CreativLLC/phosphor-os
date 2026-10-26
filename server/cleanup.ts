@@ -38,7 +38,9 @@ export async function readyLocal(m: Local | null | undefined = localModel, f: Fe
   if (!m || !first || m.urls[first.name]) return null;
   if (!(await inMemory(m, first.name, f))) return null;
   const ask: Ask = async (a) => {
-    const r = await f(new URL('/v1/messages', m.url), {
+    // autoload=false: a model unloaded since the check above (a picture job or a Strata model freeing the GPU) is not
+    // loaded back for this; the router answers "model is not loaded" and Haiku takes over.
+    const r = await f(new URL('/v1/messages?autoload=false', m.url), {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${m.key}`, 'anthropic-version': '2023-06-01' },
       // temperature 0: the same words give the same clean-up. enable_thinking is the chat template's own switch.
