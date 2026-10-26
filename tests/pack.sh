@@ -487,7 +487,7 @@ check "no floating mic: no plugin, no entry in plugins[], no settings file made"
 q W bash "$D" --undo
 check "undo: the state file goes" test ! -e "$T/W/.local/state/phosphor-os/dictate"
 
-echo "== X: the pack with the floating mic (until 2026-10-26) ran first, then this one: the mic is taken out; undo after it"
+echo "== X: the pack with the floating mic (until 2026-10-26) ran first, then this one (Y, Z: and then undo)"
 # A copy of the pack folder with that version's desktop.sh and a stand-in plugin folder, next to the built page.
 FLOATREPO=$T/floatrepo FLOATPACK=$T/floatrepo/os/omarchy
 mkdir -p "$FLOATREPO/os" "$FLOATREPO/web"
