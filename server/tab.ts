@@ -407,7 +407,7 @@ export class Tab {
       this.firstWordsTitle(text, files);
       return this.geminiChat.send(text, files);
     }
-    const first =this.state.items.every((i) => i.kind !== 'user' || i.paint);
+    const first = this.state.items.every((i) => i.kind !== 'user' || i.paint);
     this.firstWordsTitle(text, files);
     const attachments = files.map(({ path: _p, ...a }) => a);
     // The item id is also the message uuid: file checkpoints (UNDO) are keyed by it.
