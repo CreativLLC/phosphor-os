@@ -11,6 +11,7 @@ import { handleKeywords } from './keywords.ts';
 import { handleLab, serveLabFile, startLab } from './lab.ts';
 import { WEB_DIST, config } from './config.ts';
 import { handleDocs, handleOpenLocal, localKey } from './docs.ts';
+import { ledger, routerOn } from './delegate.ts';
 import { handleFiles } from './files.ts';
 import { serveImage } from './imagegen.ts';
 import { startLocalRelay } from './localrelay.ts';
@@ -178,6 +179,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/transcribe' || url.pathname === '/api/voice' || url.pathname.startsWith('/api/voice/')) return await handleVoice(req, res, url);
     if (url.pathname === '/api/push' || url.pathname.startsWith('/api/push/')) return await handlePush(req, res, url);
     if (url.pathname === '/api/usage') return sendJson(res, await usage(tabs, url.searchParams.has('details'), url.searchParams.has('fresh')));
+    if (url.pathname === '/api/router') return sendJson(res, ledger.status(routerOn())); // ROUTER totals (server/delegate.ts)
     if (url.pathname === '/api/system' || url.pathname.startsWith('/api/system/')) return await handleSystem(req, res, url);
     if (url.pathname === '/api/station' || url.pathname.startsWith('/api/station/')) return await handleStation(req, res, url);
     if (url.pathname.startsWith('/api/docs/')) return await handleDocs(req, res, url);

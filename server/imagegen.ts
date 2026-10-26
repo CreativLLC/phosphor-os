@@ -53,6 +53,13 @@ export class Painter {
     else await this.engine.stop();
   }
 
+  // The image engine holds the card: a picture is being made or waits, or the engine is still up after the last one
+  // (it stops after a while idle). An optional chat job (server/delegate.ts) then does not run, so it never stops it.
+  async holdsGpu(): Promise<boolean> {
+    if (this.now || this.queued || this.gpu.state.holder === 'image') return true;
+    return this.gpu.state.last === 'image' && (await this.engine.up());
+  }
+
   // SYS panel: what is being painted, or null.
   painting(): Painting | null {
     if (!this.now && !this.queued) return null;
