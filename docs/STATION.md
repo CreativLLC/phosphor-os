@@ -63,8 +63,8 @@ While Unraid does not answer, the panel shows its last answer, dimmed, with when
 ## What the panel shows
 
 - **Alerts** on top (see the rules below), or NO ALERTS.
-- **ARRAY**: started or stopped, how full; a running parity check with progress, speed, errors found and whether it is
-  correcting.
+- **ARRAY**: started or stopped, how full; a running parity check with progress and speed (Unraid's API does not say
+  whether it is correcting, or how many errors it has found so far).
 - **SYSTEM**: CPU and RAM use, uptime. The head line has the host name, Unraid version and how fresh the numbers are.
 - **DISKS** (parity and data) and **CACHE AND POOLS**: name, device, temperature, used and size, errors, spinning or spun
   down, and SMART OK if you turned that on. A disk with an alert has a bright frame.
@@ -82,7 +82,7 @@ While Unraid does not answer, the panel shows its last answer, dimmed, with when
 | DISK IS DISABLED / MISSING / WRONG / INVALID | Unraid does not count on that disk | ALERT |
 | DISK HAS N ERRORS | Unraid counted read or write errors on it | ALERT |
 | DISK IS 52 C | Hard disks: over Unraid's own warning temperature (WARN), at or over its critical one (ALERT). Defaults 45 and 55, read from Unraid's display settings. SSDs and NVMe: 15 degrees higher. A spun-down disk is not judged | WARN / ALERT |
-| LAST PARITY CHECK FOUND N ERRORS / FAILED | The newest finished check; also a running check that has found errors | ALERT |
+| LAST PARITY CHECK FOUND N ERRORS / FAILED | The newest finished check in Unraid's parity history (a running check that reports errors counts too, if Unraid says so) | ALERT |
 | CONTAINER HAS STOPPED | Not running and set to start with the array, or seen running and stopped within the last 24 hours | WARN |
 | VM HAS CRASHED | Unraid says crashed | WARN |
 | UPS IS ON BATTERY | The UPS status says so | WARN |

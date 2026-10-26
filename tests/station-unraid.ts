@@ -149,6 +149,9 @@ const full = parseUnraid(allData(), NOW);
   eq('parity running: progress, errors, no last', [running.parity?.running, running.parity?.progress, running.parity?.errors, running.parity?.correcting, running.parity?.last], [true, 42, 2, true, null]);
   const paused = parseUnraid({ array: { array: { state: 'STARTED', parityCheckStatus: { status: 'PAUSED', paused: true, progress: 150 } } } }, NOW);
   eq('parity paused counts as running; progress held to 0 to 100', [paused.parity?.running, paused.parity?.paused, paused.parity?.progress], [true, true, 100]);
+  // What the real API gives while no history is there: the status alone, which has no error count.
+  const statusOnly = parseUnraid({ array: { array: { state: 'STARTED', parityCheckStatus: { status: 'COMPLETED', speed: '98', date: '2026-10-01T04:00:00.000Z', duration: 40000, progress: 100 } } } }, NOW);
+  eq('parity: completed, but no error count: completed, errors unknown, not claimed OK', [statusOnly.parity?.last?.result, statusOnly.parity?.last?.errors, statusOnly.parity?.last?.at], ['ok', null, Date.parse('2026-10-01T04:00:00.000Z')]);
   const cancelled = parseUnraid({ array: { array: { state: 'STARTED', parityCheckStatus: { status: 'NEVER_RUN', running: false } } }, parity: { parityHistory: [{ date: '2026-10-02T00:00:00Z', status: 'CANCELLED', errors: 0 }, { date: '2026-10-03T00:00:00Z', status: 'FAILED' }, { date: '2026-10-04T00:00:00Z', status: 'RUNNING' }] } }, NOW);
   eq('parity history: a running entry is not a result; the newest finished one wins', cancelled.parity?.last?.result, 'failed');
 }
@@ -186,7 +189,8 @@ const kinds = (a: UnraidAlert[]) => a.map((x) => `${x.level}:${x.id}`);
   eq('parity: last check with errors', par({ last: { at: NOW, result: 'errors', errors: 3, durationSec: 1, speed: '' } }).map((a) => a.text), ['LAST PARITY CHECK FOUND 3 ERRORS']);
   eq('parity: last check failed', par({ last: { at: NOW, result: 'failed', errors: null, durationSec: null, speed: '' } }).map((a) => a.text), ['LAST PARITY CHECK FAILED']);
   eq('parity: last check cancelled is no alert', par({ last: { at: NOW, result: 'cancelled', errors: null, durationSec: null, speed: '' } }), []);
-  eq('parity: running with errors', par({ running: true, errors: 1, correcting: false }).map((a) => [a.text, a.detail]), [['PARITY CHECK HAS FOUND 1 ERROR', 'It is only checking: parity is not being fixed.']]);
+  eq('parity: running with errors (newer Unraid versions may say so)', par({ running: true, errors: 1, correcting: false }).map((a) => [a.text, a.detail]), [['PARITY CHECK HAS FOUND 1 ERROR', '']]);
+  eq('parity: running and correcting', par({ running: true, errors: 2, correcting: true }).map((a) => a.detail), ['It is correcting parity.']);
   eq('parity: running clean is no alert', par({ running: true, errors: 0 }), []);
 
   const c = (o: Partial<NonNullable<UnraidSummary['containers']>[number]>) => kinds(unraidAlerts(healthy({ containers: [{ name: 'plex', state: 'stopped', autoStart: false, detail: 'Exited (0)', stoppedAt: null, ...o }] }), NOW));
@@ -230,6 +234,9 @@ const ask = (part: Part, send: Send, drop = new Set<string>()) => askPart(part, 
   eq('ask: HTTP 403 = key refused', await why(reply('', 403)), 'auth');
   eq('ask: Unraid\'s UNAUTHENTICATED error = key refused', await why(reply(fx('err-unauthenticated'))), 'auth');
   eq('ask: a missing/invalid api key message = key refused', await why(reply({ errors: [{ message: 'Invalid API key' }], data: null })), 'auth');
+  for (const m of ['No API key provided', 'Invalid API key format', 'API key validation failed', 'User not found']) eq(`ask: Unraid's own words "${m}" = key refused`, await why(reply({ errors: [{ message: m }], data: null })), 'auth');
+  eq('ask: a 401 inside the error is enough', await why(reply({ errors: [{ message: 'x', extensions: { originalError: { statusCode: 401 } } }], data: null })), 'auth');
+  eq('ask: "Forbidden resource" = this part only', await why(reply({ errors: [{ message: 'Forbidden resource' }], data: null })), 'forbidden');
   eq('ask: FORBIDDEN on a part = only that part', await why(reply(fx('err-forbidden'))), 'forbidden');
   eq('ask: 404 = wrong address', await why(reply('Not found', 404)), 'wrong');
   eq('ask: a redirect = wrong address (never followed)', await why(reply('', 302)), 'wrong');
@@ -358,6 +365,14 @@ const good: Send = async (q) => answer(q);
   await w3.refresh();
   const v3 = w3.view();
   eq('watch: a part that may not be read is a gap, a missing UPS is not', [v3.state, v3.gaps, v3.summary?.containers, v3.summary?.ups], ['ok', ['DOCKER: This key may not read it.'], null, []]);
+
+  const w3b = watcher(async (q) => (partOf(q) === 'vms' ? reply({ errors: [{ message: 'VMs are not available' }], data: { vms: null } }) : partOf(q) === 'ups' ? reply(fx('err-forbidden')) : answer(q)));
+  await w3b.refresh();
+  eq('watch: VMs that are off are no gap (UPS that may not be read is)', [w3b.view().state, w3b.view().gaps, w3b.view().summary?.vms], ['ok', ['UPS: This key may not read it.'], null]);
+
+  const w3c = watcher(async (q) => (partOf(q) === 'parity' ? reply({ errors: [{ message: 'Parity history file not found: /boot/config/parity-checks.log' }], data: null }) : answer(q)));
+  await w3c.refresh();
+  eq('watch: no parity history file (never ran a check) is no gap', [w3c.view().state, w3c.view().gaps], ['ok', []]);
 
   const w4 = watcher(async (q) => (q.includes('vars') ? reply({ errors: [{ message: 'Cannot query field "vars" on type "Query".' }] }, 400) : answer(q)));
   await w4.refresh();

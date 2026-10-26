@@ -176,7 +176,9 @@ export class UnraidWatch {
         break;
       }
       if (r.why === 'forbidden') forbidden++;
-      if (PART_LABEL[part]) gaps.push(`${PART_LABEL[part]}: ${r.note}`);
+      // A server that never ran a parity check has no history file: Unraid says so as an error, which is not news.
+      const quiet = part === 'parity' && /not found/i.test(r.note);
+      if (!quiet && (PART_LABEL[part] || r.why === 'forbidden')) gaps.push(`${PART_LABEL[part] || part.toUpperCase()}: ${r.note}`);
     }
     if (stop) return this.finish(stop.state, stop.note);
     if (!Object.keys(parts).length) {

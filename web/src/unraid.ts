@@ -162,7 +162,7 @@ function arrayCard(s: UnraidSummary): HTMLElement {
   } else c.append(el('div', 'un-dim', 'THE ARRAY DID NOT ANSWER'));
   const p = s.parity;
   if (p?.running) {
-    const words = [p.paused ? 'PAUSED' : 'RUNNING', p.correcting ? 'CORRECTING' : 'CHECK ONLY', fmtSpeed(p.speed), p.errors ? `${p.errors} ERROR${p.errors === 1 ? '' : 'S'}` : ''].filter(Boolean).join(' · ');
+    const words = [p.paused ? 'PAUSED' : 'RUNNING', p.correcting ? 'CORRECTING' : '', fmtSpeed(p.speed), p.errors ? `${p.errors} ERROR${p.errors === 1 ? '' : 'S'}` : ''].filter(Boolean).join(' · ');
     c.append(gauge('PARITY', p.progress, words, !!p.errors));
   } else if (p) c.append(el('div', 'un-line', 'PARITY CHECK: NOT RUNNING'));
   return c;
@@ -260,7 +260,7 @@ function backupsCard(s: UnraidSummary): HTMLElement {
   const c = card('BACKUPS');
   const p = s.parity;
   const last = p?.last;
-  const lastText = !last ? 'NEVER RUN' : [{ ok: 'OK, 0 ERRORS', errors: `${last.errors ?? '?'} ERRORS`, cancelled: 'CANCELLED', failed: 'FAILED' }[last.result], fmtDay(last.at), last.durationSec != null ? fmtSpan(last.durationSec) : '', fmtSpeed(last.speed)].filter(Boolean).join(' · ');
+  const lastText = !last ? 'NEVER RUN' : [{ ok: last.errors === null ? 'COMPLETED' : 'OK, 0 ERRORS', errors: `${last.errors ?? '?'} ERRORS`, cancelled: 'CANCELLED', failed: 'FAILED' }[last.result], fmtDay(last.at), last.durationSec != null ? fmtSpan(last.durationSec) : '', fmtSpeed(last.speed)].filter(Boolean).join(' · ');
   const text = !p ? 'NOT KNOWN' : p.running ? `RUNNING NOW, ${p.progress ?? '?'}%. LAST: ${lastText}` : lastText;
   const row = (k: string, v: string, bad = false) => {
     const r = el('div', `un-kv${bad ? ' un-hot' : ''}`);

@@ -56,7 +56,8 @@ export const QUERIES = {
 export type Part = keyof typeof QUERIES;
 export const PARTS = Object.keys(QUERIES) as Part[];
 
-// What a part is called when it did not answer. A UPS or VMs that are not there are not a problem: no label, no gap.
+// What a part is called when it did not answer. A UPS, or VMs (Unraid answers "VMs are not available" when that service
+// is off), that are not there are not a problem: no label, no gap. Only "this key may not read it" is always said.
 export const PART_LABEL: Record<Part, string> = {
   system: 'SYSTEM',
   array: 'ARRAY',
@@ -64,7 +65,7 @@ export const PART_LABEL: Record<Part, string> = {
   disks: 'SMART',
   metrics: 'CPU AND RAM',
   docker: 'DOCKER',
-  vms: 'VMS',
+  vms: '',
   notices: 'NOTIFICATIONS',
   ups: '',
 };
@@ -245,11 +246,17 @@ const fail = (why: Exclude<PartOutcome, { ok: true }>['why'], note: string): Par
 
 const AUTH_NOTE = 'Unraid refused the API key. Make a new one (VIEWER role) and put it in .env.';
 
-type GqlError = { message: string; code: string };
+// Unraid's own words for a key it does not take (api/src/unraid-api/auth/header.strategy.ts and authentication.guard.ts):
+// "No API key provided", "Invalid API key format", "API key validation failed", "User not found", all HTTP 401 inside the
+// GraphQL error; a permission it lacks is "Forbidden resource" (403).
+type GqlError = { message: string; code: string; status: number };
 const errorsOf = (json: Rec): GqlError[] =>
-  recs(json.errors).map((e) => ({ message: text(e.message, 300), code: text(rec(e.extensions).code, 60) }));
-const isAuth = (e: GqlError) => e.code === 'UNAUTHENTICATED' || /unauthori[sz]ed|unauthenticated|invalid api key|api key.*(missing|required|invalid)|no api key/i.test(e.message);
-const isForbidden = (e: GqlError) => e.code === 'FORBIDDEN' || /forbidden|permission|not allowed|access denied/i.test(e.message);
+  recs(json.errors).map((e) => {
+    const ext = rec(e.extensions);
+    return { message: text(e.message, 300), code: text(ext.code, 60), status: num(rec(ext.originalError).statusCode) ?? num(rec(ext.response).statusCode) ?? num(ext.status) ?? 0 };
+  });
+const isAuth = (e: GqlError) => e.status === 401 || e.code === 'UNAUTHENTICATED' || /unauthori[sz]ed|unauthenticated|user not found|invalid api key|api key (validation failed|missing|required)|no api key/i.test(e.message);
+const isForbidden = (e: GqlError) => e.status === 403 || e.code === 'FORBIDDEN' || /forbidden|permission|not allowed|access denied/i.test(e.message);
 
 // Ask one part. `drop` holds the fields this Unraid does not have (kept between polls by the caller; grows here).
 export async function askPart(part: Part, send: Send, drop: Set<string>, scrub: (s: string) => string = (s) => s): Promise<PartOutcome> {
@@ -481,7 +488,7 @@ export function unraidAlerts(s: UnraidSummary, now = Date.now()): UnraidAlert[] 
   }
 
   const p = s.parity;
-  if (p?.running && (p.errors ?? 0) > 0) add('parity-errors', 'now', 'alert', `PARITY CHECK HAS FOUND ${p.errors} ERROR${pl(p.errors ?? 0)}`, p.correcting ? 'It is correcting parity.' : 'It is only checking: parity is not being fixed.');
+  if (p?.running && (p.errors ?? 0) > 0) add('parity-errors', 'now', 'alert', `PARITY CHECK HAS FOUND ${p.errors} ERROR${pl(p.errors ?? 0)}`, p.correcting ? 'It is correcting parity.' : '');
   else if (p?.last?.result === 'errors') add('parity-errors', 'last', 'alert', `LAST PARITY CHECK FOUND ${p.last.errors} ERROR${pl(p.last.errors ?? 0)}`, 'See BACKUPS for the date.');
   else if (p?.last?.result === 'failed') add('parity-errors', 'last', 'alert', 'LAST PARITY CHECK FAILED', 'See BACKUPS for the date.');
 
