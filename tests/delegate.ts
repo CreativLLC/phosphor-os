@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DelegateCount } from '../shared/protocol.ts';
-import { askLocalTool, Busy, CAPS, JobQueue, Ledger, ledger, pickLocal, readJobFiles, runLocal, threadModel, tokensOf, type Deps, type Pick } from '../server/delegate.ts';
+import { askLocalTool, Busy, CAPS, JobQueue, Ledger, ledger, pickLocal, readJobFiles, routerOn, runLocal, threadModel, threadWorkers, tokensOf, type Deps, type Pick } from '../server/delegate.ts';
 import { Tab } from '../server/tab.ts';
 
 let fail = 0;
@@ -346,8 +346,14 @@ const ask = async (d: Deps, args: Record<string, unknown>, extra: unknown = {}) 
   check('start_thread without a worker: the lead\'s settings', same(got, { model: 'opus', effort: 'high', auto: false }), JSON.stringify(got));
 
   // A cloud chat gets ask_local; a chat on the local model does not (it would ask itself).
+  // Which way depends on this PC's .env (a local model set up, PHOSPHOR_ROUTER), so both are checked against routerOn.
   const offered = (model: string) => (new Tab(() => {}, { cwd: root, model }) as unknown as { delegates: boolean }).delegates;
-  check('ask_local: offered to a cloud chat, not to a local one', offered('sonnet') && !offered('local'));
+  check('ask_local: offered to a cloud chat when the router is on, never to a local one', offered('sonnet') === routerOn() && !offered('local'));
+  const was = process.env.PHOSPHOR_ROUTER;
+  process.env.PHOSPHOR_ROUTER = 'off';
+  check('PHOSPHOR_ROUTER=off: no ask_local, no local thread worker', !routerOn() && !offered('sonnet') && !threadWorkers().includes('local'));
+  if (was === undefined) delete process.env.PHOSPHOR_ROUTER;
+  else process.env.PHOSPHOR_ROUTER = was;
   // A Read of a file ask_local read: the tab's count comes back down.
   const t = new Tab(() => {}, { cwd: root, model: 'sonnet' });
   ledger.job(t.id, { ok: true, ms: 1, worker: 'Qwen', files: [{ real: join(root, 'big.log'), chars: 4000 }], answerChars: 0 });
