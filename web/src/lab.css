@@ -838,17 +838,22 @@ dialog.lab-box-wide {
   max-height: calc(90vh - 80px);
 }
 
-/* A box whose middle scrolls while the top (filter) and bottom (the RUN button) stay in view: LIBRARY and + MODELS. */
-.lab-box-fill {
+/* LIBRARY and + MODELS: wider than the other boxes. The middle scrolls while the top (filter) and the bottom (RUN) stay in view. */
+dialog.lab-box-fill {
+  width: min(760px, 96vw);
+  max-width: none;
+}
+
+.lab-box-fill .lab-box-body {
   overflow: hidden;
 }
 
-.lab-box-fill > * {
+.lab-box-fill .lab-box-body > * {
   flex: 0 0 auto;
 }
 
-.lab-box-fill > .lab-scroll,
-.lab-box-fill > .lab-lib-list {
+.lab-box-fill .lab-box-body > .lab-scroll,
+.lab-box-fill .lab-box-body > .lab-lib-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -881,8 +886,12 @@ dialog.lab-box-wide {
 }
 
 .lab-lib-row > span {
-  display: block;
   min-width: 0;
+}
+
+.lab-lib-title,
+.lab-lib-meta {
+  display: block;
 }
 
 .lab-lib-title {
@@ -895,7 +904,7 @@ dialog.lab-box-wide {
   color: var(--ph);
   font-size: var(--fs-sm);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;

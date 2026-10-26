@@ -264,6 +264,8 @@ function summary(t: LabTest | LabTestFull): string {
   return parts.join(' · ');
 }
 
+const sumText = (t: LabTestFull) => `${fmtTime(t.at)} · ${summary(t)} · EFFORT ${EFFORT_NAME[t.effort]}`;
+
 function select(label: string, options: [string, string][], value: string, change: (v: string) => void): HTMLLabelElement {
   const l = el('label', 'lab-field');
   const s = el('select');
@@ -410,10 +412,10 @@ async function newView(): Promise<HTMLElement> {
 // NEW TEST; it says false when the owner chose to keep what was typed, and the box stays open.
 async function openLibrary(use: (p: LabPrompt) => Promise<boolean>): Promise<void> {
   const { d, body } = box('PROMPT LIBRARY');
-  body.classList.add('lab-box-fill');
+  d.classList.add('lab-box-fill');
   const q = el('input', 'lab-search');
   q.type = 'search';
-  q.placeholder = 'Filter by title or words in the prompt';
+  q.placeholder = 'Filter prompts';
   const list = el('div', 'lab-lib-list');
   list.append(el('p', 'lab-empty', 'LOADING…'));
   body.append(q, list);
@@ -489,7 +491,7 @@ async function testView(id: string): Promise<HTMLElement> {
   head.append(back, h, el('span', 'lab-grow'), modeBtns, addBtn, blindBtn, videoBtn);
 
   const meta = el('div', 'lab-meta');
-  const sum = el('span', 'lab-sum', `${fmtTime(t.at)} · ${summary(t)} · EFFORT ${EFFORT_NAME[t.effort]}`);
+  const sum = el('span', 'lab-sum', sumText(t));
   const path = el('code', 'lab-path', t.folder);
   path.title = 'The test folder on the PC: the prompt, and one folder per model with its reply, files, log and stars.';
   meta.append(sum, path);
@@ -555,7 +557,7 @@ function schedulePoll(id: string): void {
       } else for (const e of main.querySelectorAll<HTMLElement>(`[data-tok="${i}"]`)) e.textContent = `${fmtTok(r.tokens)} TOK`;
     });
     const sum = main.querySelector('.lab-sum');
-    if (sum) sum.textContent = `${fmtTime(t.at)} · ${summary(t)}`;
+    if (sum) sum.textContent = sumText(t);
     afterRate(t);
     const stop = main.querySelector<HTMLElement>('.lab-stop');
     if (stop) stop.hidden = !t.results.some(busy);
@@ -683,7 +685,7 @@ function afterRate(t: LabTestFull): void {
     if (r) c.classList.toggle('lab-top', isWinner(t, r));
   }
   const sum = main.querySelector('.lab-sum');
-  if (sum) sum.textContent = `${fmtTime(t.at)} · ${summary(t)}`;
+  if (sum) sum.textContent = sumText(t);
   const reveal = main.querySelector<HTMLButtonElement>('.lab-reveal');
   if (reveal) reveal.disabled = !canReveal(t);
 }
@@ -824,7 +826,7 @@ function rerun(t: LabTestFull): void {
 // and come last, so a blind test gives them the next letters. The picker lists only the models not in the test yet.
 async function openAddModels(t: LabTestFull): Promise<void> {
   const { d, body } = box('+ MODELS');
-  body.classList.add('lab-box-fill');
+  d.classList.add('lab-box-fill');
   body.append(el('p', 'lab-empty', 'LOADING…'));
   let list: LabModelsResponse;
   try {
@@ -837,7 +839,7 @@ async function openAddModels(t: LabTestFull): Promise<void> {
   const left = list.models.filter((m) => !have.has(m.id));
   if (room <= 0) return void body.replaceChildren(el('p', 'lab-dim', `This test has ${t.results.length} models, the most one test holds. Start a new test from the LIBRARY in NEW TEST instead.`));
   const picked = new Set<string>();
-  const intro = el('p', 'lab-dim', `The same prompt, with EFFORT ${EFFORT_NAME[t.effort]} and TIME LIMIT ${limitText(t.timeLimitMin)} like the rest. The new results join this test's cards and ranking.${isBlind(t) ? ' It is blind: they get the next letters.' : ''}`);
+  const intro = el('p', 'lab-dim', `The same prompt, EFFORT ${EFFORT_NAME[t.effort]}, TIME LIMIT ${limitText(t.timeLimitMin)}. The new results join this test${isBlind(t) ? ' and take the next letters' : ''}.`);
   const err = el('p', 'lab-err');
   const run = button('', () => void submit(), 'primary lab-start');
   const sync = () => {
