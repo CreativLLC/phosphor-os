@@ -121,7 +121,9 @@ const full = parseUnraid(allData(), NOW);
 
   const junk = parseUnraid({ system: { info: 'x', vars: [], display: 7 }, array: { array: { state: 5, disks: 'no', caches: [null, 3, { name: 'cache' }] } }, docker: { docker: { containers: [{ names: 'plex', state: 'WHAT' }, { state: 'RUNNING' }, 'x'] } }, vms: { vms: { domain: [{ name: 'old style', state: 'IDLE' }] } }, metrics: { metrics: { cpu: { percentTotal: 'high' }, memory: { percentTotal: '55.5', used: 'lots' } } }, notices: { notifications: { overview: 3, warningsAndAlerts: [{ importance: 'ALERT' }] } }, ups: { upsDevices: [{ status: 'On Battery', battery: { chargeLevel: 'x' } }] } }, NOW);
   eq('odd: array without a state is no array', junk.array, null);
-  eq('odd: a disk with nothing but a name', junk.pools.map((d) => [d.name, d.errors, d.status, d.tempC, d.usedKb, d.spin, d.smart]), [['cache', 0, 'ok', null, null, null, 'unknown']]);
+  eq('odd: a disk with nothing but a name (SMART was not asked for)', junk.pools.map((d) => [d.name, d.errors, d.status, d.tempC, d.usedKb, d.spin, d.smart]), [['cache', 0, 'ok', null, null, null, 'off']]);
+  const noSmart = parseUnraid({ ...allData(), disks: undefined }, NOW);
+  eq('SMART not asked: every disk says off, nothing else changes', [noSmart.disks.map((d) => d.smart), noSmart.disks.map((d) => d.spin), noSmart.disks[2].tempC], [['off', 'off', 'off', 'off', 'off'], ['down', 'up', 'up', 'down', 'up'], 47]);
   eq('odd: a container named by a plain string, unknown state = stopped, nameless dropped', junk.containers?.map((c) => [c.name, c.state]), [['plex', 'stopped']]);
   eq('odd: older vms shape (domain), IDLE counts as running', junk.vms, [{ name: 'old style', state: 'running' }]);
   eq('odd: numbers sent as text still count, words do not', [junk.cpuPct, junk.mem?.pct, junk.mem?.usedBytes], [null, 55.5, null]);
@@ -281,10 +283,11 @@ const ask = (part: Part, send: Send, drop = new Set<string>()) => askPart(part, 
 
 {
   const env = (o: Record<string, string>) => ({ ...o }) as NodeJS.ProcessEnv;
-  const e1 = env({ PHOSPHOR_UNRAID_URL: '192.168.1.10', PHOSPHOR_UNRAID_KEY: KEY, PHOSPHOR_UNRAID_SELF_SIGNED: '1', PHOSPHOR_PORT: '7337' });
+  const e1 = env({ PHOSPHOR_UNRAID_URL: '192.168.1.10', PHOSPHOR_UNRAID_KEY: KEY, PHOSPHOR_UNRAID_SELF_SIGNED: '1', PHOSPHOR_UNRAID_SMART: 'yes', PHOSPHOR_PORT: '7337' });
   const s1 = takeSetup(e1);
-  check('setup: both lines make a link', !!s1.link && s1.problem === '' && s1.link.url.href === 'http://192.168.1.10/graphql' && s1.link.selfSigned);
-  eq('setup: the three lines are taken out of the environment, others stay', Object.keys(e1), ['PHOSPHOR_PORT']);
+  check('setup: both lines make a link', !!s1.link && s1.problem === '' && s1.link.url.href === 'http://192.168.1.10/graphql' && s1.link.selfSigned && s1.smart === true);
+  eq('setup: the four lines are taken out of the environment, others stay', Object.keys(e1), ['PHOSPHOR_PORT']);
+  check('setup: SMART is off unless asked', takeSetup(env({ PHOSPHOR_UNRAID_URL: 'tower', PHOSPHOR_UNRAID_KEY: KEY })).smart === false);
   check('setup: self-signed is off unless asked', takeSetup(env({ PHOSPHOR_UNRAID_URL: 'tower', PHOSPHOR_UNRAID_KEY: KEY })).link?.selfSigned === false);
   eq('setup: nothing set = not connected, no complaint', takeSetup(env({})), { link: null, problem: '' });
   eq('setup: empty lines = not connected, no complaint', takeSetup(env({ PHOSPHOR_UNRAID_URL: '', PHOSPHOR_UNRAID_KEY: '' })), { link: null, problem: '' });
@@ -322,12 +325,33 @@ const good: Send = async (q) => answer(q);
   await w.refresh();
   eq('watch: the same state is not logged again', logs.length, 1);
 
-  // A poll asks nine questions, one at a time.
+  // A poll asks eight questions, one at a time: not the SMART one, which can wake sleeping disks.
   asked.length = 0;
   const w2 = watcher(sender(answer));
   await w2.refresh();
-  eq('watch: nine questions per poll', asked.length, 9);
+  eq('watch: eight questions per poll', asked.length, 8);
+  check('watch: and none of them is the disks (SMART) one', asked.every((q) => !q.includes('smartStatus')));
+  eq('watch: SMART shows as not asked', w2.view().summary?.disks.every((d) => d.smart === 'off'), true);
   w2.stop();
+
+  // PHOSPHOR_UNRAID_SMART=1: asked, but once an hour at most.
+  asked.length = 0;
+  clock = NOW;
+  const smartWatch = new UnraidWatch({ setup: { ...setup(), smart: true }, send: sender(answer), now: () => clock, file: null, log: () => {} });
+  await smartWatch.refresh();
+  eq('watch: with SMART on, nine questions the first time', [asked.length, asked.filter((q) => q.includes('smartStatus')).length], [9, 1]);
+  eq('watch: and the disks say what SMART says', smartWatch.view().summary?.disks.map((d) => d.smart), ['ok', 'ok', 'ok', 'ok', 'unknown']);
+  for (const minutes of [1, 30, 59]) {
+    clock = NOW + minutes * 60_000;
+    await smartWatch.refresh();
+  }
+  eq('watch: within the hour it is not asked again (eight questions per poll)', [asked.length, asked.filter((q) => q.includes('smartStatus')).length], [9 + 24, 1]);
+  eq('watch: the last answer is still used meanwhile', smartWatch.view().summary?.disks.map((d) => d.smart), ['ok', 'ok', 'ok', 'ok', 'unknown']);
+  clock = NOW + 61 * 60_000;
+  await smartWatch.refresh();
+  eq('watch: an hour on, once more', asked.filter((q) => q.includes('smartStatus')).length, 2);
+  smartWatch.stop();
+  clock = NOW;
 
   // Parts that fail are gaps; the rest still shows.
   const w3 = watcher(async (q) => (partOf(q) === 'docker' ? reply(fx('err-forbidden')) : partOf(q) === 'ups' ? reply({ errors: [{ message: 'apcupsd is not running' }], data: null }) : answer(q)));
@@ -550,7 +574,7 @@ const linkTo = (url: string, key = KEY, selfSigned = false) => new Link(graphqlU
   const m = await mock(unraid(KEY));
   const w = new UnraidWatch({ setup: { link: linkTo(m.url), problem: '' }, now: () => clock, file: null, log: (l) => logs.push(l) });
   await w.refresh();
-  eq('http: a whole poll over a real socket', [w.view().state, w.view().summary?.host, m.hits.length], ['ok', 'Tower', 9]);
+  eq('http: a whole poll over a real socket', [w.view().state, w.view().summary?.host, m.hits.length], ['ok', 'Tower', 8]);
   eq('http: POST /graphql, JSON, with the key header', [m.hits[0].method, m.hits[0].path, m.hits[0].type, m.hits[0].key], ['POST', '/graphql', 'application/json', KEY]);
   check('http: the question is in the body, and only questions', m.hits.every((h) => h.query.startsWith('{') && !/mutation/.test(h.query)));
   check('http: nothing in the answer to the page has the key', !JSON.stringify(w.view()).includes(KEY));
@@ -620,7 +644,7 @@ const linkTo = (url: string, key = KEY, selfSigned = false) => new Link(graphqlU
   eq('http: an older Unraid still gives the page its numbers (spin state is not there at all)', [v6.state, v6.summary?.disks.length, v6.summary?.disks.map((d) => d.spin), v6.summary?.notices?.warning], ['ok', 5, [null, null, null, null, null], 1]);
   const firstPoll = oldM.hits.length;
   await w6.refresh();
-  eq('http: the first poll had 3 refused questions, the second repeats none', [firstPoll, oldM.hits.length - firstPoll], [12, 9]);
+  eq('http: the first poll had 2 refused questions, the second repeats none', [firstPoll, oldM.hits.length - firstPoll], [10, 8]);
   oldM.srv.close();
 }
 
@@ -717,6 +741,7 @@ const linkTo = (url: string, key = KEY, selfSigned = false) => new Link(graphqlU
   eq('words: spans', [fmtSpan(52440), fmtSpan(2052), fmtSpan(45), fmtSpan(null)], ['14H 34M', '34M 12S', '45S', '--']);
   eq('words: a day', [fmtDay(new Date(2026, 9, 1, 12).getTime()), fmtDay(null)], ['2026-10-01', '--']);
   eq('words: speed', [fmtSpeed('89.2'), fmtSpeed(''), fmtSpeed('n/a'), fmtSpeed('0')], ['89 MB/S', '', '', '']);
+  eq('words: speed with its unit, or in bytes', [fmtSpeed('123.6 MB/s'), fmtSpeed('1.2 GB/s'), fmtSpeed('93450000'), fmtSpeed('512 KB/s')], ['124 MB/S', '1200 MB/S', '93 MB/S', '1 MB/S']);
 }
 
 rmSync(tmp, { recursive: true, force: true });

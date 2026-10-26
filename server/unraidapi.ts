@@ -20,6 +20,9 @@ import type { UnraidAlert, UnraidContainer, UnraidDisk, UnraidNotices, UnraidPar
 // sandbox (Settings > Management Access > Developer Options > GraphQL Sandbox).
 // Not asked on purpose: vars.csrfToken, vars.regGuid, registration, apiKeys, connect, server.apikey, owner (secrets or
 // personal details); logs; anything not on the page.
+// `disks` (SMART health) is asked only when PHOSPHOR_UNRAID_SMART is set, and at most once an hour: to fill it Unraid's API
+// runs `smartctl -H` on every disk (systeminformation's diskLayout), which can wake disks that are spun down. Everything
+// else here reads Unraid's own state, a log, the Docker or libvirt socket, or /proc, and wakes nothing.
 export const QUERIES = {
   system: `{
     info { time os { hostname release uptime } }
@@ -307,7 +310,7 @@ type Smart = { smart: 'ok' | 'unknown'; tempC: number | null; spin: 'up' | 'down
 const dev = (v: unknown): string => text(v, 40).replace(/^\/dev\//, '');
 const spinOf = (v: unknown): 'up' | 'down' | null => (typeof v === 'boolean' ? (v ? 'up' : 'down') : null);
 
-function diskOf(d: Rec, role: UnraidDisk['role'], smart: Map<string, Smart>): UnraidDisk | null {
+function diskOf(d: Rec, role: UnraidDisk['role'], smart: Map<string, Smart>, asked: boolean): UnraidDisk | null {
   const name = text(d.name, 24);
   const raw = typeof d.status === 'string' ? d.status : 'DISK_OK';
   if (!name || raw === 'DISK_NP') return null; // an empty slot
@@ -326,7 +329,7 @@ function diskOf(d: Rec, role: UnraidDisk['role'], smart: Map<string, Smart>): Un
     usedKb: fs !== null && fs > 0 ? num(d.fsUsed) : null,
     fsKb: fs !== null && fs > 0 ? fs : null,
     errors: Math.max(0, num(d.numErrors) ?? 0),
-    smart: sm?.smart ?? 'unknown',
+    smart: sm?.smart ?? (asked ? 'unknown' : 'off'),
     spin: spinOf(d.isSpinning) ?? sm?.spin ?? null,
     status: bad ? 'bad' : raw === 'DISK_NEW' ? 'new' : 'ok',
     statusText: bad ?? '',
@@ -381,7 +384,7 @@ export function parseUnraid(parts: Partial<Record<Part, Rec>>, now = Date.now())
   }
 
   const arr = parts.array ? rec(parts.array.array) : null;
-  const slots = (key: string, role: UnraidDisk['role']) => recs(arr?.[key]).map((d) => diskOf(d, role, smart)).filter((d): d is UnraidDisk => !!d);
+  const slots = (key: string, role: UnraidDisk['role']) => recs(arr?.[key]).map((d) => diskOf(d, role, smart, !!parts.disks)).filter((d): d is UnraidDisk => !!d);
   const cap = rec(rec(arr?.capacity).kilobytes);
   const state = text(arr?.state, 40);
 

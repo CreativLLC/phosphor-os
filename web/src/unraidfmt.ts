@@ -52,8 +52,13 @@ export function fmtDay(ms: number | null): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// "98.1" (MB/s as Unraid sends it) -> "98 MB/S"; anything that is not a number -> ''
+// "98.1" (MB/s, as Unraid's schema says), "98.1 MB/s", "1.2 GB/s", or a huge plain number (bytes a second) -> "98 MB/S";
+// anything else -> ''
 export function fmtSpeed(s: string): string {
-  const n = Number(s);
-  return s && Number.isFinite(n) && n > 0 ? `${Math.round(n)} MB/S` : '';
+  const m = /^\s*(\d+(?:\.\d+)?)\s*(?:([KMGT])?B\/?s)?\s*$/i.exec(s);
+  if (!m) return '';
+  const unit = m[2]?.toUpperCase();
+  let mb = Number(m[1]) * ({ K: 1e-3, M: 1, G: 1e3, T: 1e6 }[unit ?? 'M'] ?? 1);
+  if (!unit && mb > 20000) mb /= 1e6; // no parity check runs at 20 GB/s: it is bytes a second
+  return mb > 0 ? `${Math.round(mb)} MB/S` : '';
 }

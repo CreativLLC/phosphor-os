@@ -9,6 +9,7 @@ import { askPart, graphqlUrl, httpSend, Link, PARTS, PART_LABEL, parseUnraid, un
 //   PHOSPHOR_UNRAID_URL   the server's address, like http://192.168.1.10 (no path needed)
 //   PHOSPHOR_UNRAID_KEY   an Unraid API key made with the VIEWER role (read-only)
 //   PHOSPHOR_UNRAID_SELF_SIGNED=1   only if the address is https with a certificate this PC does not trust
+//   PHOSPHOR_UNRAID_SMART=1         also ask for each disk's SMART status (off: Unraid's API may wake sleeping disks for it)
 // Read-only, and for the owner's eyes only. The key and the address are taken out of the environment at start (so the
 // Claude processes this server starts do not inherit them), live in a Link whose key cannot be printed, and are never
 // logged, written to data/ or sent to the page. The summary goes to the logged-in page only: no chat tool, MCP tool or
@@ -21,24 +22,28 @@ const OPEN_MS = 60_000;
 const IDLE_MS = 10 * 60_000;
 const OPEN_GRACE_MS = 45_000; // the page asks every 15 s: asked within this long ago = STATION is on screen
 const TICK_MS = 30_000;
+const SMART_MS = 60 * 60_000; // SMART status, when asked for at all, at most this often
 const FILE = join(DATA_DIR, 'station-unraid.json');
 
-export type UnraidSetup = { link: Link | null; problem: string };
+export type UnraidSetup = { link: Link | null; problem: string; smart?: boolean };
 
 // Reads the .env lines and removes them from the environment. Half a setup says which line is missing.
 export function takeSetup(env: NodeJS.ProcessEnv = process.env): UnraidSetup {
   const address = (env.PHOSPHOR_UNRAID_URL ?? '').trim();
   const key = (env.PHOSPHOR_UNRAID_KEY ?? '').trim();
-  const selfSigned = /^(1|true|yes|on)$/i.test((env.PHOSPHOR_UNRAID_SELF_SIGNED ?? '').trim());
+  const flag = (v?: string) => /^(1|true|yes|on)$/i.test((v ?? '').trim());
+  const selfSigned = flag(env.PHOSPHOR_UNRAID_SELF_SIGNED);
+  const smart = flag(env.PHOSPHOR_UNRAID_SMART);
   delete env.PHOSPHOR_UNRAID_URL;
   delete env.PHOSPHOR_UNRAID_KEY;
   delete env.PHOSPHOR_UNRAID_SELF_SIGNED;
+  delete env.PHOSPHOR_UNRAID_SMART;
   if (!address && !key) return { link: null, problem: '' };
   if (!address) return { link: null, problem: 'PHOSPHOR_UNRAID_URL is empty.' };
   if (!key) return { link: null, problem: 'PHOSPHOR_UNRAID_KEY is empty.' };
   const url = graphqlUrl(address);
   if (!url) return { link: null, problem: 'PHOSPHOR_UNRAID_URL is not a web address. Use something like http://192.168.1.10.' };
-  return { link: new Link(url, key, selfSigned), problem: '' };
+  return { link: new Link(url, key, selfSigned), problem: '', smart };
 }
 
 type Seen = Record<string, { up: boolean; at: number }>;
@@ -66,6 +71,8 @@ export class UnraidWatch {
   private timer: ReturnType<typeof setInterval> | undefined;
   private readonly dropped = new Map<Part, Set<string>>(); // fields this Unraid does not have, per part
   private seen: Seen;
+  private smartTried = 0;
+  private smartData: Record<string, unknown> | null = null;
   private readonly now: () => number;
   private readonly file: string | null;
   private readonly log: (line: string) => void;
@@ -147,11 +154,21 @@ export class UnraidWatch {
     let forbidden = 0;
     // One part at a time. The link itself failing (no answer, key refused, wrong address) ends the poll at once.
     for (const part of PARTS) {
+      if (part === 'disks') {
+        // SMART status: only if asked for in .env, and not more than once an hour (it can wake sleeping disks).
+        if (!this.o.setup.smart) continue;
+        if (this.now() - this.smartTried < SMART_MS) {
+          if (this.smartData) parts.disks = this.smartData;
+          continue;
+        }
+        this.smartTried = this.now();
+      }
       const drop = this.dropped.get(part) ?? new Set<string>();
       this.dropped.set(part, drop);
       const r = await askPart(part, send, drop, (s) => link.scrub(s));
       if (r.ok) {
         parts[part] = r.data;
+        if (part === 'disks') this.smartData = r.data;
         continue;
       }
       if (r.why === 'down' || r.why === 'auth' || r.why === 'wrong' || r.why === 'limit') {

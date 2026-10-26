@@ -16,7 +16,7 @@ export type UnraidDisk = {
   usedKb: number | null; // used on its file system (null: parity, or not mounted)
   fsKb: number | null; // size of that file system
   errors: number; // read/write errors Unraid counted
-  smart: 'ok' | 'unknown'; // Unraid's API only says OK or UNKNOWN
+  smart: 'ok' | 'unknown' | 'off'; // Unraid's API only says OK or UNKNOWN; off = not asked (PHOSPHOR_UNRAID_SMART is not set)
   spin: 'up' | 'down' | null;
   status: 'ok' | 'new' | 'bad';
   statusText: string; // DISABLED, MISSING, WRONG DISK, INVALID; '' when ok

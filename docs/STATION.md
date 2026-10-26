@@ -33,6 +33,11 @@ Applications; you do not need to sign in to Unraid Connect for this.
 
    The address is what you type in the browser to open Unraid's page (no `/graphql` needed). If that address is `https`
    and Unraid uses its own certificate, add a third line: `PHOSPHOR_UNRAID_SELF_SIGNED=1`.
+
+   Optional: `PHOSPHOR_UNRAID_SMART=1` adds "SMART OK" to each disk. It is off because Unraid's API fills that field by
+   running `smartctl` on every disk, which can wake disks that are spun down (and spin-down is why you run Unraid
+   this way). With it on, STATION asks at most once an hour. Everything else the panel shows is read from Unraid's own
+   state and wakes nothing. Unraid's own SMART monitor still raises notifications, and those show under UNRAID NOTICES.
 3. **Restart the server**: `systemctl --user restart phosphor-os-server`. A restart ends chats that are working, so do it
    when none is.
 4. **Open STATION.** The Unraid panel is at the top; the first numbers come within a few seconds.
@@ -61,8 +66,8 @@ While Unraid does not answer, the panel shows its last answer, dimmed, with when
 - **ARRAY**: started or stopped, how full; a running parity check with progress, speed, errors found and whether it is
   correcting.
 - **SYSTEM**: CPU and RAM use, uptime. The head line has the host name, Unraid version and how fresh the numbers are.
-- **DISKS** (parity and data) and **CACHE AND POOLS**: name, device, temperature, used and size, errors, SMART OK, spinning
-  or spun down. A disk with an alert has a bright frame.
+- **DISKS** (parity and data) and **CACHE AND POOLS**: name, device, temperature, used and size, errors, spinning or spun
+  down, and SMART OK if you turned that on. A disk with an alert has a bright frame.
 - **DOCKER**: running and stopped containers (stopped ones that should be running are bright). **VMS** the same.
 - **UNRAID NOTICES**: how many unread warnings and alerts, and the latest titles.
 - **UPS**: charge, minutes left, load, if Unraid has one.
@@ -99,9 +104,10 @@ service).
 
 - **Read-only.** The code only sends GraphQL `query` documents (never `mutation`), the Viewer role cannot change anything
   even if it tried, and it never starts, stops or restarts anything.
-- **Asked** (one small question per part, every minute while STATION is open, every 10 minutes otherwise): version, host
+- **Asked** (eight small questions, one per part, every minute while STATION is open, every 10 minutes otherwise; none of
+  them touches a disk): version, host
   name, uptime, temperature limits; array state, capacity, parity check and history, each disk's name, device, size,
-  temperature, errors, status, spin state and SMART status; CPU and RAM use; Docker container names, states and
+  temperature, errors, status and spin state (and SMART status, only with `PHOSPHOR_UNRAID_SMART=1`); CPU and RAM use; Docker container names, states and
   auto-start; VM names and states; unread notification counts and the latest titles; UPS status.
 - **Never asked**: the server's licence or registration, user names, shares and files, logs, other API keys, the web
   login's tokens, network addresses.

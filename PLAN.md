@@ -207,7 +207,9 @@ This file is the build record: what exists and how it works. Install and use: `R
   before): array state, parity check (progress, last result), every disk (temperature, used, errors, SMART, spin), cache
   pools, CPU, RAM, uptime, Docker, VMs, unread notices, UPS, backups (the last parity check; Unraid's API cannot say when
   a flash backup last ran). `.env`: `PHOSPHOR_UNRAID_URL`, `PHOSPHOR_UNRAID_KEY` (a VIEWER-role key),
-  optional `PHOSPHOR_UNRAID_SELF_SIGNED=1`. `server/unraidapi.ts` holds the questions in one place (nine short documents,
+  optional `PHOSPHOR_UNRAID_SELF_SIGNED=1` and `PHOSPHOR_UNRAID_SMART=1` (SMART status, off by default and at most once an
+  hour: Unraid's API fills it with `smartctl -H` on every disk, which can wake spun-down ones; Unraid's own
+  notifications still say when SMART complains). `server/unraidapi.ts` holds the questions in one place (nine short documents,
   one per part, so one part failing or a field an older Unraid lacks costs only itself: "Cannot query field" errors are
   cut out of the question and it is asked again), `server/unraid.ts` polls (about 60 s while STATION is open, 10 minutes
   otherwise), keeps the last answer and serves the cleaned summary at `GET /api/station/unraid` (login needed; `?peek=1`

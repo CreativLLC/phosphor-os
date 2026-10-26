@@ -27,11 +27,16 @@ export function mountUnraid(): UnraidPanel {
     }
     root.hidden = true;
   };
+  let drawn = '';
   return {
     root,
     set(r) {
       root.hidden = !r || (!r.configured && isHidden());
       if (root.hidden || !r) return;
+      // Drawn again only when the answer, or how long ago it was, changed (the page asks every 15 s, Unraid is polled every 60 s).
+      const key = JSON.stringify(r) + (r.okAt ? timeAgo(r.okAt) : '');
+      if (key === drawn) return;
+      drawn = key;
       root.className = `un${r.state === 'ok' ? '' : ' un-stale'}${r.configured ? '' : ' un-setup'}`;
       root.replaceChildren(...(r.configured ? panel(r) : [setupNote(r.problem, hide)]));
     },
@@ -183,7 +188,7 @@ function disksCard(label: string, disks: UnraidDisk[], ids: Set<string>, wide: b
 function diskItem(d: UnraidDisk, ids: Set<string>): HTMLElement {
   const bad = ids.has(`disk-bad:${d.name}`);
   const root = el('div', `un-disk${bad || ids.has(`disk-errors:${d.name}`) ? ' un-bad' : ids.has(`disk-hot:${d.name}`) ? ' un-warm' : ''}`);
-  root.title = [d.device, d.status === 'bad' ? d.statusText : '', d.smart === 'ok' ? 'SMART OK' : 'SMART not reported'].filter(Boolean).join(' · ');
+  root.title = [d.device, d.status === 'bad' ? d.statusText : '', d.smart === 'ok' ? 'SMART OK' : d.smart === 'unknown' ? 'SMART not reported' : ''].filter(Boolean).join(' · ');
   const top = el('div', 'un-disk-top');
   const temp = d.tempC !== null ? `${d.tempC} C` : d.spin === 'down' ? 'ASLEEP' : '-- C';
   top.append(el('span', 'un-disk-name', d.name.toUpperCase()), el('span', 'un-disk-dev', d.device), el('span', `un-disk-temp${ids.has(`disk-hot:${d.name}`) ? ' un-hot' : ''}`, temp));
@@ -194,7 +199,7 @@ function diskItem(d: UnraidDisk, ids: Set<string>): HTMLElement {
     use.append(segBar(pct, 16), el('span', 'un-v', `${fmtKb(d.usedKb)} / ${fmtKb(d.fsKb)}`));
     root.append(use);
   } else root.append(el('div', 'un-line', d.role === 'parity' ? `PARITY, ${fmtKb(d.sizeKb)}` : fmtKb(d.sizeKb)));
-  const notes = [d.status === 'bad' ? d.statusText : '', d.smart === 'ok' ? 'SMART OK' : 'SMART ?', d.errors ? `${d.errors} ERROR${d.errors === 1 ? '' : 'S'}` : '0 ERRORS', d.spin === 'down' ? 'SPUN DOWN' : d.spin === 'up' ? 'SPINNING' : ''].filter(Boolean);
+  const notes = [d.status === 'bad' ? d.statusText : '', d.smart === 'ok' ? 'SMART OK' : d.smart === 'unknown' ? 'SMART ?' : '', d.errors ? `${d.errors} ERROR${d.errors === 1 ? '' : 'S'}` : '0 ERRORS', d.spin === 'down' ? 'SPUN DOWN' : d.spin === 'up' ? 'SPINNING' : ''].filter(Boolean);
   root.append(el('div', 'un-disk-notes', notes.join(' · ')));
   return root;
 }
