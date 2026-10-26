@@ -15,17 +15,25 @@ if (args[0] === 'models') {
   process.exit(0);
 }
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+// SIGINT: at "#wait" the recording goes on; anywhere else it ends like agy does (an "interrupted" result, code 1).
 let interrupted;
+let waiting = false;
 const stopped = new Promise((resolve) => (interrupted = resolve));
-process.on('SIGINT', () => interrupted());
+process.on('SIGINT', () => {
+  if (waiting) return interrupted();
+  process.stdout.write('{"event":"result","result":{"conversation_id":"","status":"ERROR","response":"","error":"interrupted"}}\n');
+  process.exit(1);
+});
 const text = readFileSync(join(here, `${process.env.FAKE_AGY_RUN ?? 'chat'}.jsonl`), 'utf8')
   .replaceAll('{{CWD}}', process.cwd())
   .replaceAll('{{BRAIN}}', process.env.FAKE_AGY_BRAIN ?? '/nowhere');
 for (const line of text.split('\n').filter(Boolean)) {
   if (line === '#wait') {
+    waiting = true;
     const alive = setInterval(() => {}, 60_000); // a signal handler alone does not keep Node running
     await stopped;
     clearInterval(alive);
+    waiting = false;
   } else if (line.startsWith('#stderr ')) process.stderr.write(`${line.slice(8)}\n`);
   else if (line.startsWith('#picture ')) {
     mkdirSync(dirname(line.slice(9)), { recursive: true });

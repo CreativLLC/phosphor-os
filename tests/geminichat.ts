@@ -54,7 +54,7 @@ const replies = (t: T) => t.state.items.filter((i): i is Extract<Item, { kind: '
   check('models: one entry per Gemini model; agy\'s Claude and GPT models left out', list.map((m) => m.value).join() === 'gemini:gemini-4-argon,gemini:gemini-3.8-flash', list.map((m) => m.value).join());
   check('models: names without the level, levels low to high', list[0].label === 'Gemini 4 Argon' && list[1].label === 'Gemini 3.8 Flash' && list[0].efforts.join() === 'low,medium,high');
   check('models: asked from agy itself', (await geminiModels()).length === 2);
-  check('modes: ASK FIRST and PLAN ONLY plan, AUTO-EDIT accept-edits, AUTO and BYPASS auto', ['default', 'plan', 'acceptEdits', 'auto', 'bypassPermissions', ''].map(agyMode).join() === 'plan,plan,accept-edits,auto,auto,plan');
+  check("modes: ASK FIRST agy's default, PLAN ONLY plan, AUTO-EDIT accept-edits, AUTO and BYPASS auto", ['default', 'plan', 'acceptEdits', 'auto', 'bypassPermissions', ''].map(agyMode).join() === ',plan,accept-edits,auto,auto,');
   check('thinking level held to the model\'s own', fitEffort('gemini:gemini-4-argon', 'xhigh') === 'high' && fitEffort('gemini:gemini-4-argon', 'low') === 'low' && fitEffort('gemini:gemini-4-argon', '') === undefined);
 }
 
@@ -72,7 +72,7 @@ const conv = '698555f5-d6e6-48b4-ae34-0ab407023a76';
   check('agy\'s conversation is the chat\'s', tab.geminiId === conv);
   check('idle after the run, one turn', !tab.state.meta.busy && tab.state.stats.turns === 1);
   const args = lastArgs();
-  check('first run: the message, stream-json, the model, ASK FIRST as plan mode, no conversation yet', args[0] === '-p' && args[1] === 'Write 3 short sentences about the moon.' && flag(args, '--output-format') === 'stream-json' && flag(args, '--model') === 'gemini-3.8-flash' && flag(args, '--mode') === 'plan' && !args.includes('--conversation') && !args.includes('--effort'), JSON.stringify(args));
+  check("first run: ASK FIRST says read only before the message, agy's default mode, stream-json, the model, no conversation yet", args[0] === '-p' && args[1].startsWith('[Note from the Phosphor-OS app: this chat is in ASK FIRST mode.') && args[1].endsWith(']\n\nWrite 3 short sentences about the moon.') && !args.includes('--mode') && flag(args, '--output-format') === 'stream-json' && flag(args, '--model') === 'gemini-3.8-flash' && !args.includes('--conversation') && !args.includes('--effort'), JSON.stringify(args));
   check('saved as data for a restart', existsSync(join(tmp, 'chats', `${conv}.json`)));
 
   await tab.setMode('acceptEdits');
@@ -109,13 +109,17 @@ const conv = '698555f5-d6e6-48b4-ae34-0ab407023a76';
   check('AUTO not offered for the account: said once', notes(denied).filter((n) => /AUTO is not available/.test(n)).length === 1);
   check('no empty reply', replies(denied).length === 0);
 
-  const plan = newTab();
+  const asked = newTab();
+  await play(asked, 'followup', 'Create a file named moon.txt.');
+  check('ASK FIRST: a file written anyway stops the run there, and the chat names the file', notes(asked).length === 1 && notes(asked)[0].startsWith(`Gemini changed ${join(cwd, 'moon.txt')}, which ASK FIRST does not allow`) && !asked.state.meta.busy && asked.state.stats.filesChanged.length === 1, JSON.stringify(notes(asked)));
+
+  const plan = newTab({ mode: 'plan' });
   const planDir = join(tmp, 'brain', '04fbd7cc-376c-40ef-8920-b1807ffc560a');
   mkdirSync(planDir, { recursive: true });
   writeFileSync(join(planDir, 'implementation_plan.md'), '# Create plan.txt\n\n1. Write the word hello');
   await play(plan, 'plan', 'Create a file named plan.txt containing the word hello.');
   const p = tools(plan)[0];
-  check("a plan in agy's own folder: its text in the line, not a changed file", p?.detail === "implementation_plan.md (Gemini's notes)" && p.body?.startsWith('# Create plan.txt') === true && plan.state.stats.filesChanged.length === 0, JSON.stringify(p));
+  check("PLAN ONLY: plan mode; the plan in agy's own folder shows its text in the line, not as a changed file", flag(lastArgs(), '--mode') === 'plan' && p?.detail === "implementation_plan.md (Gemini's notes)" && p.body?.startsWith('# Create plan.txt') === true && plan.state.stats.filesChanged.length === 0, JSON.stringify(p));
   check('plan mode: one reply, asking to review the plan', replies(plan).length === 1 && /review and approve/.test(replies(plan)[0].text), JSON.stringify(replies(plan)));
 
   const pic = newTab({ mode: 'acceptEdits' });

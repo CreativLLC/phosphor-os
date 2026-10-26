@@ -73,16 +73,19 @@ function labelOf(base: string): string {
   return known.find((m) => m.value === `gemini:${base}`)?.label ?? base.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-// The mode picker for a run that cannot stop to ask:
-// - ASK FIRST, PLAN ONLY: agy's plan mode. Gemini reads, answers and writes a plan in its own folder; it changes nothing
-//   in the chat's folder.
+// The mode picker for a run that cannot stop to ask (agy's --mode; '' = agy's own default, which refuses commands):
+// - ASK FIRST: agy's default, and Gemini is told to read and answer only (READ_ONLY). agy has no read-only mode, and its
+//   plan mode answers even "pick a fruit" with a plan to review (tested 2026-10-25), so a file write is the tripwire:
+//   the run is stopped and the chat says which file (GeminiChat.step).
+// - PLAN ONLY: plan mode. Gemini writes a plan in its own folder and changes nothing here.
 // - AUTO-EDIT: accept-edits. It may change files in the folder; commands are refused unless agy's own settings allow them.
 // - AUTO: agy's auto mode (edits, and the commands its checker finds safe). Where Google does not offer it for the
 //   account, agy says so and runs its default mode: file changes yes, commands no.
 // - BYPASS is not offered (NO_BYPASS): agy has none of Claude Code's hooks, so nothing would guard its commands.
 export function agyMode(mode: string): string {
-  return mode === 'acceptEdits' ? 'accept-edits' : mode === 'auto' || mode === 'bypassPermissions' ? 'auto' : 'plan';
+  return mode === 'plan' ? 'plan' : mode === 'acceptEdits' ? 'accept-edits' : mode === 'auto' || mode === 'bypassPermissions' ? 'auto' : '';
 }
+const READ_ONLY = '[Note from the Phosphor-OS app: this chat is in ASK FIRST mode. Do not create, change or delete any file and do not run commands: read and answer only. If the request needs changes, say what you would change; the user can allow changes by switching the chat to AUTO-EDIT.]';
 export const NO_BYPASS = "BYPASS is not offered for Gemini: agy has none of Claude Code's hooks, so nothing would guard its commands. This chat uses AUTO.";
 // The MCP screen shows Claude Code's servers; agy has its own.
 export const GEMINI_MCP = "This chat is with Gemini: its connectors (MCP servers) are agy's own. `agy mcp list` in a terminal shows them.";
@@ -169,6 +172,7 @@ type Run = {
   timer: ReturnType<typeof setTimeout>;
   stopped: boolean;
   timedOut: boolean;
+  tripped?: string; // ASK FIRST: the file Gemini wrote anyway (the run was stopped there)
   reply?: { id: string; step?: number }; // the reply being written
   tools: Map<number, string>; // step index -> tool line id
   picture: boolean; // the picture tool ran
@@ -282,8 +286,10 @@ export class GeminiChat {
     if (isGeminiModel(model)) this.model = model;
     const base = this.model?.slice('gemini:'.length);
     const level = this.model ? fitEffort(this.model, effort) : undefined;
-    const prompt = [job.text, job.files.length ? `${ATTACHED}\n${job.files.map((f) => `- ${f.path}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
-    const args = ['-p', prompt.startsWith('-') ? ` ${prompt}` : prompt, '--output-format', 'stream-json', '--print-timeout', `${TIMEOUT_S}s`, '--mode', agyMode(mode)];
+    const agy = agyMode(mode);
+    const prompt = [agy ? '' : READ_ONLY, job.text, job.files.length ? `${ATTACHED}\n${job.files.map((f) => `- ${f.path}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
+    const args = ['-p', prompt.startsWith('-') ? ` ${prompt}` : prompt, '--output-format', 'stream-json', '--print-timeout', `${TIMEOUT_S}s`];
+    if (agy) args.push('--mode', agy);
     if (base) args.push('--model', base);
     if (level) args.push('--effort', level);
     if (this.conversation) args.push('--conversation', this.conversation);
@@ -374,6 +380,10 @@ export class GeminiChat {
       this.push({ id, kind: 'tool', name: label, detail });
       this.host.patch('stats');
       this.host.activity(`${label}: ${detail.slice(0, 80)}`);
+      if (EDITS.has(name) && path && !notes && !agyMode(run.mode) && !run.tripped) {
+        run.tripped = path; // ASK FIRST: no more steps after this one
+        this.stop();
+      }
     }
     if (s.state === 'ACTIVE') return;
     const out = s.tool_info?.output ?? s.subagent_info?.subagents?.map((a) => a.initial_prompt).filter(Boolean).join('\n\n') ?? ''; // a helper: its task
@@ -400,6 +410,7 @@ export class GeminiChat {
     if (run.picture && this.conversation) await this.pictures(run).catch((e) => this.host.note(`Gemini made a picture, but it could not be shown: ${firstLine(e)}`));
     const fail = r ? (r.status === 'SUCCESS' ? '' : r.error || r.status || 'error') : code === 0 ? '' : run.error || lastError(run.stderr) || `agy ended with code ${code}`;
     if (run.timedOut) this.host.note(problem('timeout'));
+    else if (run.tripped) this.host.note(`Gemini changed ${run.tripped}, which ASK FIRST does not allow, so it was stopped there. Check that file. To let Gemini change files, pick AUTO-EDIT.`);
     else if (run.stopped) this.host.note('Stopped.');
     else if (fail) this.host.note(problem(fail));
     if (run.asked && this.conversation !== run.asked) this.host.note('agy could not find the earlier conversation, so this message started a new one: Gemini does not remember the messages above.');
