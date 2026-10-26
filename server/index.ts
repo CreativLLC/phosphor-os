@@ -7,6 +7,7 @@ import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPasswor
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
 import { handleIdeas, startIdeas } from './ideas.ts';
+import { handleKeywords } from './keywords.ts';
 import { handleLab, serveLabFile, startLab } from './lab.ts';
 import { WEB_DIST, config } from './config.ts';
 import { handleDocs, handleOpenLocal, localKey } from './docs.ts';
@@ -185,6 +186,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/today') return sendJson(res, await today());
     if (url.pathname === '/api/ideas' || url.pathname.startsWith('/api/ideas/')) return await handleIdeas(req, res, url);
     if (url.pathname.startsWith('/api/lab/')) return await handleLab(req, res, url);
+    if (url.pathname.startsWith('/api/keywords/')) return await handleKeywords(req, res, url);
     if (url.pathname === '/api/calendar') return sendJson(res, calendarRange(Number(url.searchParams.get('from') ?? NaN), Number(url.searchParams.get('to') ?? NaN)));
     if (url.pathname.startsWith('/api/')) return sendJson(res, { error: 'not found' }, 404);
   } catch (e) {

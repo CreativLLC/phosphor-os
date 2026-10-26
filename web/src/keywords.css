@@ -1,0 +1,559 @@
+/* KEYWORDS (keywords.ts): check YouTube search terms. Same look as LAB. */
+
+.keys {
+  grid-row: 2;
+  grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* The chat, the web pane, DOCS and LAB are not drawn while KEYWORDS is open. */
+body.keys-open #app,
+body.keys-open #webapp,
+body.keys-open .docs,
+body.keys-open .lab {
+  display: none !important;
+}
+
+/* The desktop app has KEYS in its program bar. */
+body.has-shell #btn-keys {
+  display: none;
+}
+
+.keys button {
+  min-height: 34px;
+  padding: 2px 10px;
+}
+
+.keys h3 {
+  margin: 0 0 4px;
+  font-weight: normal;
+  letter-spacing: 2px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.keys-dim {
+  color: var(--ph-dim);
+}
+
+.keys-strong {
+  color: var(--ph-bright);
+}
+
+.keys-nowrap {
+  white-space: nowrap;
+}
+
+.keys-err {
+  color: var(--accent);
+  text-shadow: none;
+  margin: 0;
+}
+
+.keys-empty {
+  color: var(--ph-dim);
+  text-align: center;
+  padding: 30px 0;
+}
+
+/* ---------- Top bar ---------- */
+
+.keys-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ph-dim);
+  background: rgb(var(--ph-rgb) / 0.03);
+}
+
+.keys-tag {
+  padding: 2px 10px 1px;
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  letter-spacing: 3px;
+}
+
+.keys-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.keys-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 40px;
+}
+
+.keys-check,
+.keys-hist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+
+.keys-check[hidden],
+.keys-hist[hidden] {
+  display: none;
+}
+
+.keys-note {
+  margin: 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.keys-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.keys-label {
+  color: var(--ph-dim);
+  letter-spacing: 2px;
+}
+
+/* ---------- Input ---------- */
+
+.keys-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 120px;
+  resize: vertical;
+  line-height: 1.25;
+}
+
+.keys .keys-go {
+  min-height: 44px;
+  padding: 4px 26px;
+  letter-spacing: 2px;
+}
+
+.keys-count {
+  color: var(--ph-bright);
+}
+
+.keys-count.keys-over {
+  color: var(--accent);
+}
+
+.keys-hint {
+  font-size: var(--fs-sm);
+}
+
+.keys-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-raise);
+}
+
+.keys-seed {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 380px;
+  min-height: 34px;
+  padding: 2px 8px;
+}
+
+.keys-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.keys-chips:empty {
+  display: none;
+}
+
+.keys .keys-chip {
+  text-align: left;
+}
+
+/* ---------- Progress ---------- */
+
+.keys-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.keys-meta:empty {
+  display: none;
+}
+
+.keys-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.keys-status:empty {
+  display: none;
+}
+
+.keys-busy {
+  margin: 0;
+  color: var(--accent);
+  letter-spacing: 2px;
+  text-shadow: none;
+  animation: keys-blink 1.2s steps(2, start) infinite;
+}
+
+@keyframes keys-blink {
+  to {
+    opacity: 0.45;
+  }
+}
+
+.keys-bar-track {
+  height: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-deep);
+}
+
+.keys-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s linear;
+}
+
+/* ---------- Tables ---------- */
+
+.keys-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+}
+
+.keys-table,
+.keys-vtable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.keys-table th,
+.keys-table td,
+.keys-vtable th,
+.keys-vtable td {
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgb(var(--ph-rgb) / 0.12);
+}
+
+.keys-table th,
+.keys-vtable th {
+  background: var(--bg-raise);
+  color: var(--ph-dim);
+  font-weight: normal;
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.keys-table .keys-num,
+.keys-vtable .keys-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.keys-row-main {
+  cursor: pointer;
+}
+
+.keys-row-main:focus-visible {
+  outline: 1px dashed var(--ph-bright);
+  outline-offset: -2px;
+}
+
+.keys-row-main:hover {
+  background: rgb(var(--ph-rgb) / 0.08);
+}
+
+.keys-row-main.open {
+  background: rgb(var(--ph-rgb) / 0.1);
+}
+
+.keys-term {
+  color: var(--ph-bright);
+}
+
+.keys-results .keys-term::before {
+  content: '+ ';
+  color: var(--ph-dim);
+}
+
+.keys-results .keys-row-main.open .keys-term::before {
+  content: '- ';
+}
+
+.keys-clip {
+  max-width: 460px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keys-actions {
+  text-align: right;
+}
+
+.keys .keys-del {
+  min-height: 28px;
+  padding: 0 8px;
+  border-color: rgb(var(--ph-rgb) / 0.35);
+  color: var(--ph-dim);
+}
+
+/* ---------- Scores and verdicts: fixed colours, so good and bad read at a glance in any theme ---------- */
+
+.v-great {
+  --v: #4dff88;
+}
+
+.v-good {
+  --v: #b6f25a;
+}
+
+.v-ok {
+  --v: #ffcf4d;
+}
+
+.v-hard {
+  --v: #ff7a59;
+}
+
+.v-low-demand {
+  --v: #9a9a9a;
+}
+
+.keys-verdict {
+  color: var(--v);
+  letter-spacing: 1px;
+  white-space: nowrap;
+  text-shadow: none;
+}
+
+.keys-score b {
+  color: var(--v);
+  font-weight: normal;
+  text-shadow: none;
+}
+
+.keys-mini {
+  display: inline-block;
+  vertical-align: middle;
+  width: 44px;
+  height: 6px;
+  margin-left: 8px;
+  background: rgb(var(--ph-rgb) / 0.15);
+}
+
+.keys-mini span {
+  display: block;
+  height: 100%;
+  background: var(--v);
+}
+
+/* ---------- Details ---------- */
+
+.keys-detail-row > td {
+  padding: 0;
+  background: var(--bg-raise);
+}
+
+.keys-detail-row[hidden] {
+  display: none;
+}
+
+.keys-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 24px;
+  padding: 12px 14px 14px;
+  cursor: default;
+}
+
+.keys-sec {
+  min-width: 0;
+}
+
+.keys-sec:nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+
+.keys-why {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.keys-why li {
+  margin: 2px 0;
+}
+
+.keys-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 14px;
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.keys-facts dt {
+  color: var(--ph-dim);
+}
+
+.keys-facts dd {
+  margin: 0;
+  color: var(--ph-bright);
+}
+
+.keys-vids {
+  background: var(--bg);
+}
+
+.keys-vtitle {
+  min-width: 220px;
+}
+
+.keys-link {
+  color: var(--ph-bright);
+}
+
+.keys-exact {
+  padding: 0 5px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+.keys-vchan {
+  color: var(--ph-dim);
+}
+
+.keys-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--ph-dim);
+}
+
+/* ---------- Phones: results and history stack instead of scrolling sideways ---------- */
+
+@media (max-width: 700px) {
+  .keys-main {
+    padding: 10px 10px 40px;
+  }
+
+  .keys-detail {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .keys-table-wrap:not(.keys-vids) {
+    border: none;
+  }
+
+  .keys-table:not(.keys-vtable),
+  .keys-table:not(.keys-vtable) tbody {
+    display: block;
+  }
+
+  .keys-table:not(.keys-vtable) thead {
+    display: none;
+  }
+
+  .keys-table > tbody > tr.keys-row-main {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-raise);
+  }
+
+  .keys-table > tbody > tr.keys-detail-row:not([hidden]) {
+    display: block;
+    margin: -8px 0 8px;
+    border: 1px solid var(--line);
+    border-top: none;
+  }
+
+  .keys-table > tbody > tr > td {
+    display: block;
+    padding: 0;
+    border: none;
+    text-align: left !important;
+    min-width: 0;
+  }
+
+  .keys-detail-row > td {
+    display: block;
+  }
+
+  .keys-table > tbody > tr.keys-row-main > td[data-l]::before {
+    content: attr(data-l);
+    display: block;
+    color: var(--ph-dim);
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .keys-table > tbody > tr.keys-row-main > td.keys-term,
+  .keys-table > tbody > tr.keys-row-main > td.keys-clip,
+  .keys-table > tbody > tr.keys-row-main > td.keys-actions,
+  .keys-table > tbody > tr.keys-row-main > td.keys-span {
+    grid-column: 1 / -1;
+  }
+
+  .keys-table > tbody > tr.keys-row-main > td.keys-clip {
+    white-space: normal;
+    max-width: none;
+  }
+
+  .keys-table > tbody > tr.keys-row-main > td.keys-actions {
+    text-align: right !important;
+  }
+
+  .keys-table > tbody > tr.keys-row-main > td.keys-term {
+    font-size: var(--fs-lg);
+  }
+
+  .keys-table > tbody > tr.keys-row-main > td.keys-best {
+    grid-column: span 2;
+  }
+
+  .keys-hint {
+    display: none;
+  }
+
+  .keys-mini {
+    width: 30px;
+    margin-left: 6px;
+  }
+
+  .keys-vtitle {
+    min-width: 200px;
+  }
+}

@@ -57,6 +57,7 @@ This file is the build record: what exists and how it works. Install and use: `R
 - **File explorer:** read-only, rooted at the tab folder, "changed by Claude" list, viewer, @ insert.
 - **Look:** amber/green phosphor, CRT effects (off/low/high), text size, sounds, boot screen.
 - **Permissions:** approve/deny cards, question cards, permission mode picker per tab.
+- **KEYWORDS:** YouTube keyword check like vidIQ, no API key: demand, competition and a score per search term, top videos, related searches, tags; screen and command line (`docs/KEYWORDS.md`).
 - **Model and thinking level** pickers per tab (list comes from the SDK); THINKING shows in the mission panel.
 - **Attachments:** paste a screenshot, drop files on the chat, or ATTACH. Files land in `data/uploads/<id>/`;
   images go to Claude inline (scaled down in the browser if big), and every path is listed in the message.
@@ -376,6 +377,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | SDK update | `server/sdkupdate.ts` (hourly npm check, bell notice, `GET/POST /api/update`, 04:00 run), `shared/sdkversion.ts` (range rules), `scripts/update-sdk.sh`, `web/src/sdkupdate.ts`, `sdkupdate.css` (UPDATE chip), `tests/sdkversion.ts` |
 | STATION | `server/station.ts`, `server/lan.ts` (allowlist, probes, DISCOVER), `shared/station.ts`, `web/src/station.ts`, `station.css`, `shell/skins.mjs`, `shell/skins/*.css` |
 | LAB (Model Lab) | `server/lab.ts` (folders, `/api/lab/*`, sandboxed `/lab/v/<key>/` file viewer), `server/labrun.ts` (apps, bubblewrap box, runs, `PHOSPHOR_LAB_CLAUDE_TOKEN`), `shared/lab.ts`, `web/src/lab.ts`, `lab.css`, `tests/lab-live.ts` (real models, private port), plan `docs/MODEL-LAB.md` |
+| KEYWORDS (YouTube keyword check) | `server/keywords.ts` (signals, scores, runs in `data/keywords/`, `/api/keywords/*`), `shared/keywords.ts`, `scripts/keywords.ts` (command line, used by Claude), `web/src/keywords.ts`, `keywords.css`, `keywordsdemo.ts`, `tests/keywords.ts`; how it works `docs/KEYWORDS.md` |
 
 ## Design goals
 

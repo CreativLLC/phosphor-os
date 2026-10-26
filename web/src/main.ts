@@ -27,6 +27,7 @@ import { mountHistory } from './history.ts';
 import { mountLauncher } from './launcher.ts';
 import { addLauncherCommands, removeLauncherCommands } from './launcher.ts';
 import { mountDocs } from './docs.ts';
+import { keywordsCommands, mountKeywords } from './keywords.ts';
 import { labCommands, mountLab } from './lab.ts';
 import { showChat } from './programs.ts';
 import { mountMcp } from './mcp.ts';
@@ -87,6 +88,9 @@ mountDocs($('btn-docs'), { insertIntoChat, showChat, addCommands: addLauncherCom
 // LAB: one prompt to many AI models (lab.ts). After DOCS: each closes the other.
 mountLab($('btn-lab'));
 addLauncherCommands(labCommands);
+// KEYWORDS: YouTube keyword check (keywords.ts). Each of DOCS, LAB and KEYWORDS closes the others.
+mountKeywords($('btn-keys'));
+addLauncherCommands(keywordsCommands);
 
 // Fullscreen button (Fullscreen API). Hidden where the browser can't, or when the app already runs fullscreen.
 const fullBtn = $('btn-full');

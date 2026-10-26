@@ -1,5 +1,6 @@
 import { currentProgram, focusAddress, mountBrowser, open, refresh, saveSites, setBlocked, setState, webState } from './browser.ts';
 import { closeDocs, isDocsOpen, onDocsToggle, openDocs } from './docs.ts';
+import { closeKeywords, isKeywordsOpen, onKeywordsToggle, openKeywords } from './keywords.ts';
 import { closeLab, isLabOpen, onLabToggle, openLab } from './lab.ts';
 import type { App, PhosphorShell, Site } from './shellapi.ts';
 import { shellApi } from './shellapi.ts';
@@ -21,6 +22,7 @@ let api: PhosphorShell;
 let chatBtn: HTMLButtonElement;
 let docsBtn: HTMLButtonElement;
 let labBtn: HTMLButtonElement;
+let keysBtn: HTMLButtonElement;
 let addBtn: HTMLButtonElement;
 let barKey = '';
 const siteBtns = new Map<string, HTMLButtonElement>();
@@ -42,11 +44,15 @@ export function mountPrograms(navEl: HTMLElement, pane: HTMLElement): void {
   labBtn = button('LAB', () => (isLabOpen() ? closeLab() : openLab()), 'prog prog-lab');
   labBtn.title = 'LAB: one prompt to many AI models, compare and rate';
   onLabToggle(renderBar);
+  keysBtn = button('KEYS', () => (isKeywordsOpen() ? closeKeywords() : openKeywords()), 'prog prog-keys');
+  keysBtn.title = 'KEYWORDS: check YouTube search terms, demand and competition';
+  onKeywordsToggle(renderBar);
   // CHAT and sites leave DOCS (capture: before their own click). Apps don't: the page stays as it is behind them.
   nav.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('.prog');
     if (b && b !== docsBtn && !b.matches('.prog-app, .prog-add')) closeDocs();
     if (b && b !== labBtn && !b.matches('.prog-app, .prog-add')) closeLab();
+    if (b && b !== keysBtn && !b.matches('.prog-app, .prog-add')) closeKeywords();
   }, true);
   addBtn = button('+', () => void editSite(null), 'prog prog-add');
   addBtn.title = 'Add a site to this bar';
@@ -122,6 +128,7 @@ function pick(n: number): void {
   if (n === 1 || n - 2 >= webState().apps.length) {
     closeDocs(); // CHAT or a site
     closeLab();
+    closeKeywords();
   }
   if (n === 1) return void open('chat');
   const { apps, sites } = webState();
@@ -165,12 +172,13 @@ function renderBar(): void {
       return b;
     });
     addBtn.disabled = sites.length >= MAX_SITES;
-    nav.replaceChildren(chatBtn, docsBtn, labBtn, ...appBtns, ...btns, addBtn);
+    nav.replaceChildren(chatBtn, docsBtn, labBtn, keysBtn, ...appBtns, ...btns, addBtn);
   }
   const p = currentProgram();
-  chatBtn.classList.toggle('on', p === 'chat' && !isDocsOpen() && !isLabOpen());
+  chatBtn.classList.toggle('on', p === 'chat' && !isDocsOpen() && !isLabOpen() && !isKeywordsOpen());
   docsBtn.classList.toggle('on', isDocsOpen());
   labBtn.classList.toggle('on', isLabOpen());
+  keysBtn.classList.toggle('on', isKeywordsOpen());
   for (const [id, b] of siteBtns) {
     b.classList.toggle('on', p === id);
     b.classList.toggle('audible', tabs.some((t) => t.owner === id && t.audible));
@@ -207,6 +215,7 @@ function watchOverlays(): void {
     document.body.classList.contains('menu-open') ||
     document.body.classList.contains('docs-open') ||
     document.body.classList.contains('lab-open') ||
+    document.body.classList.contains('keys-open') ||
     drawers.some((d) => !d.hidden) ||
     !!document.querySelector('dialog[open], .settings-pop:not([hidden]), body > .fx-overlay');
   const watchDialogs = () => {
