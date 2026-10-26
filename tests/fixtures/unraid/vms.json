@@ -1,0 +1,1 @@
+{ "data": { "vms": { "domains": [ { "name": "Windows 11", "state": "RUNNING" }, { "name": "Home Assistant", "state": "SHUTOFF" }, { "name": "Test Box", "state": "CRASHED" } ] } } }

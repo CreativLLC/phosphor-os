@@ -1,0 +1,7 @@
+{
+  "data": {
+    "info": { "time": "2026-10-25T12:00:00.000Z", "os": { "hostname": "Tower", "release": "7.2.0", "uptime": "2026-10-13T08:30:00.000Z" } },
+    "vars": { "name": "Tower", "version": "7.2.0" },
+    "display": { "unit": "CELSIUS", "hot": 45, "max": 55 }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "data": {
+    "notifications": {
+      "overview": { "unread": { "warning": 1, "alert": 0 } },
+      "warningsAndAlerts": [
+        { "title": "Unraid Disk 4 error", "subject": "Warning [TOWER] - disk 4 in error state (sdf)", "importance": "WARNING", "timestamp": "2026-10-25T09:15:00.000Z" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "data": {
+    "disks": [
+      { "device": "/dev/sda", "smartStatus": "UNKNOWN", "temperature": null, "isSpinning": true },
+      { "device": "/dev/sdb", "smartStatus": "OK", "temperature": 34, "isSpinning": false },
+      { "device": "/dev/sdc", "smartStatus": "OK", "temperature": 36, "isSpinning": true },
+      { "device": "/dev/sdd", "smartStatus": "OK", "temperature": 47, "isSpinning": true },
+      { "device": "/dev/sde", "smartStatus": "OK", "temperature": null, "isSpinning": false },
+      { "device": "/dev/sdf", "smartStatus": "UNKNOWN", "temperature": 38, "isSpinning": true },
+      { "device": "/dev/nvme0n1", "smartStatus": "OK", "temperature": 41, "isSpinning": true }
+    ]
+  }
+}

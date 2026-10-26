@@ -52,7 +52,16 @@ export type StationStatus = {
   history: StationCheck[]; // oldest first
 };
 
-export type StationEntry = StationService & { status: StationStatus };
+// The last 24 hours of checks in 96 cells of 15 minutes (server/stationhealth.ts). cells, oldest first, newest last:
+// u all up, s some slow, p some down and some up, d all down, . no check in that time.
+export type StationDay = {
+  cells: string;
+  checks: number; // checks counted in the 24 hours
+  upPct: number | null; // share of them that answered (SLOW counts as answered); null: no checks
+  avgMs: number | null; // average answer time of the answered ones
+};
+
+export type StationEntry = StationService & { status: StationStatus; day: StationDay };
 
 export type StationResponse = {
   services: StationEntry[];

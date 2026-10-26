@@ -13,6 +13,8 @@ import {
 } from '../shared/station.ts';
 import { DATA_DIR } from './config.ts';
 import { DISCOVER_PORTS, discoverHost, probe, resolveLanHost } from './lan.ts';
+import { Health } from './stationhealth.ts';
+import { handleUnraid } from './unraid.ts';
 
 // STATION: the owner's self-hosted services (data/station.json), with health checks and DISCOVER.
 // Routes (login-only; server/index.ts sends /api/station* here after the login check):
@@ -23,12 +25,17 @@ import { DISCOVER_PORTS, discoverHost, probe, resolveLanHost } from './lan.ts';
 //   POST /api/station/save       StationSaveRequest -> add (no id) or change
 //   POST /api/station/remove     { id }
 //   POST /api/station/discover   { host } -> StationDiscoverResponse (own network only: server/lan.ts)
+//   GET  /api/station/unraid     the Unraid server's health, if connected (server/unraid.ts)
 // A check is one GET with a 3 s limit that stops at the response headers; same-host redirects are followed,
 // other hosts never. "Self-signed" relaxes the certificate check for that service's checks only.
+// With nobody looking, every service is still checked every 10 minutes (startStation), so each tile's 24-hour strip
+// (server/stationhealth.ts, data/station-health.json) has something in it.
 
 const FILE = join(DATA_DIR, 'station.json');
 const SEEN_FILE = join(DATA_DIR, 'station-seen.json');
+const health = new Health(join(DATA_DIR, 'station-health.json'));
 const EVERY_MS = 60_000;
+const IDLE_MS = 10 * 60_000; // checks when no screen has STATION open
 const SLOW_MS = 2000; // a public app behind a redirect (two TLS handshakes) takes about 1.1 s
 const TIMEOUT_MS = 3000;
 const HISTORY = 40;
@@ -120,7 +127,7 @@ function statusOf(s: StationService): StationStatus {
 }
 
 function view(): StationResponse {
-  const list: StationEntry[] = services.map((s) => ({ ...s, status: statusOf(s) }));
+  const list: StationEntry[] = services.map((s) => ({ ...s, status: statusOf(s), day: health.day(s.id) }));
   return { services: list, checking: !!round, everyMs: EVERY_MS, slowMs: SLOW_MS };
 }
 
@@ -150,6 +157,7 @@ export async function checkOne(s: StationService): Promise<StationStatus> {
   // The service may have been removed or changed while it was checked.
   if (services.some((x) => x.id === s.id && x.url === s.url)) {
     status.set(s.id, next);
+    health.note(s.id, at, state, check.ms);
     if (lastUp) seen[s.id] = lastUp;
   }
   return next;
@@ -171,10 +179,18 @@ function runRound(only?: string): Promise<void> {
     } catch {
       /* "last seen" is a nicety */
     }
+    health.save(new Set(services.map((s) => s.id)));
   })().finally(() => {
     round = null;
   });
   return round;
+}
+
+// Every 10 minutes, a round when no screen has asked for one lately (an open STATION runs its own every minute).
+export function startStation(): void {
+  setInterval(() => {
+    if (services.length && !round && Date.now() - roundAt >= IDLE_MS - 1000) void runRound();
+  }, 60_000).unref();
 }
 
 // ---------------------------------------------------------------- routes
@@ -204,6 +220,7 @@ function body(req: IncomingMessage): Promise<Record<string, unknown>> {
 
 export async function handleStation(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   const path = url.pathname;
+  if (path === '/api/station/unraid') return handleUnraid(req, res, url);
   if (path === '/api/station' && req.method === 'GET') {
     // On screen somewhere: check when the last round is a minute old. The answer does not wait for it.
     if (!url.searchParams.has('peek') && services.length && !round && Date.now() - roundAt >= EVERY_MS) void runRound();
@@ -236,6 +253,7 @@ export async function handleStation(req: IncomingMessage, res: ServerResponse, u
     if (old && old.url !== s.url) {
       status.delete(s.id);
       delete seen[s.id];
+      health.forget(s.id);
     }
     save();
     await checkOne(s);
@@ -247,6 +265,7 @@ export async function handleStation(req: IncomingMessage, res: ServerResponse, u
     services = services.filter((s) => s.id !== id);
     status.delete(id);
     delete seen[id];
+    health.forget(id);
     save();
     return json(res, view());
   }

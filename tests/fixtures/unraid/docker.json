@@ -1,0 +1,13 @@
+{
+  "data": {
+    "docker": {
+      "containers": [
+        { "names": ["/sonarr"], "state": "RUNNING", "status": "Up 3 days", "autoStart": true },
+        { "names": ["/plex"], "state": "RUNNING", "status": "Up 12 days", "autoStart": true },
+        { "names": ["/nextcloud"], "state": "EXITED", "status": "Exited (137) 5 minutes ago", "autoStart": true },
+        { "names": ["/old-test"], "state": "EXITED", "status": "Exited (0) 3 weeks ago", "autoStart": false },
+        { "names": ["/radarr"], "state": "PAUSED", "status": "Up 2 days (Paused)", "autoStart": true }
+      ]
+    }
+  }
+}
