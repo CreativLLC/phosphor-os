@@ -19,7 +19,7 @@ export function voiceSection(): HTMLElement {
   const box = el('div', 'set-voice');
   const anywhere = el('div');
   box.append(el('div', 'set-label', 'VOICE'), anywhere, phoneKeyboard());
-  let info: DictateInfo | null = store.demo ? { ...DEMO_INFO } : null;
+  let info: DictateInfo | null = null;
 
   const seg = (choices: [string, boolean][], pick: (i: number) => void) => {
     const s = el('div', 'seg');
@@ -48,7 +48,8 @@ export function voiceSection(): HTMLElement {
     );
   };
   const load = async () => {
-    if (!store.demo) info = (await shellApi?.dictate?.().catch(() => null)) ?? null;
+    if (store.demo) info ??= { ...DEMO_INFO };
+    else info = (await shellApi?.dictate?.().catch(() => null)) ?? null;
     draw();
   };
   // SETTINGS opened: read the settings again.
