@@ -83,14 +83,13 @@ function panel(r: UnraidResponse): HTMLElement[] {
   out.push(alertRows(r.alerts, r.state === 'ok'));
 
   const grid = el('div', 'un-grid');
-  grid.append(arrayCard(s), systemCard(s));
+  grid.append(arrayCard(s), systemCard(s), backupsCard(s));
   if (s.disks.length) grid.append(disksCard('DISKS', s.disks, ids, true));
   if (s.pools.length) grid.append(disksCard('CACHE AND POOLS', s.pools, ids, false));
   if (s.containers) grid.append(containersCard(s.containers, ids));
   if (s.vms) grid.append(vmsCard(s.vms, ids));
   if (s.notices) grid.append(noticesCard(s.notices));
   if (s.ups.length) grid.append(upsCard(s));
-  grid.append(backupsCard(s));
   out.push(grid);
   if (r.gaps.length) out.push(el('p', 'un-dim un-gaps', `NOT ANSWERED: ${r.gaps.join(' · ')}`));
   return out;
@@ -231,7 +230,7 @@ function vmsCard(list: NonNullable<UnraidSummary['vms']>, ids: Set<string>): HTM
 }
 
 function noticesCard(n: NonNullable<UnraidSummary['notices']>): HTMLElement {
-  const c = card('UNRAID NOTICES', n.alert || n.warning ? `${n.alert} ALERT${n.alert === 1 ? '' : 'S'} · ${n.warning} WARNING${n.warning === 1 ? '' : 'S'} UNREAD` : 'NOTHING UNREAD');
+  const c = card('UNRAID NOTICES', n.alert || n.warning ? `${n.alert + n.warning} UNREAD` : 'NOTHING UNREAD');
   if (!n.latest.length) c.append(el('div', 'un-dim', n.alert || n.warning ? 'THE LIST OF TITLES DID NOT COME' : 'NO UNREAD WARNINGS OR ALERTS'));
   for (const x of n.latest.slice(0, 4)) {
     const row = el('div', `un-arow un-lv-${x.level === 'alert' ? 'alert' : 'warn'}`);

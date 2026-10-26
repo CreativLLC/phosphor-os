@@ -454,8 +454,9 @@ function drawSpark(cv: HTMLCanvasElement, s: StationEntry): void {
   });
 }
 
-// The last 24 hours, one block per 15 minutes, newest on the right: dim = all answered, brighter = slow, top half
-// bright = some checks failed, full bright = all failed, a thin line = no check then (server/stationhealth.ts).
+// The last 24 hours, one block per 15 minutes, newest on the right: a low dim block = all answered, a taller brighter
+// one = slow, a full block with a bright top = some checks failed, a full bright block = all failed, a thin line = no
+// check then (server/stationhealth.ts).
 function drawDay(cv: HTMLCanvasElement, day: StationDay): void {
   const dpr = window.devicePixelRatio || 1;
   const w = Math.round(cv.clientWidth * dpr);
@@ -481,19 +482,19 @@ function drawDay(cv: HTMLCanvasElement, day: StationDay): void {
     const x = Math.round(i * slot);
     const bw = Math.max(1, Math.round((i + 1) * slot) - x - gap);
     switch (day.cells[i]) {
-      case 'u':
+      case 'u': // answered: a low block, so that trouble stands out
         g.fillStyle = dim;
-        g.fillRect(x, 0, bw, h);
+        g.fillRect(x, Math.floor(h * 0.4), bw, h);
         break;
       case 's':
         g.fillStyle = slow;
-        g.fillRect(x, 0, bw, h);
+        g.fillRect(x, Math.floor(h * 0.2), bw, h);
         break;
       case 'p':
-        g.fillStyle = dim;
-        g.fillRect(x, 0, bw, h);
         g.fillStyle = down;
-        g.fillRect(x, 0, bw, Math.ceil(h / 2));
+        g.fillRect(x, 0, bw, Math.ceil(h * 0.6));
+        g.fillStyle = dim;
+        g.fillRect(x, Math.ceil(h * 0.6), bw, h);
         break;
       case 'd':
         g.fillStyle = down;
