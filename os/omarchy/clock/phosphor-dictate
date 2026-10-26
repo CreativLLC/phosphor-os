@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
-# Phosphor-OS DICTATE in any app: press Ctrl+Space, talk, press it again; the words are typed where the cursor is.
+# Phosphor-OS DICTATE in any app: tap Ctrl+Space (or click the floating mic), talk, tap again; or hold Ctrl+Space
+# while you talk. The words go in where the cursor is.
 # A take is phosphor-dictate-live.mjs (next to this file), run by the app's Node in the background: it streams the
 # default microphone to the Phosphor-OS server's speech engine (the same one the app uses, on this PC), writes
-# what it hears so far for the bar's overlay, and types the text with wtype when you stop.
+# what it hears so far for the bar's overlay, and pastes the text into the focused program when you stop
+# (phosphor-dictate-paste.mjs; CLEAN UP in ~/.config/phosphor-os/dictate.json tidies it first).
 #
-#   phosphor-dictate toggle   start, or stop and type (Ctrl+Space outside the app; a click on the clock's mic)
-#   phosphor-dictate cancel   stop without typing
+#   phosphor-dictate toggle   start, or stop and put the words in (a click on the floating mic or the clock's mic)
+#   phosphor-dictate press    the same, for Ctrl+Space going down (os/hyprland/phosphor-os.lua)
+#   phosphor-dictate release  Ctrl+Space came up after a long hold: stop the take that press started (push to talk)
+#   phosphor-dictate cancel   stop, nothing goes in
 #   phosphor-dictate reset    forget a take left over from before a crash or logout (runs at login)
+#   phosphor-dictate open     bring the Phosphor-OS app to the front (the floating mic's menu)
 #
-# State for the bar (Dictation.qml, the overlay in BarWidget.qml): ~/.local/state/phosphor-os/dictate. Line 1:
-# idle | recording | transcribing; then the text heard so far (cleared when the take ends).
+# State for the bar and the floating mic (Dictation.qml, the overlay in BarWidget.qml, os/omarchy/dictate):
+# ~/.local/state/phosphor-os/dictate. Line 1: idle | recording | transcribing | done | error; then the text heard so
+# far (cleared when the take ends), or after error a short reason. The mic's level: $XDG_RUNTIME_DIR/phosphor-dictate/level.
 # Login: a cookie jar in $XDG_RUNTIME_DIR (memory, gone at logout), made by logging in with the password in the
 # app's .env (never printed, never on a command line).
 set -uo pipefail
@@ -20,12 +26,13 @@ STATE="$state_home/phosphor-os/dictate"
 RUN="${XDG_RUNTIME_DIR:-/tmp}/phosphor-dictate"
 PID="$RUN/take.pid"
 JAR="$RUN/cookie"
+HOLD="$RUN/hold" # this press started the take: a release after a long hold stops it
 LIVE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/phosphor-dictate-live.mjs"
 MAX_SECONDS=300 # the server takes up to 5 minutes in one piece
 
 mkdir -p "${STATE%/*}" && mkdir -p -m 700 "$RUN" || exit 1
 
-set_state() { printf '%s\n' "$1" >"$STATE"; }
+set_state() { printf '%s\n%s' "$1" "${2:-}" >"$STATE"; } # word [short reason, after error]
 state() { head -n1 "$STATE" 2>/dev/null | grep . || echo idle; }
 say() { notify-send -a DICTATE -u "${2:-normal}" "DICTATE" "$1" 2>/dev/null || echo "phosphor-dictate: $1" >&2; }
 taking() { [[ -s $PID ]] && kill -0 "$(cat "$PID")" 2>/dev/null; }
@@ -76,43 +83,69 @@ warm() {
 
 start() {
   local node
-  node=$(node_bin) || { say "Can't find Node to run DICTATE." critical; return; }
+  node=$(node_bin) || { set_state error FAILED; say "Can't find Node to run DICTATE." critical; return 1; }
   set_state recording # the mic shows at once
   warm
   case $? in
-    2) set_state idle; say "Can't log in to Phosphor-OS. Is the app's server running?" critical; return ;;
-    3) set_state idle; say "Phosphor-OS is not answering on port $PORT." critical; return ;;
+    2) set_state error "LOGIN FAILED"; say "Can't log in to Phosphor-OS. Is the app's server running?" critical; return 1 ;;
+    3) set_state error "SERVER DOWN"; say "Phosphor-OS is not answering on port $PORT." critical; return 1 ;;
   esac
-  DICT_URL=$URL DICT_APP=$DIR DICT_JAR=$JAR DICT_STATE=$STATE DICT_MAX=$MAX_SECONDS \
+  DICT_URL=$URL DICT_APP=$DIR DICT_JAR=$JAR DICT_STATE=$STATE DICT_LEVEL="$RUN/level" DICT_MAX=$MAX_SECONDS \
     setsid -f "$node" "$LIVE" </dev/null >/dev/null 2>&1
   # setsid -f does not say the PID: find the take by its script path (only ours runs this file).
   for _ in $(seq 20); do
-    pgrep -n -f -- "$LIVE" >"$PID" && return
+    pgrep -n -f -- "$LIVE" >"$PID" && return 0
     sleep 0.05
   done
-  set_state idle
+  set_state error FAILED
   say "DICTATE did not start." critical
+  return 1
 }
+
+# A running take: stop it and put the words in (unless it is already doing that).
+finish() { [[ $(state) == transcribing ]] || kill -USR1 "$(cat "$PID")"; }
 
 case ${1:-toggle} in
   toggle)
+    rm -f "$HOLD"
+    if taking; then finish; else start; fi
+    ;;
+  press)
+    rm -f "$HOLD"
     if taking; then
-      [[ $(state) == transcribing ]] || kill -USR1 "$(cat "$PID")"
+      finish
     else
-      start
+      touch "$HOLD" # before the take is up: a quick release still finds it
+      start || rm -f "$HOLD"
     fi
     ;;
+  release)
+    [[ -e $HOLD ]] || exit 0
+    rm -f "$HOLD"
+    for _ in $(seq 40); do # the take may still be starting
+      if taking; then
+        finish
+        exit 0
+      fi
+      sleep 0.05
+    done
+    ;;
   cancel)
+    rm -f "$HOLD"
     taking && kill -TERM "$(cat "$PID")"
     set_state idle
     ;;
   reset)
     taking && kill -TERM "$(cat "$PID")"
-    rm -f "$PID"
+    rm -f "$PID" "$HOLD" "$RUN/level"
     set_state idle
     ;;
+  open)
+    [[ -n $DIR ]] || { say "Can't find the Phosphor-OS app." critical; exit 1; }
+    setsid -f bash "$DIR/scripts/phosphor-os.sh" </dev/null >/dev/null 2>&1
+    ;;
   *)
-    echo "usage: phosphor-dictate toggle|cancel|reset" >&2
+    echo "usage: phosphor-dictate toggle|press|release|cancel|reset|open" >&2
     exit 2
     ;;
 esac
