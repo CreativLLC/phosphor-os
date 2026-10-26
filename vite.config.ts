@@ -10,6 +10,7 @@ export default defineConfig({
       input: {
         main: resolve(import.meta.dirname, 'web/index.html'),
         login: resolve(import.meta.dirname, 'web/login.html'),
+        dictate: resolve(import.meta.dirname, 'web/dictate.html'), // the floating mic (shell/dictate.mjs, Windows and Mac)
       },
     },
   },

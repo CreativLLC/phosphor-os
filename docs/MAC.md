@@ -2,7 +2,7 @@
 
 **Untested on a real Mac.** The code has Mac support, but nobody has run it there yet. Read this file to the end before you start. If a step fails, fix it in the repo (the script or the code), not only on the Mac, and record the fix here.
 
-What works on a Mac: the app window, chats with Claude, DOCS, HISTORY, DICTATE (inside the app), the phone over Tailscale. What does not: the desktop look and everything in `os/` (Omarchy, Linux only), DICTATE in other apps (Ctrl+Space anywhere uses Hyprland and `wtype`), the local chat models and the local image model (their setup scripts are for an AMD card on Linux; see the end of this file).
+What works on a Mac: the app window, chats with Claude, DOCS, HISTORY, DICTATE (inside the app), the phone over Tailscale. What does not: the desktop look and everything in `os/` (Omarchy, Linux only), the local chat models and the local image model (their setup scripts are for an AMD card on Linux; see the end of this file).
 
 Needs: an Apple Silicon Mac (M1 or later), macOS 13 or later, [Homebrew](https://brew.sh), about 2 GB of disk (Node packages, Electron, the speech model).
 
@@ -45,6 +45,7 @@ You are setting this up for the owner. Do the steps in order. Say what each step
 | App log | `~/.local/share/PhosphorOS/shell-data/server.log` (what failed before the server's log opened) |
 | Chat | Open a tab, send "hi". "Not logged in": step 1 |
 | DICTATE | Press DICTATE in the app, talk, stop. Nothing heard: System Settings > Privacy & Security > Microphone > Phosphor-OS on |
+| DICTATE in any app (untested) | The floating mic (click, talk, click again) or Control+Alt+D. The words are pasted with Command+V into the app in front: the first time, allow Phosphor-OS in System Settings > Privacy & Security > Accessibility (and Automation > System Events). Right click the mic: CLEAN UP, HIDE THE MIC; SETTINGS > VOICE shows it again |
 | Phone | `tailscale serve status` shows the https address; open it on the phone |
 
 ## Keys

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The Phosphor-OS look for Omarchy 4: theme, VT323 font, the bar at the bottom with a taskbar, no idle lock,
 # the screensaver (the app's flight scene, on every monitor), notifications that wait in a bar counter until dismissed, the indicator
-# toggles in a popup over the clock, a night light schedule (a systemd user timer), the mic indicator for
-# DICTATE in any app (Ctrl+Space; the key itself is in os/hyprland/phosphor-os.lua).
+# toggles in a popup over the clock, a night light schedule (a systemd user timer), the mic indicator and the
+# floating mic for DICTATE in any app (Super+H; the key itself is in os/hyprland/phosphor-os.lua).
 # docs/OMARCHY.md lists every change, why, and how to undo it.
 #
 # Run:  bash os/omarchy/desktop.sh [--theme NAME] [--dry-run] [--undo]
@@ -77,6 +77,7 @@ EDIT_ARGS=() # key=value pairs handed to the JSON edit (nosaver=1: the page is n
 OLD_SAVER="$CFG/plugins/retro-claude.screensaver" # its name before the rename (note saver_dir)
 NOTIF="$CFG/plugins/phosphor-os.notifications"
 CLOCK="$CFG/plugins/phosphor-os.clock"
+DICT="$CFG/plugins/phosphor-os.dictate"
 config_home=${XDG_CONFIG_HOME:-}
 [[ $config_home == /* ]] || config_home="$HOME/.config"
 UNIT_DIR="$config_home/systemd/user"
@@ -150,6 +151,7 @@ if (mode.startsWith("json")) {
     return null;
   };
   const oldSaver = (e) => e?.id === "retro-claude.screensaver"; // the plugin id before the rename
+  const DICT = "phosphor-os.dictate", dict = (e) => e?.id === DICT; // the floating mic (a service plugin)
   // Clock, weather and indicators sit bottom right like Windows; the middle of the bar stays empty.
   // The clock: day, 12-hour time, then the date ("Thursday 2:14 PM 10/22/26"). OURS: every format the pack has set.
   const lay = bar.layout, CLOCK = "dddd h:mm AP MM/dd/yy", OURS = [CLOCK, "dddd h:mm AP"];
@@ -181,6 +183,7 @@ if (mode.startsWith("json")) {
       k.format = CLOCK;
     }
     if (!(c.plugins ??= []).some(notif)) { c.plugins.push({ id: NOTIF }); notes.push("notif=1"); }
+    if (!c.plugins.some(dict)) { c.plugins.push({ id: DICT }); notes.push("dict=1"); }
     if (!c.disabledPlugins?.includes(BUILTIN)) {
       (c.disabledPlugins ??= []).push(BUILTIN);
       (c.cloneSourceRestores ??= []).includes(NOTIF) || c.cloneSourceRestores.push(NOTIF); // the Omarchy off switch for the copy brings the built-in back
@@ -205,6 +208,7 @@ if (mode.startsWith("json")) {
       for (let i = Array.isArray(list) ? list.length - 1 : -1; i >= 0; i--) if (notif(list[i])) list.splice(i, 1);
     if (old.notifoff) { without("disabledPlugins", BUILTIN); without("cloneSourceRestores", NOTIF); }
     if (old.notif && Array.isArray(c.plugins)) c.plugins = c.plugins.filter((e) => !notif(e));
+    if (old.dict && Array.isArray(c.plugins)) c.plugins = c.plugins.filter((e) => !dict(e));
     const mAt = old.clk ? where(CLK) : null;
     if (mAt) { // back to the Omarchy clock and indicators, keeping settings changed since
       const mine = lay[mAt[0]][mAt[1]], clk = { ...mine, id: "omarchy.clock" };
@@ -514,24 +518,43 @@ nightlight_step() {
   ((DRY)) || say "  Night light schedule: $NL_TIMER on."
 }
 
-# DICTATE in any app: the clock's mic indicator (clock/Dictation.qml) watches this one-word file, which
-# clock/phosphor-dictate writes. It has to exist before the bar starts, or the watch never sees it.
+# DICTATE in any app: the clock's mic indicator (clock/Dictation.qml) and the floating mic (dictate/Service.qml)
+# watch this state file, which clock/phosphor-dictate writes, and the floating mic its settings file (SETTINGS in the
+# app writes it too). Both have to exist before the shell starts, or the watch never sees them.
 DICTATE_STATE="$state_home/phosphor-os/dictate"
+DICTATE_SETTINGS="$HOME/.config/phosphor-os/dictate.json"
 dictate_step() {
-  [[ -e $DICTATE_STATE ]] && return 0
-  keep dictate_state 1
-  [[ -d ${DICTATE_STATE%/*} ]] || keep dictate_dir 1
-  run mkdir -p "${DICTATE_STATE%/*}"
-  run touch "$DICTATE_STATE" # empty = idle
+  if [[ ! -e $DICTATE_STATE ]]; then
+    keep dictate_state 1
+    [[ -d ${DICTATE_STATE%/*} ]] || keep dictate_dir 1
+    run mkdir -p "${DICTATE_STATE%/*}"
+    run touch "$DICTATE_STATE" # empty = idle
+  fi
+  if [[ ! -e $DICTATE_SETTINGS ]]; then
+    keep dictate_settings 1
+    [[ -d ${DICTATE_SETTINGS%/*} ]] || keep dictate_settings_dir 1
+    run mkdir -p "${DICTATE_SETTINGS%/*}"
+    printf '{\n  "icon": true,\n  "cleanup": false\n}\n' >"$TMP/dictate.json"
+    copy_into "$TMP/dictate.json" "$DICTATE_SETTINGS"
+  fi
 }
 
 dictate_undo() {
-  noted dictate_state || return 0
-  run rm -f "$DICTATE_STATE"
-  drop dictate_state
-  if noted dictate_dir; then # the folder too, if this made it and nothing else is in it now
-    ((DRY)) || rmdir "${DICTATE_STATE%/*}" 2>/dev/null || true
-    drop dictate_dir
+  if noted dictate_state; then
+    run rm -f "$DICTATE_STATE"
+    drop dictate_state
+    if noted dictate_dir; then # the folder too, if this made it and nothing else is in it now
+      ((DRY)) || rmdir "${DICTATE_STATE%/*}" 2>/dev/null || true
+      drop dictate_dir
+    fi
+  fi
+  if noted dictate_settings; then # the floating mic's settings go with it
+    run rm -f "$DICTATE_SETTINGS"
+    drop dictate_settings
+    if noted dictate_settings_dir; then
+      ((DRY)) || rmdir "${DICTATE_SETTINGS%/*}" 2>/dev/null || true
+      drop dictate_settings_dir
+    fi
   fi
 }
 
@@ -631,6 +654,7 @@ undo() {
   viewer_undo
   mpv_undo
   plugin_undo "$CLOCK" clock_dir
+  plugin_undo "$DICT" dict_dir
   if noted plugin_dir; then
     run rm -rf "$SAVER"
     if [[ $(recall plugin_dir) == replaced ]]; then run mv "$BACKUP/${SAVER##*/}" "$SAVER"; fi
@@ -690,6 +714,7 @@ saver_step
 menu_step
 plugin_step Notifications "$PACK/notifications" "$NOTIF" notif_dir
 plugin_step Clock "$PACK/clock" "$CLOCK" clock_dir
+plugin_step "Floating mic" "$PACK/dictate" "$DICT" dict_dir
 nightlight_step # after the clock: the timer runs the script in its folder
 dictate_step
 viewer_step

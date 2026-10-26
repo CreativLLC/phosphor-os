@@ -35,5 +35,12 @@ if (base && location.origin === base) {
     showInFolder: (path) => ipcRenderer.invoke('files:show', String(path)),
     // A picture file, full size in the system image viewer.
     openImage: (path) => ipcRenderer.invoke('files:open-image', String(path)),
+    // DICTATE in any app (shell/dictate.mjs): the floating mic's settings, and the floating mic page's own calls.
+    dictate: () => ipcRenderer.invoke('dictate:get'),
+    setDictate: (patch) => ipcRenderer.invoke('dictate:set', { icon: patch?.icon, cleanup: patch?.cleanup }),
+    dictatePaste: (text) => ipcRenderer.invoke('dictate:paste', String(text)),
+    dictateMenu: () => ipcRenderer.send('dictate:menu'),
+    dictateDrag: (phase, dx, dy) => ipcRenderer.send('dictate:drag', { phase: String(phase), dx: Number(dx), dy: Number(dy) }),
+    onDictateCommand: (fn) => ipcRenderer.on('dictate:command', (_e, c) => fn(String(c))),
   });
 }

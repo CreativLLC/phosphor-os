@@ -5,6 +5,7 @@ import { funSection } from './funsection.ts';
 import { securitySection } from './security.ts';
 import { THEMES, isThemeId, themeOf, type Theme, type ThemeId } from './themes.ts';
 import { button, el } from './ui.ts';
+import { voiceSection } from './voicesettings.ts';
 
 // Display and sound settings, kept in this browser (localStorage).
 // The inline script in index.html / login.html applies theme, crt and size before first paint;
@@ -174,6 +175,7 @@ export function mountSettings(root: HTMLElement): void {
     cleanupSection(),
     securitySection(),
     alertsSection(),
+    voiceSection(),
     el('div', 'set-foot', 'Display settings are saved in this browser.'),
   );
   const syncAll = () => rows.forEach((f) => f());

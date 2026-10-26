@@ -1,0 +1,108 @@
+/* The floating mic page (dictate.html, dictatefloat.ts): a round mic in a 64 x 64 window with a see-through
+   background. Same look as the Omarchy pack's floating mic (os/omarchy/dictate/Service.qml). States: data-state =
+   idle | listening | working | done | error. PERF: only transform and opacity move. */
+
+html,
+body.dictate-float {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+body.dictate-float::before,
+body.dictate-float::after {
+  display: none !important;
+}
+
+#mic {
+  --size: 44px;
+  --edge: var(--ph);
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: var(--size);
+  height: var(--size);
+  padding: 0;
+  border: 2px solid var(--edge);
+  border-radius: 50%;
+  background: rgb(from var(--bg) r g b / 0.92);
+  box-shadow: 0 0 0 3px rgb(var(--ph-rgb) / 0.22);
+  color: var(--edge);
+  opacity: 0.8;
+  cursor: pointer;
+  touch-action: none;
+}
+
+#mic:hover,
+#mic:not([data-state='idle']) {
+  opacity: 1;
+}
+
+#mic[data-state='listening'],
+#mic[data-state='error'] {
+  --edge: #ff3b30; /* the mic is on, in every theme (as the pack's mic and overlay) */
+  box-shadow: 0 0 0 3px rgb(255 59 48 / 0.25);
+}
+
+/* Grows with your voice while listening (--level 0..1, set a few times a second). */
+.mic-ring {
+  position: absolute;
+  inset: -2px;
+  border: 2px solid #ff3b30;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(calc(1 + var(--level, 0) * 0.5));
+  transition: transform 0.09s linear;
+  pointer-events: none;
+}
+
+#mic[data-state='listening'] .mic-ring {
+  opacity: calc(0.3 + var(--level, 0) * 0.7);
+}
+
+.mic-glyph {
+  width: 60%;
+  height: 60%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mic-glyph .g-mic rect {
+  fill: currentColor;
+}
+
+.mic-glyph > * {
+  display: none;
+}
+
+#mic[data-state='idle'] .g-mic,
+#mic[data-state='listening'] .g-mic,
+#mic[data-state='done'] .g-done,
+#mic[data-state='error'] .g-error {
+  display: inline;
+}
+
+/* Working: an arc that turns. */
+#mic[data-state='working'] .g-work {
+  display: inline;
+  stroke-dasharray: 34 60;
+  transform-origin: 12px 12px;
+  animation: mic-turn 0.9s linear infinite;
+}
+
+@keyframes mic-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #mic[data-state='working'] .g-work {
+    animation: none;
+  }
+}
