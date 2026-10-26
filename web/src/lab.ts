@@ -232,12 +232,15 @@ const topStars = (t: LabTest | LabTestFull) => Math.max(0, ...t.results.map((r) 
 const isWinner = (t: LabTest | LabTestFull, r: LabResult) => (t.results.some((x) => x.rank > 0) ? r.rank === 1 : r.stars > 0 && r.stars === topStars(t));
 // REVEAL: once nothing runs and every finished result has stars, or every one has a place in the ranking.
 const canReveal = (t: LabTest | LabTestFull) => {
-  const done = t.results.filter((r) => r.state === 'done');
+  const done = t.results.filter(ratable);
   return !t.results.some(busy) && (done.every((r) => r.stars > 0) || done.every((r) => r.rank > 0));
 };
 const rated = (t: LabTest) => t.results.filter((r) => r.stars > 0);
 const avgStars = (rs: LabResult[]) => (rs.length ? rs.reduce((a, r) => a + r.stars, 0) / rs.length : 0);
 const busy = (r: LabResult) => r.state === 'running' || r.state === 'queued';
+// It can be judged once it stopped and left something to look at: DONE, or a page from a run that hit the plan limit,
+// failed late or was stopped (the owner: if it looks done, it can be rated). List views carry no page: stars count.
+const ratable = (r: LabResult) => r.state === 'done' || r.stars > 0 || (!busy(r) && !!(r as Partial<LabResultFull>).page);
 const working = (r: LabResultFull) => busy(r) || r.build === 'building'; // keep polling while true
 const pageUrl = (t: LabTestFull, r: LabResultFull, path = r.page) => `${t.view}${encodeURIComponent(r.dir)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${r.endedAt}`;
 
@@ -639,7 +642,7 @@ function card(t: LabTestFull, i: number): HTMLElement {
     }, 600);
   };
   rate.append(note);
-  if (r.state !== 'done') rate.classList.add('lab-off');
+  if (!ratable(r)) rate.classList.add('lab-off');
 
   c.append(top, el('div', 'lab-app', appOf(t, i)), pane, stats, acts, rate);
   return c;
@@ -670,7 +673,7 @@ function starsWidget(t: LabTestFull, i: number): HTMLElement {
       });
     }, 'lab-star');
     b.title = `${n} star${n > 1 ? 's' : ''}`;
-    b.disabled = r.state !== 'done';
+    b.disabled = !ratable(r);
     btns.push(b);
   }
   w.append(...btns);
@@ -726,7 +729,7 @@ function resultRow(t: LabTestFull, i: number): HTMLElement {
 // the whole order, so every result in the list gets a place.
 function rankView(t: LabTestFull): HTMLElement {
   const w = el('div', 'lab-ranking');
-  const done = t.results.map((r, i) => ({ r, i })).filter(({ r }) => r.state === 'done');
+  const done = t.results.map((r, i) => ({ r, i })).filter(({ r }) => ratable(r));
   const order = [...done].sort((a, b) => (a.r.rank || 99) - (b.r.rank || 99) || a.i - b.i);
   const ranked = done.some(({ r }) => r.rank > 0);
   const head = el('div', 'lab-row');
@@ -761,7 +764,7 @@ function rankView(t: LabTestFull): HTMLElement {
     list.append(li);
   });
   w.append(head, list);
-  const out = t.results.filter((r) => r.state !== 'done');
+  const out = t.results.filter((r) => !ratable(r));
   if (out.length) w.append(el('p', 'lab-dim', `Not in the ranking (did not finish): ${out.map((r) => nameOf(t, t.results.indexOf(r))).join(', ')}.`));
   if (!done.length) w.append(el('p', 'lab-empty', 'Nothing has finished yet.'));
   return w;
@@ -1150,7 +1153,7 @@ function testsTable(shown: LabTest[], archive = false): HTMLElement {
     } else
       tr.append(
         el('td', 'lab-nowrap', avg ? `${avg.toFixed(1)} ★` : '-'),
-        el('td', 'lab-nowrap', run ? `${run} RUNNING` : t.results.some((r) => r.state === 'done' && !r.stars) ? 'TO RATE' : 'DONE'),
+        el('td', 'lab-nowrap', run ? `${run} RUNNING` : t.results.some((r) => ratable(r) && !r.stars) ? 'TO RATE' : 'DONE'),
       );
     tb.tBodies[0].append(tr);
   }
@@ -1178,7 +1181,7 @@ function resultsTable(results: { t: LabTest; r: LabResult }[]): HTMLElement {
       el('td', 'lab-nowrap', blind ? '(blind)' : r.modelName),
       el('td', 'lab-dim lab-nowrap', blind ? '' : r.appName),
       el('td', 'lab-nowrap', r.rank ? `#${r.rank}` : '-'),
-      el('td', 'lab-nowrap lab-starcell', r.state === 'done' ? (r.stars ? starText(r.stars) : 'NOT RATED') : r.state.toUpperCase()),
+      el('td', 'lab-nowrap lab-starcell', ratable(r) ? (r.stars ? starText(r.stars) : 'NOT RATED') : r.state.toUpperCase()),
       el('td', '', r.startedAt ? fmtClock(runMs(r)) : '-'),
       el('td', '', fmtTok(r.tokens)),
       el('td', 'lab-nowrap', costText(r)),
@@ -1220,7 +1223,7 @@ function barRows(c: HTMLElement, rows: Row[], max: number): void {
 
 function byModel(results: LabResult[]): Map<string, LabResult[]> {
   const m = new Map<string, LabResult[]>();
-  for (const r of results) if (r.state === 'done') m.set(r.modelName, [...(m.get(r.modelName) ?? []), r]);
+  for (const r of results) if (ratable(r)) m.set(r.modelName, [...(m.get(r.modelName) ?? []), r]);
   return m;
 }
 
