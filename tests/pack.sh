@@ -230,7 +230,7 @@ echo "== H: plugins[] has a user plugin; user edits shell.json after setup"
 mkhome H; h=$T/H/.config/omarchy
 jq -S '.plugins=[{"id":"acme.weather"}]' "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t"; cp "$h/shell.json" "$T/H.json0"
 q H bash "$D"
-check "appended after the user's plugin" jq -e '.plugins|map(.id)==["acme.weather","phosphor-os.screensaver","phosphor-os.notifications"]' "$h/shell.json"
+check "appended after the user's plugin" jq -e '.plugins|map(.id)==["acme.weather","phosphor-os.screensaver","phosphor-os.notifications","phosphor-os.dictate"]' "$h/shell.json"
 jq -S '.idle.screensaver=420' "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t"
 q H bash "$D" --undo
 check "undo: our entry out, user plugin and change kept" bash -c "jq -S '.idle.screensaver=420' '$T/H.json0' | cmp -s - '$h/shell.json'"
@@ -242,7 +242,7 @@ q I bash "$OLDPACK/desktop.sh"
 check "old pack: old plugin, old notes, old fonts folder" test -d "$h/plugins/retro-claude.screensaver" -a -f "$T/I/.local/state/RetroClaude/desktop.state" -a -d "$T/I/.local/share/fonts/retro-claude"
 rm -f "$T/I/stub.log"; q I bash "$D"
 check "upgrade: new plugin in, old one out" bash -c "$(declare -f svsame); SV='$SV'; PAGE='$PAGE'; svsame '$h/plugins/phosphor-os.screensaver' >/dev/null && [[ ! -e '$h/plugins/retro-claude.screensaver' ]]"
-check "upgrade: plugins[] has only the new ids" jq -e '.plugins|map(.id)==["phosphor-os.screensaver","phosphor-os.notifications"]' "$h/shell.json"
+check "upgrade: plugins[] has only the new ids" jq -e '.plugins|map(.id)==["phosphor-os.screensaver","phosphor-os.notifications","phosphor-os.dictate"]' "$h/shell.json"
 check "upgrade: fonts folder moved, not downloaded" bash -c "[[ -d '$T/I/.local/share/fonts/phosphor-os' && ! -e '$T/I/.local/share/fonts/retro-claude' ]] && ! grep -q curl '$T/I/stub.log'"
 check "upgrade: keeps using the old notes folder" test -f "$T/I/.local/state/RetroClaude/desktop.state" -a ! -e "$T/I/.local/state/PhosphorOS"
 snap I >"$T/I.r1"; q I bash "$D"; snap I >"$T/I.r2"; check "upgrade: run 2 no-op" cmp -s "$T/I.r1" "$T/I.r2"
@@ -299,15 +299,44 @@ check "polar night: on all day" jq -e '.allday=="night" and .scheduled=="on"' <<
 nl set schedule=off >/dev/null 2>&1
 check "schedule off: its state file goes" test ! -e "$h/.local/state/phosphor-os/nightlight-schedule"
 
-echo "== V: DICTATE in any app (phosphor-dictate + its live client; the mic, the server and typing are stand-ins)"
+echo "== V: DICTATE in any app (phosphor-dictate + its live client; the mic, the server, the clipboard and the keys are stand-ins)"
 mkhome V; h=$T/V
 DT=$CK/phosphor-dictate
-APP=$h/app; mkdir -p "$APP" "$T/vstubs"
+APP=$h/app; mkdir -p "$APP" "$T/vstubs" "$h/.config/phosphor-os"
 ln -s "$R/node_modules" "$APP/node_modules"; cp "$R/package.json" "$APP/" # the live client takes ws from the app
+ln -s "$R/shared" "$APP/shared" # and the shared rules (shared/dictate.mjs)
 # The mic: raw audio to stdout until stopped (as pw-record - does).
 printf '#!/bin/bash\ntrap "exit 0" INT TERM\nwhile :; do head -c 3200 /dev/zero; sleep 0.1; done\n' >"$T/vstubs/pw-record"
-printf '#!/bin/bash\nshift; printf "%%s" "$*" >>"$HOME/typed"\n' >"$T/vstubs/wtype"
 printf '#!/bin/bash\nexec /usr/bin/pgrep "$@"\n' >"$T/vstubs/pgrep" # the pack tests stub pgrep for hyprsunset
+# The clipboard: a file. wl-copy notes its flags in clip.meta; wl-paste lists the types it was given.
+cat >"$T/vstubs/wl-copy" <<'STUB'
+#!/bin/bash
+echo "wl-copy $*" >>"$HOME/clip.log"
+[[ $1 == --clear ]] && { rm -f "$HOME/clip" "$HOME/clip.meta"; exit 0; }
+cat >"$HOME/clip"; printf '%s\n' "$*" >"$HOME/clip.meta"
+STUB
+cat >"$T/vstubs/wl-paste" <<'STUB'
+#!/bin/bash
+[[ -f $HOME/clip ]] || exit 1
+if [[ $1 == --list-types ]]; then
+  grep -q -- '--type image/png' "$HOME/clip.meta" && echo image/png || echo 'text/plain;charset=utf-8'
+  grep -q -- --sensitive "$HOME/clip.meta" && echo x-kde-passwordManagerHint
+  exit 0
+fi
+cat "$HOME/clip"
+STUB
+# Hyprland: the focused window from ~/window.json; a key going down "pastes" what the clipboard holds then.
+cat >"$T/vstubs/hyprctl" <<'STUB'
+#!/bin/bash
+case $1 in
+  activewindow) cat "$HOME/window.json" 2>/dev/null || echo '{}' ;;
+  dispatch)
+    echo "$2" >>"$HOME/keys.log"
+    [[ $2 == *'state = "down"'* ]] && cat "$HOME/clip" >>"$HOME/typed"
+    echo ok ;;
+esac
+STUB
+printf '#!/bin/bash\necho "wtype $*" >>"$HOME/keys.log"\n' >"$T/vstubs/wtype"
 # Login and warm-up (bash side): login writes the cookie; FAKE_DOWN=1: nothing listens.
 cat >"$T/vstubs/curl" <<'STUB'
 #!/bin/bash
@@ -321,22 +350,31 @@ case $url in
 esac
 STUB
 chmod +x "$T/vstubs"/*
-# The speech server: /ws/voice (needs the cookie; a partial per audio frame, on "end" one final and done) and
-# /api/transcribe (the one-shot fallback). NOWS=1 in its folder: the socket is refused.
+# The speech server: /ws/voice (needs the cookie; a partial per audio frame, on "end" one final and done),
+# /api/transcribe (the one-shot fallback) and /api/voice/cleanup. In its folder: NOWS=1 refuses the socket,
+# NOCLEAN=1 answers the clean-up with 404 (a server without it).
 cat >"$T/fakevoice.mjs" <<'JS'
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 const { WebSocketServer } = createRequire(process.argv[2] + '/package.json')('ws');
-const flag = process.argv[3];
+const dir = process.argv[3];
 const wss = new WebSocketServer({ noServer: true });
-const srv = createServer((req, res) => {
-  req.resume();
+const srv = createServer(async (req, res) => {
+  let body = '';
+  for await (const c of req) body += c;
   const ok = (req.headers.cookie ?? '').includes('rcs=1.x');
-  res.writeHead(ok ? 200 : 401, { 'Content-Type': 'application/json' }).end(JSON.stringify(ok ? { text: 'from one shot.', ms: 1, seconds: 1 } : { error: 'login needed' }));
+  const send = (code, data) => res.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+  if (!ok) return send(401, { error: 'login needed' });
+  if (req.url === '/api/voice/cleanup') {
+    if (existsSync(`${dir}/NOCLEAN`)) return send(404, { error: 'not found' });
+    const { text, style } = JSON.parse(body);
+    return send(200, { text: `${style}: ${text.replace(/\.$/, '')}!`, by: 'test' });
+  }
+  send(200, { text: 'from one shot.', ms: 1, seconds: 1 });
 });
 srv.on('upgrade', (req, sock, head) => {
-  if (existsSync(flag) || !(req.headers.cookie ?? '').includes('rcs=1.x')) return sock.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
+  if (existsSync(`${dir}/NOWS`) || !(req.headers.cookie ?? '').includes('rcs=1.x')) return sock.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
   wss.handleUpgrade(req, sock, head, (ws) => {
     ws.send(JSON.stringify({ t: 'ready' }));
     ws.on('message', (d, bin) => {
@@ -348,41 +386,103 @@ srv.on('upgrade', (req, sock, head) => {
 });
 srv.listen(0, '127.0.0.1', () => console.log(srv.address().port));
 JS
-node "$T/fakevoice.mjs" "$R" "$T/NOWS" >"$T/fakevoice.port" 2>/dev/null &
+node "$T/fakevoice.mjs" "$R" "$T" >"$T/fakevoice.port" 2>/dev/null &
 FAKEV=$!
 for _ in $(seq 50); do [[ -s $T/fakevoice.port ]] && break; sleep 0.1; done
 printf 'PHOSPHOR_PASSWORD="s3cret pw"\nPORT=%s\n' "$(cat "$T/fakevoice.port")" >"$APP/.env"
-dt() { tenv V env PATH="$T/vstubs:$T/stubs:$PATH" PHOSPHOR_OS_DIR="$APP" PHOSPHOR_NODE="$(command -v node)" bash "$DT" "$@"; }
+dt() { tenv V env PATH="$T/vstubs:$T/stubs:$PATH" HYPRLAND_INSTANCE_SIGNATURE=test PHOSPHOR_OS_DIR="$APP" PHOSPHOR_NODE="$(command -v node)" bash "$DT" "$@"; }
 dstate() { head -n1 "$h/.local/state/phosphor-os/dictate" 2>/dev/null; }
-untilidle() { for _ in $(seq 60); do [[ $(dstate) == idle ]] && return 0; sleep 0.1; done; return 1; }
+untildone() { for _ in $(seq 80); do [[ $(dstate) =~ ^(done|error|idle)$ ]] && return 0; sleep 0.1; done; return 1; }
+window() { printf '%s' "$1" >"$h/window.json"; }
+fresh() { rm -f "$h/typed" "$h/keys.log" "$h/clip.log"; printf 'old words' >"$h/clip"; printf -- '--type text/plain\n' >"$h/clip.meta"; }
+settings() { printf '{ "icon": true, "cleanup": %s }\n' "$1" >"$h/.config/phosphor-os/dictate.json"; }
+settings false; window '{"address":"0x1","class":"discord","initialClass":"discord","tags":[]}'; fresh
 dt toggle; sleep 0.8
-check "press 1: listening, the take runs" bash -c "[[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == recording ]] && kill -0 \$(cat '$h/run/phosphor-dictate/take.pid')"
+check "tap 1: listening, the take runs" bash -c "[[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == recording ]] && kill -0 \$(cat '$h/run/phosphor-dictate/take.pid')"
 check "the words heard so far, for the overlay" grep -q '^hello$' "$h/.local/state/phosphor-os/dictate"
+check "the mic's level for the floating mic" grep -qE '^[01]\.[0-9]{2}$' "$h/run/phosphor-dictate/level"
 take=$(cat "$h/run/phosphor-dictate/take.pid")
-dt toggle; untilidle; sleep 0.3
-check "press 2: the whole text typed, capital and a space after" test "$(cat "$h/typed" 2>/dev/null)" == "Hello there. "
-check "press 2: idle, the text cleared, the take gone" bash -c "[[ \$(cat '$h/.local/state/phosphor-os/dictate') == idle ]] && ! kill -0 $take 2>/dev/null"
+dt toggle; untildone
+check "tap 2: pasted into the app (Ctrl+V), capital and a space after" bash -c "[[ \$(cat '$h/typed') == 'Hello there. ' ]] && grep -q 'mods = \"CTRL\", key = \"v\", state = \"down\"' '$h/keys.log' && grep -q 'state = \"up\"' '$h/keys.log'"
+check "the words went on the clipboard marked sensitive (not in the clipboard history)" grep -q -- '--sensitive --type text/plain;charset=utf-8' "$h/clip.log"
+check "the old clipboard is back" test "$(cat "$h/clip")" == "old words"
+check "done: the state says so, the take is gone" bash -c "[[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == done ]] && ! kill -0 $take 2>/dev/null"
 check "logged in, with the password from .env" grep -q '/login' "$h/stub.log"
 check "the password never on a command line" bash -c "! grep -q 's3cret' '$h/stub.log'"
 check "the cookie jar is private" test "$(stat -c %a "$h/run/phosphor-dictate/cookie")" == 600
-touch "$T/NOWS"; rm -f "$h/typed"
+window '{"address":"0x2","class":"com.mitchellh.ghostty","initialClass":"com.mitchellh.ghostty","tags":["terminal*"]}'; fresh
+dt toggle; sleep 0.8; dt toggle; untildone
+check "a terminal gets Ctrl+Shift+V" bash -c "[[ \$(cat '$h/typed') == 'Hello there. ' ]] && grep -q 'mods = \"CTRL SHIFT\", key = \"v\"' '$h/keys.log'"
+window '{}'; fresh; rm -f "$h/stub.log"
+dt toggle; sleep 0.8; dt toggle; untildone
+check "no program has the keyboard: no key, the words stay on the clipboard, a note says so" bash -c "[[ ! -e '$h/keys.log' && \$(cat '$h/clip') == 'Hello there. ' ]] && grep -q 'notify-send.*on the clipboard' '$h/stub.log'"
+window '{"address":"0x1","class":"discord","tags":[]}'; fresh; printf -- '--sensitive --type text/plain\n' >"$h/clip.meta"
+dt toggle; sleep 0.8; dt toggle; untildone
+check "a password manager's clipboard comes back marked sensitive" bash -c "[[ \$(cat '$h/clip') == 'old words' ]] && tail -n1 '$h/clip.log' | grep -q -- --sensitive"
+settings true; fresh
+dt toggle; sleep 0.8; dt toggle; untildone
+check "CLEAN UP on: the server's tidy words go in (style plain)" test "$(cat "$h/typed" 2>/dev/null)" == "plain: Hello there! "
+touch "$T/NOCLEAN"; fresh
+dt toggle; sleep 0.8; dt toggle; untildone
+check "CLEAN UP on, the server has none (404): the words as they were" test "$(cat "$h/typed" 2>/dev/null)" == "Hello there. "
+rm -f "$T/NOCLEAN"; settings false
+touch "$T/NOWS"; fresh
 dt toggle; sleep 0.8
 check "live socket refused: says the text comes at the end" grep -q 'no live preview' "$h/.local/state/phosphor-os/dictate"
-dt toggle; untilidle; sleep 0.3
-check "... and the take still gets typed (one shot)" test "$(cat "$h/typed" 2>/dev/null)" == "from one shot. "
-rm -f "$T/NOWS" "$h/typed"; dt toggle; sleep 0.5; take=$(cat "$h/run/phosphor-dictate/take.pid"); dt cancel; sleep 0.5
-check "cancel: idle, nothing typed, the take gone" bash -c "[[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == idle && ! -e '$h/typed' ]] && ! kill -0 $take 2>/dev/null"
+dt toggle; untildone
+check "... and the take still goes in (one shot)" test "$(cat "$h/typed" 2>/dev/null)" == "from one shot. "
+rm -f "$T/NOWS"; fresh
+dt press; sleep 0.8; dt release; untildone
+check "hold to talk: press starts, release stops and pastes" test "$(cat "$h/typed" 2>/dev/null)" == "Hello there. "
+fresh; dt press; sleep 0.8; dt press; untildone; dt release; sleep 0.3
+check "tap, tap, then a late release: one take, nothing more" bash -c "[[ \$(cat '$h/typed') == 'Hello there. ' && \$(head -n1 '$h/.local/state/phosphor-os/dictate') == done ]] && [[ ! -e '$h/run/phosphor-dictate/hold' ]]"
+rm -f "$h/typed"; dt toggle; sleep 0.5; take=$(cat "$h/run/phosphor-dictate/take.pid"); dt cancel; sleep 0.5
+check "cancel: idle, nothing goes in, the take gone" bash -c "[[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == idle && ! -e '$h/typed' ]] && ! kill -0 $take 2>/dev/null"
 rm -f "$h/stub.log"; FAKE_DOWN=1 dt toggle
-check "server down: says so, back to idle" bash -c "grep -q 'notify-send.*not answering' '$h/stub.log' && [[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == idle ]]"
+check "server down: says so, and the floating mic shows why" bash -c "grep -q 'notify-send.*not answering' '$h/stub.log' && [[ \$(head -n1 '$h/.local/state/phosphor-os/dictate') == error && \$(sed -n 2p '$h/.local/state/phosphor-os/dictate') == 'SERVER DOWN' ]]"
 kill "$FAKEV" 2>/dev/null
 echo recording >"$h/.local/state/phosphor-os/dictate"; dt reset
 check "reset at login: a cut-off take leaves no mic dot" test "$(dstate)" == idle
-check "Hyprland: Ctrl+Space dictates, and in Phosphor-OS goes on to the app" bash -c "grep -q 'hl.bind(\"CTRL + SPACE\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'w.class == \"phosphor-os\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'phosphor-dictate\") .. \"\\? reset\\|dictate .. \" reset\"' '$R/os/hyprland/phosphor-os.lua'"
+check "Hyprland: Ctrl+Space dictates, and in Phosphor-OS goes on to the app" bash -c "grep -q 'hl.bind(\"CTRL + SPACE\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'w.class == \"phosphor-os\"' '$R/os/hyprland/phosphor-os.lua' && grep -q 'dictate .. \" reset\"' '$R/os/hyprland/phosphor-os.lua'"
 check "the mic indicator is the pack's (both loaders)" bash -c "grep -q 'indicatorUrl(indicatorSlot.indicatorId)' '$CK/Indicators.qml' && grep -q 'indicators.indicatorUrl(' '$CK/BarWidget.qml' && grep -q 'phosphor-os/dictate' '$CK/Dictation.qml'"
+# The key in Hyprland's Lua with a stand-in hl: a tap only presses; a hold (timers fired by hand) also releases.
+cat >"$T/keys.lua" <<'LUA'
+phosphor_os_dir = arg[1]
+local fns, timers, cmds, down, active = {}, {}, {}, true, "discord"
+local any = setmetatable({}, { __index = function() return function() return {} end end })
+hl = setmetatable({
+  bind = function(keys, fn) fns[keys] = fn end,
+  timer = function(fn) table.insert(timers, fn) end,
+  dispatch = function(d) if d.exec then table.insert(cmds, d.exec) end end,
+  get_active_window = function() return { class = active } end,
+  is_key_down = function(k) return k == "space" and down end,
+  dsp = setmetatable({ exec_cmd = function(c) return { exec = c } end, window = any }, { __index = function() return function() return {} end end }),
+}, { __index = function() return function() end end })
+dofile(phosphor_os_dir .. "/os/hyprland/phosphor-os.lua")
+local function run_timers(n) for _ = 1, n do local t = table.remove(timers, 1); if not t then return end; t() end end
+local function say(name, ok) print((ok and "ok " or "BAD ") .. name) end
+fns["CTRL + SPACE"](); down = false; run_timers(5)
+say("tap: press only", #cmds == 1 and cmds[1]:match(" press$") ~= nil and #timers == 0)
+cmds = {}; down = true; fns["CTRL + SPACE"](); run_timers(10); down = false; run_timers(5)
+say("hold: press, then release when the key comes up", #cmds == 2 and cmds[2]:match(" release$") ~= nil)
+cmds = {}; active = "phosphor-os"; fns["CTRL + SPACE"]()
+say("in Phosphor-OS: handed on to the app", #cmds == 0)
+cmds = {}; active = "discord"; rawset(hl, "is_key_down", false); timers = {}; fns["CTRL + SPACE"]()
+say("Hyprland 0.55 (no is_key_down): tap only", #cmds == 1 and #timers == 0)
+LUA
+if command -v lua >/dev/null; then
+  lua "$T/keys.lua" "$R" >"$T/keys.out" 2>&1
+  check "Ctrl+Space: tap = press only; hold = press and release; Phosphor-OS keeps the key; tap only without is_key_down" bash -c "[[ \$(grep -c '^ok ' '$T/keys.out') == 4 ]]"
+else
+  echo "SKIP: Ctrl+Space key logic (no lua)"
+fi
 mkhome W; q W bash "$D"
+h=$T/W/.config/omarchy
 check "desktop.sh: the indicator's state file exists before the bar starts" test -e "$T/W/.local/state/phosphor-os/dictate"
+check "floating mic: plugin copied, in plugins[], its settings file made (shown, CLEAN UP off)" bash -c "diff -r '$R/os/omarchy/dictate' '$h/plugins/phosphor-os.dictate' >/dev/null && jq -e '[.plugins[]|select(.id==\"phosphor-os.dictate\")]|length==1' '$h/shell.json' >/dev/null && jq -e '.icon==true and .cleanup==false' '$T/W/.config/phosphor-os/dictate.json' >/dev/null"
+check "floating mic: never takes the keyboard, a layer over windows, only the round mic takes clicks" bash -c "grep -q 'keyboardFocus: WlrKeyboardFocus.None' '$R/os/omarchy/dictate/Service.qml' && grep -q 'WlrLayer.Top' '$R/os/omarchy/dictate/Service.qml' && grep -q 'mask: Region { item: face }' '$R/os/omarchy/dictate/Service.qml'"
 q W bash "$D" --undo
-check "undo: the state file goes" test ! -e "$T/W/.local/state/phosphor-os/dictate"
+check "undo: the state file, the mic plugin, its entry and its settings go" bash -c "[[ ! -e '$T/W/.local/state/phosphor-os/dictate' && ! -e '$h/plugins/phosphor-os.dictate' && ! -e '$T/W/.config/phosphor-os' ]] && ! grep -q phosphor-os.dictate '$h/shell.json'"
 
 # ------------------------------------------------------------------ an install made under the old name
 
@@ -459,7 +559,7 @@ check "Hyprland: old line swapped for the new one" bash -c "! grep -q retro-clau
 check "menu entry swapped" bash -c "[[ -f '$h/.local/share/applications/phosphor-os.desktop' && ! -e '$h/.local/share/applications/retro-claude.desktop' ]]"
 check "Phosphor Docs menu entry opens DOCS, and a Markdown file in it" bash -c "grep -qx 'Name=Phosphor Docs' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Exec=bash \".*/scripts/phosphor-os.sh\" --docs %f\$' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Keywords=docs;' '$h/.local/share/applications/phosphor-docs.desktop' && grep -qx 'MimeType=text/markdown;text/x-markdown;' '$h/.local/share/applications/phosphor-docs.desktop'"
 check "Markdown opens in Phosphor Docs; text/plain untouched" bash -c "grep -qx 'text/markdown=phosphor-docs.desktop' '$h/.config/mimeapps.list' && grep -qx 'text/x-markdown=phosphor-docs.desktop' '$h/.config/mimeapps.list' && grep -qx 'text/plain=nvim.desktop' '$h/.config/mimeapps.list'"
-check "screensaver plugin swapped" bash -c "[[ -d '$h/.config/omarchy/plugins/phosphor-os.screensaver' && ! -e '$h/.config/omarchy/plugins/retro-claude.screensaver' ]] && jq -e '.plugins|map(.id)==[\"phosphor-os.screensaver\",\"phosphor-os.notifications\"]' '$h/.config/omarchy/shell.json' >/dev/null"
+check "screensaver plugin swapped" bash -c "[[ -d '$h/.config/omarchy/plugins/phosphor-os.screensaver' && ! -e '$h/.config/omarchy/plugins/retro-claude.screensaver' ]] && jq -e '.plugins|map(.id)==[\"phosphor-os.screensaver\",\"phosphor-os.notifications\",\"phosphor-os.dictate\"]' '$h/.config/omarchy/shell.json' >/dev/null"
 check "run 1 ends with the setup's Done" grep -q '^== Done' "$T/M.run1"
 snap M phosphor-os retro-claude .npm >"$T/M.r1"
 mig --yes >"$T/M.run2" 2>&1; snap M phosphor-os retro-claude .npm >"$T/M.r2"
