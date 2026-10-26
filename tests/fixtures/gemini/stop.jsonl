@@ -1,0 +1,6 @@
+{"event":"init","conversation_id":"7937945e-4f71-45de-b307-9e16b976717a","init":{"model":"gemini-3.8-flash","cwd":"{{CWD}}","tools":["read_file","run_command","write_to_file"],"permission_mode":"request-review","expanded_commands":[{"name":"plan","type":"system"}]}}
+{"event":"step_update","step_update":{"conversation_id":"7937945e-4f71-45de-b307-9e16b976717a","step_index":0,"state":"DONE","step_type":"user_input"}}
+#wait
+{"event":"result","result":{"conversation_id":"7937945e-4f71-45de-b307-9e16b976717a","status":"ERROR","response":"","error":"interrupted","duration_seconds":0,"num_turns":1,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0}}}
+#stderr error: interrupted
+#exit 1

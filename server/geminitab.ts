@@ -93,11 +93,12 @@ const MODE_NAMES: Record<string, string> = { default: 'ASK FIRST', plan: 'PLAN O
 type Step = {
   step_index?: number;
   state?: string; // ACTIVE, DONE (others: a failed step)
-  step_type?: string; // user_input, system_message, agent_response, tool
+  step_type?: string; // user_input, system_message, agent_response, tool, subagent (a helper started by a tool step)
   text_delta?: string;
   thinking_delta?: string;
   tool_name?: string;
   tool_info?: { name?: string; parameters?: Record<string, unknown>; output?: string };
+  subagent_info?: { subagents?: { type_name?: string; initial_prompt?: string }[] };
   error?: string;
 };
 type Denied = { action?: string; display_name?: string };
@@ -105,12 +106,12 @@ type Result = { conversation_id?: string; status?: string; response?: string; er
 type AgyEvent = { event?: string; conversation_id?: string; init?: { model?: string }; step_update?: Step; result?: Result; error?: { message?: string }; message?: string };
 
 // agy's tool names, short like Claude's tool lines (others keep agy's name).
-const TOOLS: Record<string, string> = { read_file: 'Read', write_file: 'Write', edit_file: 'Edit', run_command: 'Run', list_dir: 'List', grep_search: 'Grep', find_by_name: 'Find', search_web: 'WebSearch', read_url: 'WebFetch', generate_image: 'Picture' };
+const TOOLS: Record<string, string> = { read_file: 'Read', write_file: 'Write', edit_file: 'Edit', run_command: 'Run', list_dir: 'List', grep_search: 'Grep', find_by_name: 'Find', search_web: 'WebSearch', read_url: 'WebFetch', invoke_subagent: 'Agent', generate_image: 'Picture' };
 const EDITS = new Set(['write_file', 'edit_file']);
 
-// A tool step's one-line detail: its command, path, search or address.
+// A tool step's one-line detail: its command, path, search, address or helper.
 function detailOf(p: Record<string, unknown>): string {
-  const pick = ['CommandLine', 'Path', 'AbsolutePath', 'TargetFile', 'DirectoryPath', 'SearchPath', 'Query', 'Pattern', 'Url', 'Prompt'].map((k) => p[k]).find((v) => typeof v === 'string');
+  const pick = ['CommandLine', 'Path', 'AbsolutePath', 'TargetFile', 'DirectoryPath', 'SearchPath', 'Query', 'Pattern', 'Url', 'Prompt', 'Role'].map((k) => p[k]).find((v) => typeof v === 'string');
   const s = (typeof pick === 'string' ? pick : Object.keys(p).length ? JSON.stringify(p) : '').replace(/\s+/g, ' ').trim();
   return s.length > 160 ? s.slice(0, 159) + '…' : s;
 }
@@ -353,7 +354,7 @@ export class GeminiChat {
       else if (s.thinking_delta) this.host.activity('Thinking');
       return;
     }
-    if (s.step_type !== 'tool') return;
+    if (s.step_type !== 'tool' && s.step_type !== 'subagent') return;
     const name = s.tool_name ?? s.tool_info?.name ?? 'tool';
     const p = s.tool_info?.parameters ?? {};
     const path = typeof p.Path === 'string' ? p.Path : '';
@@ -366,14 +367,16 @@ export class GeminiChat {
       const stats = this.host.state.stats;
       stats.toolCalls++;
       if (EDITS.has(name) && path && !notes && !stats.filesChanged.includes(path)) stats.filesChanged.push(path);
-      if (name === 'generate_image') run.picture = true;
+      // Pictures: the picture tool, or (seen 2026-10-25) a helper of type "image-generator" that saves into this
+      // conversation's folder.
+      if (/image/i.test(`${name} ${p.TypeName ?? ''}`)) run.picture = true;
       const detail = notes ? `${basename(path)} (Gemini's notes)` : detailOf(p);
       this.push({ id, kind: 'tool', name: label, detail });
       this.host.patch('stats');
       this.host.activity(`${label}: ${detail.slice(0, 80)}`);
     }
     if (s.state === 'ACTIVE') return;
-    const out = s.tool_info?.output ?? '';
+    const out = s.tool_info?.output ?? s.subagent_info?.subagents?.map((a) => a.initial_prompt).filter(Boolean).join('\n\n') ?? ''; // a helper: its task
     let body = typeof p.CommandLine === 'string' ? [p.CommandLine, out].filter(Boolean).join('\n\n') : out;
     if (notes && /\.md$/i.test(path)) {
       try {
