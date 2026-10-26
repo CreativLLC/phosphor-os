@@ -3,7 +3,7 @@
 // a temp folder, nothing is written to data/.
 //   npx tsx tests/delegate.ts
 
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DelegateCount } from '../shared/protocol.ts';
@@ -56,6 +56,20 @@ symlinkSync(join(root, 'a.txt'), join(root, 'link-in.txt'));
   check('room: the first file is cut to fit, the next left out', cut.files.length === 1 && cut.files[0].cut && cut.files[0].text.length === 1000 && cut.files[0].size === 5000 && /no room left/.test(cut.problems.join()), JSON.stringify({ ...cut, files: cut.files.map((f) => ({ ...f, text: f.text.length })) }));
   const many = read(Array.from({ length: CAPS.files + 2 }, () => 'a.txt'));
   check(`at most ${CAPS.files} files per job`, many.files.length === CAPS.files && /2 more files/.test(many.problems.join()));
+  // A file this user may not read: left out, the others still go (it threw, and the whole job failed).
+  writeFileSync(join(root, 'locked.txt'), 'locked\n');
+  chmodSync(join(root, 'locked.txt'), 0o000);
+  if (process.getuid?.() !== 0) {
+    const locked = (() => {
+      try {
+        return read(['locked.txt', 'a.txt']);
+      } catch (e) {
+        return String(e);
+      }
+    })();
+    check('an unreadable file: left out, the next one read', typeof locked !== 'string' && locked.files.map((f) => f.path).join() === 'a.txt' && /locked\.txt \(could not be read\)/.test(locked.problems.join()), JSON.stringify(locked));
+  }
+  chmodSync(join(root, 'locked.txt'), 0o600);
 }
 
 // ---------------------------------------------------------------- queue

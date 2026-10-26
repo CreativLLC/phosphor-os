@@ -64,16 +64,24 @@ export function readJobFiles(paths: string[], cwd: string, roots: string[], room
     }
     if (!inside(p)) problems.push(`${raw} (outside this chat's folders)`);
     else if (SECRET.test(abs) || SECRET.test(p)) problems.push(`${raw} (looks like a secret file)`);
-    else if (!statSync(p).isFile()) problems.push(`${raw} (not a file)`);
+    else if (!statSync(p, { throwIfNoEntry: false })?.isFile()) problems.push(`${raw} (not a file)`);
     else if (left <= 0) problems.push(`${raw} (no room left in this job: ask about it in another one)`);
     else {
-      const size = statSync(p).size;
-      const buf = Buffer.alloc(Math.min(size, CAPS.fileBytes, left * 4));
-      const fd = openSync(p, 'r');
+      // A file this user may not read, or one that changes meanwhile, is left out; the other files still go.
+      let size: number;
+      let buf: Buffer;
       try {
-        readSync(fd, buf, 0, buf.length, 0);
-      } finally {
-        closeSync(fd);
+        size = statSync(p).size;
+        buf = Buffer.alloc(Math.min(size, CAPS.fileBytes, left * 4));
+        const fd = openSync(p, 'r');
+        try {
+          buf = buf.subarray(0, readSync(fd, buf, 0, buf.length, 0));
+        } finally {
+          closeSync(fd);
+        }
+      } catch {
+        problems.push(`${raw} (could not be read)`);
+        continue;
       }
       const text = buf.toString('utf8');
       const bad = (text.match(/�/g)?.length ?? 0) > text.length / 100;
