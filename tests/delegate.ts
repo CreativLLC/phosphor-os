@@ -173,6 +173,8 @@ const no = async () => false;
   const down = await pickLocal(setup, server({ down: true }).f, no);
   check('router not answering: DOWN', !down.ok && down.why === 'DOWN');
   check('nothing set up: DOWN', !(await pickLocal(undefined, server({}).f, no)).ok);
+  const loading = await pickLocal(setup, server({ rows: {} }).f, no, () => true);
+  check('a model on its own server loading or answering (relay): BUSY', !loading.ok && loading.why === 'BUSY' && /loading or answering/.test(loading.text), JSON.stringify(loading));
 }
 
 // ---------------------------------------------------------------- the stream
@@ -198,6 +200,7 @@ const base = { url: 'http://relay.test', key: 'k', model: 'qwen', system: 's', p
 {
   let sent: Record<string, unknown> = {};
   let auth = '';
+  let noSwap = '';
   const phases: string[] = [];
   const r = await runLocal({
     ...base,
@@ -205,12 +208,14 @@ const base = { url: 'http://relay.test', key: 'k', model: 'qwen', system: 's', p
     fetch: (async (_u: URL, init?: RequestInit) => {
       sent = JSON.parse(String(init?.body));
       auth = new Headers(init?.headers).get('authorization') ?? '';
+      noSwap = new Headers(init?.headers).get('x-phosphor-no-swap') ?? '';
       return sse(answer('The log shows three errors.'), 7);
     }) as typeof fetch,
   });
   check('answer text from the text pieces, thinking left out', r.text === 'The log shows three errors.', JSON.stringify(r));
   check("the model's own token counts", r.inTokens === 1200 && r.outTokens === 80 && !r.cut);
   check('phases: reading, thinking, writing', phases.join() === 'reading,thinking,writing', phases.join());
+  check('request: no swap asked of the relay', noSwap === '1');
   check('request: streamed, no thinking, the cap, the key', sent.stream === true && (sent.chat_template_kwargs as { enable_thinking?: boolean })?.enable_thinking === false && sent.max_tokens === 900 && sent.model === 'qwen' && auth === 'Bearer k', JSON.stringify(sent));
   const cut = await runLocal({ ...base, fetch: (async () => sse(answer('<think>inline</think>Short.', { stop: 'max_tokens' }))) as typeof fetch });
   check('hit the length limit: marked; inline thinking taken out', cut.cut && cut.text === 'Short.', JSON.stringify(cut));
@@ -319,6 +324,8 @@ const ask = async (d: Deps, args: Record<string, unknown>, extra: unknown = {}) 
   check('ask_local: the time limit counts from the call, the queue wait too', late.error && /TOO SLOW/.test(late.text) && took < 850, `${took} ms: ${late.text}`);
   const empty = await ask(deps({ rows: {}, answer: () => sse(answer(' ')) }), { task: 'x' });
   check('ask_local: an empty answer: FAILED', empty.error && /empty answer/.test(empty.text));
+  const refused = await ask(deps({ rows: {}, answer: () => json({ type: 'error', error: { type: 'overloaded_error', message: 'gemma has the GPU' } }, 409) }), { task: 'x' });
+  check('ask_local: the relay refuses a swap (409): BUSY', refused.error && /^LOCAL MODEL BUSY: gemma has the GPU/.test(refused.text), refused.text);
   check('ask_local: failures are counted as failed', counts.at(-1)?.failed === 1);
   // The guidance and the tool text: exact words are Grep's, "none" proves nothing, paths not pasted text, no counts.
   const desc = (askLocalTool(chat, deps({})) as unknown as { description: string }).description;

@@ -1,7 +1,7 @@
 // Local model relay: one model on the GPU at a time. Fake servers (a fetch stub), nothing real is started or called.
 //   npx tsx tests/localrelay.ts
 
-import { IMAGE_NOTE, makeRoom, NO_VISION, withoutImages } from '../server/localrelay.ts';
+import { IMAGE_NOTE, makeRoom, NO_VISION, swapNeeded, withoutImages } from '../server/localrelay.ts';
 
 let fail = 0;
 const check = (what: string, cond: boolean, detail = '') => {
@@ -141,6 +141,17 @@ function world(o: { router: Record<string, string>; ownUp: boolean; ownLoaded: b
   check('no vision: no pictures gives null', withoutImages({ messages: [{ role: 'user', content: 'hi' }] }) === null);
   check('no vision: Strata error matches', NO_VISION.test('this server was started without the vision encoder (run setup again and choose \'vision\'), so it cannot read images'));
   check('no vision: llama.cpp error matches', NO_VISION.test('{"error":{"message":"image input is not supported - hint: if this is unexpected, you may need to provide the mmproj"}}'));
+}
+
+// NO_SWAP (ask_local): only the model that holds the card; anything else is a reason (409), and nothing is unloaded.
+{
+  const idle = world({ router: { qwen: 'loaded', gemma: 'unloaded' }, ownUp: true, ownLoaded: false });
+  check('no swap: the loaded router model runs', (await swapNeeded(m, 'qwen', idle.f)) === '');
+  check('no swap: another router model would push it out: the reason', (await swapNeeded(m, 'gemma', idle.f)) === 'qwen has the GPU');
+  check('no swap: a model on its own server: the reason', /own server/.test(await swapNeeded(m, 'big', idle.f)));
+  const strata = world({ router: { qwen: 'sleeping' }, ownUp: true, ownLoaded: true });
+  check('no swap: the own server holds the card: the reason', /own server has the GPU/.test(await swapNeeded(m, 'qwen', strata.f)));
+  check('no swap: nothing unloaded or started', ![...idle.calls, ...strata.calls].some((c) => c.startsWith('POST')) && !idle.started.length && !strata.started.length, [...idle.calls, ...strata.calls].join(' | '));
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');

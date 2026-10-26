@@ -6,7 +6,7 @@ import type { DelegateCount, Effort, RouterResponse } from '../shared/protocol.t
 import { clampEffort } from '../shared/router.ts';
 import { DATA_DIR, localModel } from './config.ts';
 import { painter } from './imagegen.ts';
-import { LOCAL_RELAY_PORT } from './localrelay.ts';
+import { LOCAL_RELAY_PORT, NO_SWAP, ownBusy } from './localrelay.ts';
 
 // ROUTER (owner's ask 2026-10-25, docs/ROUTER-PLAN.md): the cloud chat stays the orchestrator and hands work to
 // cheaper workers. ask_local: one job for the local model; the server reads the files itself, so their text never
@@ -172,10 +172,12 @@ type ModelRow = { id?: string; status?: { value?: string } };
 // The model a local job runs on: the router model that holds the card now (loaded, loading, or sleeping after its
 // idle time; waking it is quick), else the first router model in PHOSPHOR_LOCAL_MODELS. Never a model on its own
 // server (Strata): asking for one swaps servers. BUSY when the image engine or such a server holds the card, since a
-// router model would push it out.
-export async function pickLocal(m: Local | undefined, f: Fetch = fetch, imageBusy: () => Promise<boolean> = () => painter?.holdsGpu() ?? Promise.resolve(false)): Promise<Pick> {
+// router model would push it out, also while such a server loads or answers for another chat (its /health may not say
+// loaded yet). The relay checks again in its switch line (NO_SWAP), so a switch that starts meanwhile is no swap either.
+export async function pickLocal(m: Local | undefined, f: Fetch = fetch, imageBusy: () => Promise<boolean> = () => painter?.holdsGpu() ?? Promise.resolve(false), ownServerBusy: () => boolean = ownBusy): Promise<Pick> {
   if (!m) return { ok: false, why: 'DOWN', text: 'no local model is set up' };
   if (await imageBusy()) return { ok: false, why: 'BUSY', text: 'the image model has the GPU' };
+  if (ownServerBusy()) return { ok: false, why: 'BUSY', text: 'a model on its own server is loading or answering' };
   for (const [name, url] of Object.entries(m.urls)) {
     const h = await f(new URL('/health', url), { signal: AbortSignal.timeout(2000) })
       .then((r) => (r.ok ? (r.json() as Promise<{ loaded?: boolean }>) : undefined))
@@ -238,7 +240,7 @@ export async function runLocal(o: {
     o.phase?.('reading');
     const r = await (o.fetch ?? fetch)(new URL('/v1/messages', o.url), {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${o.key}` },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${o.key}`, [NO_SWAP]: '1' }, // the model that holds the card, or BUSY
       body: JSON.stringify({
         model: o.model,
         max_tokens: o.maxTokens,
@@ -259,6 +261,7 @@ export async function runLocal(o: {
       } catch {
         /* not JSON: the text itself */
       }
+      if (r.status === 409) throw new Busy(msg || 'another model has the GPU'); // the relay's NO_SWAP answer
       throw new Error(`the local model refused (${r.status}${msg ? `: ${msg}` : ''})`);
     }
     const decoder = new TextDecoder();
