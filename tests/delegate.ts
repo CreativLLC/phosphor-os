@@ -252,6 +252,9 @@ const base = { url: 'http://relay.test', key: 'k', model: 'qwen', system: 's', p
   const back = new Ledger(file);
   check('saved and read back', JSON.stringify(back.forChat('chat1')) === JSON.stringify(l.forChat('chat1')) && back.status(false).total.calls === 5 && back.status(false).since === 1000);
   check('a chat with no jobs: none', back.forChat('nobody') === undefined);
+  // chatX read big.log above, before any job: handing it off later keeps nothing off; a file it did not read does.
+  const before = l.job('chatX', { ok: true, ms: 1, worker: 'Qwen', files: [{ real, chars: 4000 }, { real: join(root, 'sub', 'c.md'), chars: 800 }], answerChars: 0 });
+  check('a file the chat read before the job: not counted as kept off', before.keptOff === tokensOf(800), JSON.stringify(before));
 }
 
 // ---------------------------------------------------------------- ask_local end to end

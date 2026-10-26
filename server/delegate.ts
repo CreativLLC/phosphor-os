@@ -321,10 +321,12 @@ const KEEP_CHATS = 300;
 
 // What the local model did, per chat and in total, saved in data/router.json. keptOff: Claude tokens of file text the
 // server read for the model and Claude never saw, minus the answers Claude read back. Each file counts once per chat,
-// and comes off again when Claude reads it itself (Read), since then it saw it after all.
+// and comes off again when Claude reads it itself (Read), since then it saw it after all; a file it read before the job
+// does not count.
 export class Ledger {
   private d: Saved;
   private timer?: ReturnType<typeof setTimeout>;
+  private seen = new Map<string, Set<string>>(); // chat -> real paths it read itself (since the server started; not saved)
 
   constructor(
     private file: string,
@@ -366,7 +368,7 @@ export class Ledger {
     if (j.ok) {
       let fresh = 0;
       for (const f of j.files ?? []) {
-        if (f.real in c.files) continue;
+        if (f.real in c.files || this.seen.get(chat)?.has(f.real)) continue;
         c.files[f.real] = tokensOf(f.chars);
         fresh += c.files[f.real];
       }
@@ -380,15 +382,18 @@ export class Ledger {
 
   // Claude (or one of its helpers) read a file itself: what was counted for it as kept off comes back off.
   sawFile(chat: string, path: string): DelegateCount | undefined {
-    const c = this.d.chats[chat];
-    if (!c) return undefined;
     let real = path;
     try {
       real = realpathSync(path);
     } catch {
       /* gone: the path as given */
     }
-    const n = c.files[real];
+    let seen = this.seen.get(chat);
+    if (!seen) this.seen.set(chat, (seen = new Set()));
+    seen.add(real);
+    const c = this.d.chats[chat];
+    const n = c?.files[real];
+    if (!c || !n) return undefined;
     if (!n) return undefined;
     c.files[real] = 0;
     const back = Math.min(n, c.keptOff);
