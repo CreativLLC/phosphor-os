@@ -80,6 +80,7 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 - Notifications that wait in a bar counter until you dismiss them
 - Clock popup with a calendar and your events, and night light with warmth and a schedule
 - The app's screensaver (flight over a grid, sleeping crew, big clock) as the whole computer's screensaver
+- Dictate anywhere: a floating mic and `Ctrl + Space` put your words into any app (see below)
 
 **Just ask Claude to change anything.** The agent runs on your PC and can edit this desktop. The rule: every OS
 change goes into the pack, so it can be undone (see [CONTRIBUTING.md](CONTRIBUTING.md)).
@@ -184,9 +185,26 @@ Dictation on Windows: `scripts\setup-voice.ps1`.
 4. On the phone, open `https://<pc>.<tailnet>.ts.net` (`tailscale serve status` shows the exact address) and log in.
 5. Browser menu > Add to Home Screen.
 
+**Phone keyboard:** a phone keyboard that takes a custom OpenAI-style server (Dictate Keyboard on Android) can use the
+PC's speech engine: SETTINGS > VOICE > PHONE KEYBOARD has the address, the key and the steps. Free, no word limit.
+
 **Never use `tailscale funnel`.** Funnel puts the app on the public internet, and this app can run commands on your
 PC. The server listens on `127.0.0.1` only; `tailscale serve` is the only way in, and it reaches only devices on your
 own tailnet. More: [SECURITY.md](SECURITY.md).
+
+## Dictate anywhere
+
+Talk into any app on the PC, free and with no word limit: the speech engine runs on your PC (the same one as the app's
+DICTATE).
+
+- **Floating mic** (desktop flavor): click it, talk, click again. The words go in where the cursor is, in the window
+  that has the keyboard (with Omarchy's focus-follows-mouse, the window the pointer last passed over). Drag it
+  anywhere; right click: CLEAN UP on or off, HIDE THE MIC, OPEN PHOSPHOR-OS. SETTINGS > VOICE shows it again.
+- **`Ctrl + Space`** in any app: tap to start and tap again to stop, or hold it while you talk.
+- **CLEAN UP** tidies the words first (filler words, false starts); without it, or if it fails, they go in as said.
+- The words are pasted (terminals get `Ctrl + Shift + V`) and your clipboard comes back afterwards. Windows and Mac
+  (app flavor) have the same floating mic and `Ctrl + Alt + D`, not tested yet; the Mac needs Accessibility for
+  Phosphor-OS.
 
 ## Optional extras
 

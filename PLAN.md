@@ -256,6 +256,51 @@ This file is the build record: what exists and how it works. Install and use: `R
   the preview line says so. Each take's timings go to `data/voice-diag.log` (`POST /api/voice/diag`, one
   JSON line per take; rotates at 256 KB) to find slow starts.
 
+## Dictate anywhere and PHONE KEYBOARD, built 2026-10-26
+
+- **Why:** the owner pays for Wispr Flow and runs out of words; the PC's own engine (Voice above) is free and local.
+- **Floating mic (Omarchy):** a shell plugin, `os/omarchy/dictate/Service.qml` (`phosphor-os.dictate`, docs/OMARCHY.md
+  row 6i): a layer-shell surface (layer top, no keyboard focus), so a click never takes the keyboard from the app you
+  type in. Click to start and stop, drag to move (kept in `~/.config/phosphor-os/dictate.json`: `icon`, `cleanup`,
+  `screen`, `x`, `y` as 0..1 of the screen's usable room), right click: CLEAN UP, HIDE THE MIC, OPEN PHOSPHOR-OS.
+  It runs the clock plugin's `phosphor-dictate toggle` and shows its state file (idle, recording, transcribing, done,
+  error + a short reason) and the level file. An app window was not used: Hyprland gives `no_focus` windows no clicks.
+- **The take (Linux):** `os/omarchy/clock/phosphor-dictate` (`press`/`release` for `Ctrl + Space`, `toggle` for clicks,
+  `open`) and `phosphor-dictate-live.mjs` (pw-record to `/ws/voice`). At the end the words are pasted by
+  `phosphor-dictate-paste.mjs`: `wl-copy --sensitive`, the paste key with Hyprland's `send_key_state` down and up
+  (`Ctrl + V`, terminals `Ctrl + Shift + V`), then the old clipboard back after 1 s if ours is still there; no window
+  with the keyboard: the words stay on the clipboard. Not Hyprland: `wtype` presses the key.
+- **Hold to talk:** the bind in `os/hyprland/phosphor-os.lua` sends `press`, then watches `hl.is_key_down("space")`
+  every 50 ms; held over 450 ms, letting go sends `release` (stops the take that press started). A tap leaves it
+  running until the next tap.
+- **CLEAN UP:** `shared/dictate.mjs` `cleanUp` calls `POST /api/voice/cleanup` `{ text, style: "plain" }` (built by
+  another branch); 404, an error, no answer in 15 s or an empty answer: the words as said.
+- **Shared rules:** `shared/dictate.mjs` (paste key per window class, phrase joining, final text, settings, CLEAN UP),
+  loaded by the take from the app's folder, by the desktop app and by the pages.
+- **SETTINGS > VOICE** (`web/src/voicesettings.ts`): FLOATING MIC SHOW/HIDE and CLEAN UP through the desktop app
+  (`shell/dictate.mjs`; Linux: the settings file, written in place so the plugin's watch keeps it), and PHONE KEYBOARD.
+- **Windows and Mac (untested):** `shell/dictate.mjs` opens a 64 x 64 window with `/dictate.html`
+  (`web/src/dictatefloat.ts`, the recorder of `voice.ts`): never focusable (Mac: a non-activating panel on every
+  Space), drag by pointer, native right-click menu, `Ctrl+Alt+D` from any app (also while hidden). Paste: Electron's
+  clipboard, then `paste.exe` (`shell/paste.cs`, built by `scripts/setup-shell.ps1`) or System Events `Command+V`
+  (the Mac asks for Accessibility; `setup-mac.sh` adds `NSAppleEventsUsageDescription`).
+- **PHONE KEYBOARD** (`server/voiceapi.ts`): `POST /v1/audio/transcriptions` (multipart `file`, `model` ignored,
+  `language`/`prompt` taken but unused, `response_format` json | text | verbose_json; WAV 16 kHz mono as it is, other
+  WAV and m4a/aac, ogg/opus, webm, mp3, flac, amr through ffmpeg from a temp file with the container named from its
+  bytes; 25 MB, 10 minutes) and `GET /v1/models` (also wakes the engine; Dictate asks before it records). Bearer
+  token `phos_...` in `data/voice-api.key` (600), made on first `GET /api/voice/keyboard`, `POST
+  /api/voice/keyboard/new` replaces it; more than 10 wrong keys a minute: 429 for a minute. OpenAI error shape.
+  Dictate Keyboard (checked in its source 2026-10-26): base URL with `/v1/`, Bearer key, multipart `file`
+  (`dictate_audio.wav`, 16 kHz mono; m4a above 16 MiB), `model`, `response_format=json`, optional `language`,
+  `prompt`; reads `{ text }`; lists `/models`.
+- **Tests:** `npx tsx tests/dictate-anywhere.ts` (75 checks, headless), `bash tests/pack.sh` (the take with stand-in
+  mic, server, clipboard and keys; the key logic in Lua with a stand-in `hl`; plugin install and undo). Also tested on
+  2026-10-26 in a nested Hyprland on a hidden workspace: the plugin rendered, clicks started and stopped real takes
+  (real speech from a recording through the real engine), the words were pasted into a foot terminal
+  (`Ctrl + Shift + V`) and a Chromium text box (`Ctrl + V`) with the keyboard focus never moving, the old clipboard
+  came back, CLEAN UP fell back on a 404, HIDE, OPEN and IPC `show` worked. Not tested: a real mouse drag (the nested
+  test can only send synthetic buttons, which Hyprland does not hold) and the real `Ctrl + Space` hold on hardware.
+
 ## Alerts (push), built 2026-10-12
 
 - **Use:** SETTINGS > ALERTS ON THIS DEVICE: ON (the browser asks once), TEST, ALERT WHEN (DONE, NEEDS YOU),
@@ -280,8 +325,6 @@ This file is the build record: what exists and how it works. Install and use: `R
 - DOCS connected to other services (Google Tasks, Google Drive, Nextcloud over WebDAV).
 - STATION health beyond UP: CPU, disks, containers, SMART, backups.
 - Crew XP: agents earn XP and level up (decoration only; Claude never sees it).
-- Phone keyboard dictation everywhere on Android: an OpenAI-style `POST /v1/audio/transcriptions` with a token, for
-  keyboards like Dictate Keyboard (github.com/DevEmperor/DictateKeyboard) that take a custom server.
 
 ## MCP servers, connectors and the "/" menu
 
@@ -360,6 +403,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | Month view (opened from the TODAY heading) | `GET /api/calendar` (`calendarRange` in `server/calendar.ts`), `web/src/calendar.ts`, `calendar.css`, `calfmt.ts` (shared text helpers, EDIT / + NEW links), `demoMonth` in `demo.ts`; Google Calendar links (EDIT, + NEW): `server/gcal.ts` (pure, tested) |
 | Files UI | `files.ts`, `files.css` |
 | Voice | `server/voice.ts`, `server/voice-worker.mjs`, `web/src/voice.ts`, `voice.css`, `scripts/setup-voice.ps1` |
+| Dictate anywhere + PHONE KEYBOARD | `shared/dictate.mjs`, `os/omarchy/dictate/` (floating mic), `os/omarchy/clock/phosphor-dictate*` (the take, paste), `os/hyprland/phosphor-os.lua` (`Ctrl + Space`), `shell/dictate.mjs`, `shell/paste.cs`, `web/dictate.html`, `web/src/dictatefloat.ts`, `web/src/voicesettings.ts` (SETTINGS > VOICE), `server/voiceapi.ts` (`/v1/*`), `tests/dictate-anywhere.ts` |
 | Desktop app | `shell/main.mjs`, `shell/web.mjs`, `shell/preload.cjs`, `scripts/setup-shell.ps1` |
 | Websites (page) | `web/src/programs.ts`, `browser.ts`, `sitebox.ts`, `browser.css`, `shellapi.ts` |
 | Plan usage meter | `server/usage.ts` (`GET /api/usage`, experimental SDK usage call, cached), `web/src/usage.ts`, `usage.css` |
