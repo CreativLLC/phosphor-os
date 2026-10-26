@@ -169,7 +169,7 @@ function newProject(dialog: HTMLDialogElement): void {
   const input = el('input', 'project-name');
   input.placeholder = 'Project name, for example "YT: Claude video"';
   input.maxLength = 60;
-  const first = firstMessage(dialog, 'project lead chat');
+  const first = firstMessage(dialog, 'lead chat');
   const create = async () => {
     const name = input.value.trim();
     if (!name) return input.focus();

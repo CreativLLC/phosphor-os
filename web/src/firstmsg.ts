@@ -16,7 +16,7 @@ export type FirstMessage = {
 export function firstMessage(dialog: HTMLDialogElement, where: string): FirstMessage {
   const box = el('textarea');
   box.rows = 3;
-  box.placeholder = `Type or dictate. It waits in the message box of the new ${where}: nothing is sent until you press SEND.`;
+  box.placeholder = `Type or dictate. Nothing is sent: it waits in the new ${where}'s message box.`;
   const dictate = button('DICTATE', () => {});
   const clean = button('CLEAN UP', () => {});
   const tools = el('div', 'first-msg-tools');
