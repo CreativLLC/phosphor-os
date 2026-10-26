@@ -29,8 +29,9 @@ export const DELEGATE_HELP = `\n\nThis PC has a free local model, reached with t
 // ---------------------------------------------------------------- files
 
 export const CAPS = { files: 20, fileBytes: 4 << 20, totalChars: 240_000 };
-// Never handed to a model: keys, logins, password stores (a .env example is fine).
-const SECRET = /(^|[\\/])(\.env(?!\.(example|sample|template)$)(\.[^\\/]*)?|\.netrc|\.npmrc|\.pypirc|\.git-credentials|id_(rsa|dsa|ecdsa|ed25519)[^\\/]*|[^\\/]*\.(pem|key|p12|pfx|kdbx|keystore|jks))$|(^|[\\/])\.(ssh|gnupg|aws|docker)[\\/]/i;
+// Never handed to a model: keys, logins, password stores (a .env example is fine), and any file with a private key in it.
+const SECRET = /(^|[\\/])([^\\/]*\.env(?!\.(example|sample|template)$)(\.[^\\/]*)?|\.envrc|\.netrc|\.npmrc|\.pypirc|\.pgpass|\.htpasswd|\.git-credentials|\.?credentials\.json|id_(rsa|dsa|ecdsa|ed25519)[^\\/]*|[^\\/]*\.(pem|key|p12|pfx|kdbx|keystore|jks))$|(^|[\\/])\.(ssh|gnupg|aws|docker|kube)[\\/]/i;
+const PRIVATE_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----/;
 const CHARS_PER_TOKEN = 4; // Claude tokens, estimated (plain text runs 3.5 to 4.5)
 export const tokensOf = (chars: number): number => Math.ceil(chars / CHARS_PER_TOKEN);
 
@@ -87,6 +88,10 @@ export function readJobFiles(paths: string[], cwd: string, roots: string[], room
       const bad = (text.match(/�/g)?.length ?? 0) > text.length / 100;
       if (buf.includes(0) || bad) {
         problems.push(`${raw} (not a text file)`);
+        continue;
+      }
+      if (PRIVATE_KEY.test(text)) {
+        problems.push(`${raw} (looks like a secret file)`);
         continue;
       }
       const cut = text.length > left || buf.length < size;
