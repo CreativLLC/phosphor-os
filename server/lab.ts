@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { LAB_EFFORTS, LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabEffort, type LabNewTest, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../shared/lab.ts';
+import { LAB_EFFORTS, LAB_MAX_MODELS, LAB_TIME_LIMITS, promptLibrary, type LabEffort, type LabModel, type LabNewTest, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../shared/lab.ts';
 import { buildPage, buildState, JUNK, LAB_DIR, labModels, listFiles, liveOf, markStopped, pickPage, queueRun, readJson, stopRuns, writeJson } from './labrun.ts';
 
 // Model Lab (docs/MODEL-LAB.md): tests and results as plain folders, the /api/lab/* routes, and the file viewer.
@@ -21,6 +21,10 @@ type Found = { dir: string; archived: boolean };
 
 const ID = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]{1,70}$/;
 const DIR = /^[a-z0-9][a-z0-9._-]{0,90}$/;
+
+// What new runs need from the runner: the models there are, and the queue. tests/lab-library.ts swaps in fakes, so no
+// model ever starts there.
+export const runner = { models: labModels, queue: queueRun };
 
 function find(id: string): Found | null {
   if (!ID.test(id)) return null;
@@ -90,6 +94,26 @@ const slug = (s: string, max: number, dots = false) =>
 
 const titleFrom = (prompt: string) => prompt.trim().split('\n')[0].split(/\s+/).slice(0, 8).join(' ').replace(/[.,:;!?]+$/, '').slice(0, 80);
 
+// The picked models from the lab's list now (a page that is a while old may name one that has gone).
+function pick(ids: string[], available: LabModel[]): LabModel[] {
+  const picked = ids.map((id) => available.find((m) => m.id === id));
+  if (picked.some((m) => !m)) throw new Error('A picked model is not available now. Reload the list.');
+  return picked as LabModel[];
+}
+
+// One folder per picked model, each with a queued result.json. `used`: the folder names this test has already.
+function makeResults(dir: string, picked: LabModel[], used: Set<string>): { dir: string }[] {
+  return picked.map((m) => {
+    let rd = `${slug(m.id.slice(m.id.indexOf(':') + 1).split('/').pop()!, 60, true)}--${m.app}`;
+    for (let n = 2; used.has(rd) || existsSync(join(dir, rd)); n++) rd = `${rd.replace(/-\d+$/, '')}-${n}`;
+    used.add(rd);
+    mkdirSync(join(dir, rd, 'files'), { recursive: true });
+    const r: LabResult = { ...blank(rd, m.id), modelName: m.name, app: m.app, appName: m.appName, account: m.account };
+    writeJson(join(dir, rd, 'result.json'), { schema: SCHEMA, ...r });
+    return { dir: rd };
+  });
+}
+
 async function create(input: LabNewTest): Promise<string> {
   const prompt = String(input.prompt ?? '').trim();
   if (!prompt) throw new Error('The prompt is empty.');
@@ -98,9 +122,7 @@ async function create(input: LabNewTest): Promise<string> {
   if (!ids.length || ids.length > LAB_MAX_MODELS) throw new Error(`Pick 1 to ${LAB_MAX_MODELS} models.`);
   const limit = LAB_TIME_LIMITS.includes(Number(input.timeLimitMin)) ? Number(input.timeLimitMin) : 30;
   const effort: LabEffort = LAB_EFFORTS.includes(input.effort as LabEffort) ? (input.effort as LabEffort) : 'default';
-  const { models } = await labModels();
-  const picked = ids.map((id) => models.find((m) => m.id === id));
-  if (picked.some((m) => !m)) throw new Error('A picked model is not available now. Reload the list.');
+  const picked = pick(ids, (await runner.models()).models);
   const title = String(input.title ?? '').trim().slice(0, 120) || titleFrom(prompt);
   const at = Date.now();
   const d = new Date(at);
@@ -110,21 +132,33 @@ async function create(input: LabNewTest): Promise<string> {
   for (let n = 2; find(id) || existsSync(join(TESTS, id.slice(0, 4), id)); n++) id = `${base}-${n}`;
   const dir = join(TESTS, id.slice(0, 4), id);
   mkdirSync(dir, { recursive: true });
-  const used = new Set<string>();
-  const results = picked.map((m) => {
-    let rd = `${slug(m!.id.slice(m!.id.indexOf(':') + 1).split('/').pop()!, 60, true)}--${m!.app}`;
-    for (let n = 2; used.has(rd); n++) rd = `${rd.replace(/-\d+$/, '')}-${n}`;
-    used.add(rd);
-    mkdirSync(join(dir, rd, 'files'), { recursive: true });
-    const r: LabResult = { ...blank(rd, m!.id), modelName: m!.name, app: m!.app, appName: m!.appName, account: m!.account };
-    writeJson(join(dir, rd, 'result.json'), { schema: SCHEMA, ...r });
-    return { dir: rd };
-  });
+  const results = makeResults(dir, picked, new Set());
   writeFileSync(join(dir, 'prompt.md'), prompt + '\n');
   const stored: Stored = { schema: SCHEMA, id, title, prompt, at, blind: !!input.blind, revealed: false, timeLimitMin: limit, effort, key: randomBytes(18).toString('base64url'), results };
   writeJson(join(dir, 'test.json'), stored);
-  for (const r of results) queueRun({ testDir: dir, dir: r.dir, prompt, timeLimitMin: limit, effort });
+  for (const r of results) runner.queue({ testDir: dir, dir: r.dir, prompt, timeLimitMin: limit, effort });
   return id;
+}
+
+// + MODELS: more models on the same prompt, with the test's own effort and time limit. Their results come last, so a
+// blind test gives them the next letters. test.json is read and written back with nothing awaited in between (the
+// PATCH route does the same), and writeJson swaps the file whole: a half-written test.json is never seen.
+async function addModels(f: Found, ids: unknown): Promise<string[]> {
+  const want = [...new Set(Array.isArray(ids) ? ids.map(String) : [])];
+  if (!want.length) throw new Error('Pick at least one model.');
+  const picked = pick(want, (await runner.models()).models);
+  const file = join(f.dir, 'test.json');
+  const t = readJson<Stored>(file);
+  if (!t) throw new Error('test.json is missing.');
+  const have = new Set(t.results.map(({ dir }) => readJson<LabResult>(join(f.dir, dir, 'result.json'))?.model));
+  const twice = picked.filter((m) => have.has(m.id));
+  if (twice.length) throw new Error(`Already in this test: ${twice.map((m) => m.name).join(', ')}.`);
+  if (t.results.length + picked.length > LAB_MAX_MODELS) throw new Error(`A test holds ${LAB_MAX_MODELS} models at most (this one has ${t.results.length}).`);
+  const added = makeResults(f.dir, picked, new Set(t.results.map(({ dir }) => dir)));
+  t.results.push(...added);
+  writeJson(file, t);
+  for (const r of added) runner.queue({ testDir: f.dir, dir: r.dir, prompt: t.prompt, timeLimitMin: t.timeLimitMin, effort: t.effort ?? 'default' });
+  return added.map(({ dir }) => dir);
 }
 
 function patchTest(f: Found, body: Record<string, unknown>): void {
@@ -266,6 +300,7 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
     if (parts[0] === 'models' && m === 'GET') return json(res, await labModels());
     if (parts[0] === 'storage' && m === 'GET') return json(res, await storage());
     if (parts[0] === 'junk' && m === 'POST') return json(res, { removed: removeJunk(all().map((t) => t.dir)) });
+    if (parts[0] === 'prompts' && m === 'GET') return json(res, { prompts: promptLibrary(all().map((f) => readJson<Stored>(join(f.dir, 'test.json'))).filter((t) => t !== null)) });
     if (parts[0] !== 'tests') return json(res, { error: 'not found' }, 404);
     if (parts.length === 1) {
       if (m === 'GET') {
@@ -295,6 +330,7 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
       if (parts[2] === 'archive' || parts[2] === 'restore') return (move(f, parts[2] === 'archive'), json(res, { ok: true }));
       if (parts[2] === 'stop') return (stopRuns(f.dir), json(res, { ok: true }));
       if (parts[2] === 'junk') return json(res, { removed: removeJunk([f.dir]) });
+      if (parts[2] === 'models') return json(res, { added: await addModels(f, (await body(req)).models) });
     }
     if (parts[2] === 'results' && parts[3]) {
       if (parts.length === 4 && m === 'PATCH') return (patchResult(f, parts[3], await body(req)), json(res, { ok: true }));

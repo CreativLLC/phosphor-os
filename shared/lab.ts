@@ -10,7 +10,8 @@ export const LAB_TIME_LIMITS = [5, 10, 30, 60];
 // lacks the asked level gets the nearest one it has (server/labrun.ts nearestEffort). 'default' = the app decides.
 export type LabEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export const LAB_EFFORTS: LabEffort[] = ['default', 'low', 'medium', 'high', 'xhigh', 'max'];
-export const LAB_MAX_MODELS = 12;
+export const LAB_MAX_MODELS = 12; // in one test, + MODELS included
+export const LAB_LETTERS = 'ABCDEFGHIJKLMNOP'; // blind mode names the results MODEL A, B, ... in the order of the test's results
 
 export interface LabModel {
   id: string; // "<app>:<model id in that app>", e.g. "opencode:opencode-go/kimi-k3.1-pro"
@@ -86,6 +87,30 @@ export interface LabNewTest {
   timeLimitMin: number;
   blind: boolean;
   effort?: LabEffort;
+}
+
+// A prompt used before, for the LIBRARY in NEW TEST: one per distinct prompt text.
+export interface LabPrompt {
+  title: string; // of the newest test that used it
+  prompt: string;
+  tests: number; // how many tests used exactly this text, archived ones too
+  at: number; // when the newest one started
+}
+
+// The prompts of all tests (HISTORY and ARCHIVE), newest first, one entry per distinct text.
+export function promptLibrary(tests: { title: string; prompt: string; at: number }[]): LabPrompt[] {
+  const byText = new Map<string, LabPrompt>();
+  for (const t of tests) {
+    const text = t.prompt.trim();
+    if (!text) continue;
+    const p = byText.get(text);
+    if (!p) byText.set(text, { title: t.title, prompt: text, tests: 1, at: t.at });
+    else {
+      p.tests++;
+      if (t.at > p.at) [p.title, p.at] = [t.title, t.at];
+    }
+  }
+  return [...byText.values()].sort((a, b) => b.at - a.at);
 }
 
 export interface LabStorage {
