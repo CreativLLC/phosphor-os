@@ -293,6 +293,8 @@ try {
   const fresh = res.json().token as string;
   check('NEW TOKEN: a new one; the old one stops working', res.status === 200 && fresh !== info.token && (await upload(info.token)).status === 401 && (await upload(fresh)).status === 200);
   check('NEW TOKEN without JSON: refused (415)', (await call('/api/voice/keyboard/new', { method: 'POST', body: Buffer.from('x') })).status === 415);
+  for (let i = 0; i < 12; i++) await call('/v1/models');
+  check('requests with no key (a web page can send those) never lock the phone out', (await upload(fresh)).status === 200);
   for (let i = 0; i < 12; i++) await upload('phos_wrong');
   check('more than 10 wrong keys in a minute: everyone waits (429)', (await upload(fresh)).status === 429);
   clock += 61_000;

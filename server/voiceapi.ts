@@ -20,7 +20,8 @@ import { transcribe, voiceInstalled, voiceQueueFull, warmVoice, wavPcm } from '.
 //   GET  /v1/models                the model list (the keyboard's model picker). It also wakes the engine: keyboards
 //                                  ask for it just before they record.
 // Auth: Authorization: Bearer <token>. One token, made on first use and kept in data/voice-api.key (only this user can
-// read it); never logged. More than 10 wrong tokens in a minute: everyone waits a minute (429).
+// read it); never logged. More than 10 wrong tokens in a minute: everyone waits a minute (429). A request with no token
+// does not count: any web page can make a browser on this PC send those, but never one with a token.
 //   GET  /api/voice/keyboard       (login cookie) -> KeyboardInfo: the token (made now if there is none), the address
 //   POST /api/voice/keyboard/new   (login cookie) -> KeyboardInfo with a new token; the old one stops working
 
@@ -231,7 +232,7 @@ export async function handleVoiceApi(req: IncomingMessage, res: ServerResponse, 
     const now = deps.now();
     if (now < lockedUntil) throw new ApiError(429, 'Too many wrong keys. Wait a minute.', 'rate_limit_error');
     if (!(await tokenOk(req.headers.authorization, deps.tokenFile))) {
-      fails = [...fails.filter((t) => now - t < 60_000), now];
+      if (req.headers.authorization) fails = [...fails.filter((t) => now - t < 60_000), now];
       if (fails.length > BAD_TOKENS) {
         lockedUntil = now + 60_000;
         fails = [];
