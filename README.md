@@ -191,6 +191,8 @@ own tailnet. More: [SECURITY.md](SECURITY.md).
 ## Optional extras
 
 - Calendar in TODAY and the clock popup: [docs/CALENDAR.md](docs/CALENDAR.md)
+- Your Unraid server's health (array, disks, temperatures, parity, Docker, VMs, alerts) and a 24-hour uptime strip per
+  service on the STATION screen, read-only: [docs/STATION.md](docs/STATION.md)
 - Local models on your own GPU (AMD, about 27 GB of disk): [docs/LOCAL-MODEL.md](docs/LOCAL-MODEL.md). The easy way:
   Phosphor-OS is made for Claude Code, so let your agent do it. In a chat, ask: "Set up a local model for
   Phosphor-OS. Follow docs/LOCAL-MODEL.md." It checks your GPU, runs the setup with you and asks before anything

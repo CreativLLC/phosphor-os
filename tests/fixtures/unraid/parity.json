@@ -1,0 +1,9 @@
+{
+  "data": {
+    "parityHistory": [
+      { "date": "2026-09-01T04:20:00.000Z", "duration": 53010, "speed": "88.1", "status": "COMPLETED", "errors": 0 },
+      { "date": "2026-10-01T04:20:00.000Z", "duration": 52440, "speed": "89.2", "status": "COMPLETED", "errors": 0 },
+      { "date": "2026-08-01T04:20:00.000Z", "duration": 61200, "speed": "76.0", "status": "COMPLETED", "errors": 3 }
+    ]
+  }
+}

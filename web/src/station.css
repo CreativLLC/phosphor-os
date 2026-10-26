@@ -143,6 +143,32 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* 24-hour uptime strip under the sparkline (drawDay in station.ts). Same colors as the sparkline. */
+.st-day {
+  display: block;
+  width: 100%;
+  height: 10px;
+  margin-top: 1px;
+  color: var(--ph-dim);
+  --st-slow: var(--ph);
+  --st-down: var(--ph-bright);
+}
+
+.st-uptime {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+/* How many things need a look, on the STATION button (services down, Unraid alerts). */
+.st-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
 /* Status line and buttons share a row when they fit. */
 .st-foot {
   display: flex;
@@ -318,6 +344,19 @@ html[data-theme='lcars'] .st-spark {
   --st-slow: var(--lc-butter);
   --st-down: var(--lc-red);
   border-bottom: 2px solid var(--lc-off);
+}
+
+html[data-theme='lcars'] .st-day {
+  color: var(--lc-lavender);
+  --st-slow: var(--lc-butter);
+  --st-down: var(--lc-red);
+}
+
+html[data-theme='lcars'] .st-badge {
+  border-radius: 999px;
+  background: var(--lc-red);
+  color: var(--lc-ink);
+  font-weight: 700;
 }
 
 html[data-theme='lcars'] .st-discover {

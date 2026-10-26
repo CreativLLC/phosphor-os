@@ -1,0 +1,1 @@
+{ "data": { "upsDevices": [ { "name": "Back-UPS", "model": "APC Back-UPS ES 700", "status": "Online", "battery": { "chargeLevel": 100, "estimatedRuntime": 2400 }, "power": { "loadPercentage": 18 } } ] } }

@@ -1,0 +1,471 @@
+/* STATION > Unraid (unraid.ts): the server's health panel above the service tiles. Theme tokens only; the LCARS block
+   at the end gives it that theme's colors. Nothing animates. */
+
+.un {
+  margin-bottom: 14px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-raise);
+}
+
+.un.un-setup {
+  border-style: dashed;
+  background: none;
+}
+
+/* The last answer, while Unraid does not answer now. */
+.un.un-stale .un-grid,
+.un.un-stale .un-alerts {
+  opacity: 0.55;
+}
+
+.un-dim {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.un-line {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+/* ---------- head ---------- */
+
+.un-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.un-lamp {
+  flex: 0 0 auto;
+  min-width: 6ch;
+  padding: 0 4px;
+  text-align: center;
+  letter-spacing: 1px;
+  border: 1px solid var(--ph-dim);
+  color: var(--ph-dim);
+}
+
+.un-lamp.un-up {
+  border-color: var(--ph);
+  background: rgb(var(--ph-rgb) / 0.16);
+  color: var(--ph-bright);
+}
+
+/* Down or stopped: inverse, like a FAIL tag in the chat. */
+.un-lamp.un-down {
+  border-color: var(--ph-bright);
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.un-host {
+  color: var(--ph-bright);
+  font-size: var(--fs-lg);
+  letter-spacing: 1px;
+}
+
+.un-meta {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.un-banner {
+  margin: 8px 0 0;
+  padding: 2px 8px;
+  border-left: 3px solid var(--ph-bright);
+  color: var(--ph-bright);
+  font-size: var(--fs-sm);
+}
+
+.un-banner strong {
+  font-weight: normal;
+  letter-spacing: 1px;
+}
+
+/* ---------- alert rows ---------- */
+
+.un-alerts {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0 12px;
+}
+
+.un-clear {
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.un-arow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.un-tag {
+  flex: 0 0 auto;
+  min-width: 6ch;
+  padding: 0 4px;
+  text-align: center;
+  letter-spacing: 1px;
+  border: 1px solid var(--ph);
+  color: var(--ph);
+}
+
+.un-lv-alert .un-tag {
+  border-color: var(--ph-bright);
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.un-lv-warn .un-tag {
+  border-style: dashed;
+}
+
+.un-atext {
+  color: var(--ph-bright);
+  letter-spacing: 1px;
+}
+
+.un-adetail {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- cards ---------- */
+
+.un-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 12px 22px;
+}
+
+.un-card {
+  min-width: 0;
+}
+
+.un-wide {
+  grid-column: 1 / -1;
+}
+
+.un-gaps {
+  margin: 10px 0 0;
+}
+
+/* "CPU [bar] 26%" with a detail line under the bar. */
+.un-g {
+  display: grid;
+  grid-template-columns: 7ch minmax(0, 1fr) 5ch;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  margin-bottom: 6px;
+}
+
+.un-g .use-bar,
+.un-disk-use .use-bar {
+  margin: 0;
+}
+
+.un-k {
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.un-v {
+  text-align: right;
+  color: var(--ph-bright);
+  white-space: nowrap;
+}
+
+.un-d {
+  grid-column: 2 / 4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.un-g.un-hot .seg.on {
+  background: var(--ph-bright);
+}
+
+.un-g.un-hot .un-k {
+  padding: 0 4px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+/* ---------- disks ---------- */
+
+.un-disks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
+  gap: 8px 12px;
+}
+
+.un-disk {
+  min-width: 0;
+  padding: 4px 8px 5px;
+  border: 1px solid var(--line);
+}
+
+.un-disk.un-warm {
+  border-color: var(--ph);
+}
+
+.un-disk.un-bad {
+  border-color: var(--ph-bright);
+  box-shadow: inset 4px 0 0 var(--ph-bright);
+}
+
+.un-disk-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.un-disk-name {
+  color: var(--ph-bright);
+  letter-spacing: 1px;
+}
+
+.un-disk-dev {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.un-disk-temp {
+  flex: 0 0 auto;
+  color: var(--ph);
+  white-space: nowrap;
+}
+
+.un-disk-temp.un-hot {
+  padding: 0 4px;
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+.un-disk-use {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  margin: 2px 0;
+}
+
+.un-disk-use .un-v {
+  color: var(--ph);
+  font-size: var(--fs-sm);
+}
+
+.un-disk-notes {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.5px;
+}
+
+/* ---------- Docker and VM chips ---------- */
+
+.un-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.un-chip {
+  padding: 0 6px;
+  border: 1px solid var(--ph-dim);
+  color: var(--ph);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.5px;
+}
+
+/* Stopped, but not something to worry about. */
+.un-chip.un-off {
+  border-style: dashed;
+  color: var(--ph-dim);
+}
+
+.un-chip.un-paused {
+  border-style: dashed;
+  border-color: var(--ph);
+}
+
+/* Stopped and it should not be (an alert row says so too). */
+.un-chip.un-badchip {
+  border-color: var(--ph-bright);
+  background: var(--ph-bright);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+/* ---------- backups ---------- */
+
+.un-kv {
+  margin-bottom: 6px;
+}
+
+.un-kv .un-k {
+  display: block;
+  font-size: var(--fs-sm);
+}
+
+.un-kvv {
+  color: var(--ph-bright);
+}
+
+.un-kv.un-hot .un-kvv {
+  background: var(--ph-bright);
+  color: var(--bg);
+  padding: 0 4px;
+  text-shadow: none;
+}
+
+.un-kv.un-dim .un-kvv {
+  color: var(--ph-dim);
+}
+
+/* ---------- not connected ---------- */
+
+.un-note p {
+  margin: 6px 0;
+}
+
+.un-steps {
+  margin: 6px 0;
+  padding-left: 3ch;
+  color: var(--ph);
+}
+
+.un-steps li {
+  margin-bottom: 3px;
+}
+
+.un-problem {
+  padding: 2px 8px;
+  border-left: 3px solid var(--ph-bright);
+  color: var(--ph-bright);
+}
+
+.un-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---------- LCARS ---------- */
+
+html[data-theme='lcars'] .un {
+  border: 0;
+  border-left: 10px solid var(--lc-lilac);
+  border-radius: 18px 0 0 18px;
+  background: var(--lc-deep);
+}
+
+html[data-theme='lcars'] .un.un-setup {
+  border-left-color: var(--lc-orange);
+}
+
+html[data-theme='lcars'] .un-lamp {
+  border: 0;
+  border-radius: 999px;
+  padding: 1px 8px 0;
+  background: var(--lc-off);
+  color: var(--ph-dim);
+  font-weight: 700;
+}
+
+html[data-theme='lcars'] .un-lamp.un-up {
+  background: var(--accent);
+  color: var(--lc-ink);
+}
+
+html[data-theme='lcars'] .un-lamp.un-down {
+  background: var(--lc-red);
+  color: var(--lc-ink);
+}
+
+html[data-theme='lcars'] .un-host {
+  color: var(--lc-peach);
+  font-weight: 700;
+}
+
+html[data-theme='lcars'] .un-tag {
+  border: 0;
+  border-radius: 999px;
+  padding: 1px 8px 0;
+  background: var(--lc-butter);
+  color: var(--lc-ink);
+  font-weight: 700;
+}
+
+html[data-theme='lcars'] .un-lv-alert .un-tag {
+  background: var(--lc-red);
+}
+
+html[data-theme='lcars'] .un-atext {
+  color: var(--lc-peach);
+}
+
+html[data-theme='lcars'] .un-disk {
+  border: 0;
+  border-left: 6px solid var(--lc-lavender);
+  border-radius: 12px 0 0 12px;
+  background: rgb(255 255 255 / 0.04);
+}
+
+html[data-theme='lcars'] .un-disk.un-warm {
+  border-left-color: var(--lc-butter);
+}
+
+html[data-theme='lcars'] .un-disk.un-bad {
+  border-left-color: var(--lc-red);
+  box-shadow: none;
+}
+
+html[data-theme='lcars'] .un-disk-temp.un-hot,
+html[data-theme='lcars'] .un-chip.un-badchip,
+html[data-theme='lcars'] .un-kv.un-hot .un-kvv,
+html[data-theme='lcars'] .un-g.un-hot .un-k {
+  background: var(--lc-red);
+  border-color: transparent;
+  color: var(--lc-ink);
+}
+
+html[data-theme='lcars'] .un-g.un-hot .seg.on {
+  background: var(--lc-red);
+}
+
+html[data-theme='lcars'] .un-chip {
+  border-radius: 999px;
+  padding: 0 9px;
+}
+
+html[data-theme='lcars'] .un-banner {
+  border-left-color: var(--lc-red);
+  color: #ffb3a8;
+}
+
+html[data-theme='lcars'] .un-problem {
+  border-left-color: var(--lc-red);
+  color: #ffb3a8;
+}

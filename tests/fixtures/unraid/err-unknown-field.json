@@ -1,0 +1,7 @@
+{
+  "errors": [
+    { "message": "Cannot query field \"isSpinning\" on type \"ArrayDisk\".", "extensions": { "code": "GRAPHQL_VALIDATION_FAILED" } },
+    { "message": "Cannot query field \"isSpinning\" on type \"ArrayDisk\".", "extensions": { "code": "GRAPHQL_VALIDATION_FAILED" } },
+    { "message": "Cannot query field \"warningsAndAlerts\" on type \"Notifications\".", "extensions": { "code": "GRAPHQL_VALIDATION_FAILED" } }
+  ]
+}

@@ -2,6 +2,7 @@ import './station.css';
 import {
   STATION_KINDS,
   kindLabel,
+  type StationDay,
   type StationDiscoverResponse,
   type StationEntry,
   type StationFound,
@@ -9,16 +10,22 @@ import {
   type StationSaveRequest,
   type StationState,
 } from '../../shared/station.ts';
+import type { UnraidResponse } from '../../shared/unraid.ts';
 import { open as openProgram, showTab, webState } from './browser.ts';
 import { addLauncherCommands } from './launcher.ts';
 import { shellApi } from './shellapi.ts';
+import { demoStation, demoUnraid } from './stationdemo.ts';
+import { store } from './store.ts';
 import { button, confirmBox, el, timeAgo, toast } from './ui.ts';
+import { mountUnraid, type UnraidPanel } from './unraid.ts';
 
 // STATION: the owner's self-hosted services (Nextcloud, Plex, the *arr apps, the server itself...) in one
 // screen: a lamp per service (UP / SLOW / DOWN), response time, last seen and a sparkline of recent checks;
 // OPEN, EDIT, REMOVE; DISCOVER looks for apps on one host of the owner's own network. A drawer like HISTORY.
 // Data: server/station.ts (data/station.json). Checks run on the server once a minute, and only while this
-// drawer is on screen somewhere: the drawer asks every POLL_MS; nothing is asked or drawn while it is closed.
+// drawer is on screen somewhere: the drawer asks every POLL_MS; nothing is asked or drawn while it is closed
+// (except the badge on the STATION button, from the list read on load and when the window comes back). Each tile
+// also has a 24-hour uptime strip. Above the tiles, the Unraid panel (unraid.ts) if the server is connected.
 // OPEN: in the desktop app inside the app (a saved site with the same address, else a WEB tab); elsewhere a
 // new browser tab. Desktop app only: SKIN puts the Retro look on that app's pages (shell/skins.mjs); this file
 // tells the shell which addresses get which skin, and the theme, whenever either changes.
@@ -30,7 +37,7 @@ const HOST_KEY = 'phosphor.station.host';
 
 const STATE_LABEL: Record<StationState, string> = { up: 'UP', slow: 'SLOW', down: 'DOWN', unknown: '----' };
 
-type Tile = { root: HTMLElement; lamp: HTMLElement; ms: HTMLElement; spark: HTMLCanvasElement; note: HTMLElement; meta: HTMLElement };
+type Tile = { root: HTMLElement; lamp: HTMLElement; ms: HTMLElement; spark: HTMLCanvasElement; day: HTMLCanvasElement; up: HTMLElement; note: HTMLElement; meta: HTMLElement };
 
 let drawer: HTMLElement;
 let openBtn: HTMLElement | null = null;
@@ -44,6 +51,9 @@ let discNote: HTMLElement;
 let checkBtn: HTMLButtonElement;
 
 let data: StationResponse | null = null;
+let unraid: UnraidPanel;
+let unraidData: UnraidResponse | null = null;
+let badge: HTMLElement | null = null;
 let error = '';
 let timer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;
@@ -73,11 +83,17 @@ export function mountStation(drawerEl: HTMLElement, btn: HTMLElement | null): vo
   disc = buildDiscover();
   disc.hidden = true;
   grid = el('div', 'st-grid');
+  unraid = mountUnraid();
   const body = el('div', 'st-body');
-  body.append(disc, grid);
+  body.append(disc, unraid.root, grid);
   drawer.replaceChildren(head, summary, body);
 
-  if (btn) btn.onclick = () => (drawer.hidden ? openStation() : closeStation());
+  if (btn) {
+    btn.onclick = () => (drawer.hidden ? openStation() : closeStation());
+    badge = el('span', 'st-badge');
+    badge.hidden = true;
+    btn.append(badge);
+  }
   // One drawer at a time.
   for (const id of ['btn-history', 'btn-mcp']) document.getElementById(id)?.addEventListener('click', closeStation);
   document.addEventListener('keydown', (e) => {
@@ -141,17 +157,50 @@ function sync(): void {
 async function poll(): Promise<void> {
   timer = undefined;
   inFlight = true;
-  await take(fetch('/api/station', { cache: 'no-store' }));
+  await load('');
   inFlight = false;
-  if (wanted()) timer = setTimeout(() => void poll(), data?.checking ? SOON_MS : POLL_MS);
+  if (wanted()) timer = setTimeout(() => void poll(), data?.checking || unraidData?.checking ? SOON_MS : POLL_MS);
 }
 
 async function peek(): Promise<void> {
   peekAt = Date.now();
-  await take(fetch('/api/station?peek=1', { cache: 'no-store' }));
+  await load('?peek=1');
+}
+
+// Demo mode (?demo=1) draws made-up services and a made-up Unraid and asks the server nothing.
+const isDemo = () => store.demo || new URLSearchParams(location.search).has('demo');
+
+// The services and the Unraid panel's data, together. ?peek=1 does not count as "STATION is on screen" for the checks.
+async function load(query: string): Promise<void> {
+  if (isDemo()) {
+    data = demoStation();
+    unraidData = demoUnraid();
+    error = '';
+    afterList();
+    render();
+    return;
+  }
+  await Promise.all([take(fetch(`/api/station${query}`, { cache: 'no-store' })), takeUnraid(fetch(`/api/station/unraid${query}`, { cache: 'no-store' }))]);
+}
+
+// The Unraid answer, if this server has one (an older one answers 404: no panel).
+async function takeUnraid(req: Promise<Response>): Promise<void> {
+  try {
+    const r = await req;
+    const j = (await r.json().catch(() => null)) as UnraidResponse | null;
+    if (j && typeof j.configured === 'boolean') unraidData = j;
+  } catch {
+    /* take() says the PC cannot be reached */
+  }
+  showBadge();
+  render();
 }
 
 async function post(path: string, body: unknown): Promise<boolean> {
+  if (isDemo()) {
+    toast('Demo mode: nothing is saved.');
+    return false;
+  }
   return take(fetch(`/api/station/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
 }
 
@@ -187,11 +236,24 @@ async function checkNow(): Promise<void> {
   checkBtn.textContent = 'CHECK';
 }
 
+// A number on the STATION button when something needs a look: services DOWN, Unraid alerts and warnings, or an
+// Unraid that does not answer. Drawn from what the page last read, also with the drawer closed.
+function showBadge(): void {
+  if (!badge) return;
+  const down = data?.services.filter((s) => s.status.state === 'down').length ?? 0;
+  const u = unraidData;
+  const n = down + (u?.configured ? u.alerts.length + (u.state === 'ok' || u.state === 'loading' ? 0 : 1) : 0);
+  badge.hidden = n === 0;
+  badge.textContent = String(n);
+  badge.title = n ? `${down ? `${down} service${down === 1 ? '' : 's'} down. ` : ''}${u?.configured && u.alerts.length ? `${u.alerts.length} Unraid alert${u.alerts.length === 1 ? '' : 's'}.` : ''}${u?.configured && u.state !== 'ok' && u.state !== 'loading' ? ' Unraid does not answer.' : ''}`.trim() : '';
+}
+
 // ---------------------------------------------------------------- skins and launcher
 
 let skinsSent = '';
 
 function afterList(): void {
+  showBadge();
   syncSkins();
   const list = data?.services ?? [];
   const cmds = list.map((s) => ({
@@ -277,14 +339,17 @@ function render(): void {
   if (error && !data) summary.textContent = error;
   else if (!list.length) summary.textContent = data ? 'Your self-hosted apps, checked once a minute while this is open.' : 'Loading…';
   else {
-    const parts = [`${list.length} SERVICE${list.length === 1 ? '' : 'S'}`, `${n('up')} UP`, n('slow') && `${n('slow')} SLOW`, n('down') && `${n('down')} DOWN`, data?.checking ? 'CHECKING…' : 'CHECKS EVERY MINUTE WHILE OPEN'];
+    const u = unraidData;
+    const unraidWord = !u?.configured ? '' : u.state !== 'ok' && u.state !== 'loading' ? 'UNRAID NOT ANSWERING' : u.alerts.length ? `UNRAID ${u.alerts.length} ALERT${u.alerts.length === 1 ? '' : 'S'}` : u.state === 'ok' ? 'UNRAID OK' : '';
+    const parts = [`${list.length} SERVICE${list.length === 1 ? '' : 'S'}`, `${n('up')} UP`, n('slow') && `${n('slow')} SLOW`, n('down') && `${n('down')} DOWN`, unraidWord, data?.checking ? 'CHECKING…' : 'CHECKS EVERY MINUTE WHILE OPEN'];
     summary.textContent = parts.filter(Boolean).join(' · ');
     if (error) summary.textContent += ` · ${error}`;
   }
-  summary.classList.toggle('st-alert', n('down') > 0);
+  summary.classList.toggle('st-alert', n('down') > 0 || !!unraidData?.alerts.some((a) => a.level === 'alert') || (!!unraidData?.configured && unraidData.state !== 'ok' && unraidData.state !== 'loading'));
+  unraid.set(unraidData);
 
   // Tiles are made again only when the list itself changes; status updates go in place (no lost clicks).
-  const key = JSON.stringify(list.map(({ status: _s, ...rest }) => rest));
+  const key = JSON.stringify(list.map(({ status: _s, day: _d, ...rest }) => rest));
   if (key !== gridKey) {
     gridKey = key;
     tiles.clear();
@@ -314,6 +379,9 @@ function tile(s: StationEntry): Tile {
   const meta = el('div', 'st-meta');
   const spark = el('canvas', 'st-spark');
   spark.setAttribute('aria-hidden', 'true');
+  const day = el('canvas', 'st-day');
+  day.setAttribute('aria-hidden', 'true');
+  const up = el('div', 'st-uptime');
   const note = el('div', 'st-note');
   const btns = el('div', 'st-btns');
   const open = button('OPEN', () => void openService(data?.services.find((x) => x.id === s.id) ?? s));
@@ -321,8 +389,8 @@ function tile(s: StationEntry): Tile {
   btns.append(open, button('EDIT', () => void editService(s)), button('REMOVE', () => void removeService(s)));
   const foot = el('div', 'st-foot');
   foot.append(note, btns);
-  root.append(top, meta, spark, foot);
-  const t = { root, lamp, ms, spark, note, meta };
+  root.append(top, meta, spark, day, up, foot);
+  const t = { root, lamp, ms, spark, day, up, note, meta };
   tiles.set(s.id, t);
   return t;
 }
@@ -345,6 +413,9 @@ function update(s: StationEntry): void {
   t.note.textContent = [st.note, seen, when].filter(Boolean).join(' · ');
   t.note.title = t.note.textContent;
   drawSpark(t.spark, s);
+  drawDay(t.day, s.day);
+  t.up.textContent = s.day.checks ? `24H ${s.day.upPct}% UP${s.day.avgMs !== null ? ` · AVERAGE ${s.day.avgMs} MS` : ''}` : '24H: NO CHECKS YET';
+  t.up.title = s.day.checks ? `${s.day.checks} check${s.day.checks === 1 ? '' : 's'} in the last 24 hours. Each block is 15 minutes; the newest is on the right.` : 'Checks run every 10 minutes, and every minute while STATION is open.';
 }
 
 // One bar per check, newest on the right: height = response time; DOWN = a full bar in the alert color.
@@ -381,6 +452,59 @@ function drawSpark(cv: HTMLCanvasElement, s: StationEntry): void {
     g.fillStyle = colors[c.state];
     g.fillRect(x, h - bh, bw, bh);
   });
+}
+
+// The last 24 hours, one block per 15 minutes, newest on the right: a low dim block = all answered, a taller brighter
+// one = slow, a full block with a bright top = some checks failed, a full bright block = all failed, a thin line = no
+// check then (server/stationhealth.ts).
+function drawDay(cv: HTMLCanvasElement, day: StationDay): void {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.round(cv.clientWidth * dpr);
+  const h = Math.round(cv.clientHeight * dpr);
+  if (!w || !h) return;
+  if (cv.width !== w || cv.height !== h) {
+    cv.width = w;
+    cv.height = h;
+  }
+  const g = cv.getContext('2d');
+  if (!g) return;
+  g.clearRect(0, 0, w, h);
+  const css = getComputedStyle(cv);
+  const dim = css.color;
+  const slow = css.getPropertyValue('--st-slow').trim() || dim;
+  const down = css.getPropertyValue('--st-down').trim() || dim;
+  const line = css.getPropertyValue('--line').trim() || dim;
+  const n = day.cells.length || 1;
+  const slot = w / n;
+  const gap = slot >= 3 * dpr ? Math.max(1, Math.round(dpr)) : 0;
+  const thin = Math.max(1, Math.round(dpr));
+  for (let i = 0; i < day.cells.length; i++) {
+    const x = Math.round(i * slot);
+    const bw = Math.max(1, Math.round((i + 1) * slot) - x - gap);
+    switch (day.cells[i]) {
+      case 'u': // answered: a low block, so that trouble stands out
+        g.fillStyle = dim;
+        g.fillRect(x, Math.floor(h * 0.4), bw, h);
+        break;
+      case 's':
+        g.fillStyle = slow;
+        g.fillRect(x, Math.floor(h * 0.2), bw, h);
+        break;
+      case 'p':
+        g.fillStyle = down;
+        g.fillRect(x, 0, bw, Math.ceil(h * 0.6));
+        g.fillStyle = dim;
+        g.fillRect(x, Math.ceil(h * 0.6), bw, h);
+        break;
+      case 'd':
+        g.fillStyle = down;
+        g.fillRect(x, 0, bw, h);
+        break;
+      default:
+        g.fillStyle = line;
+        g.fillRect(x, h - thin, bw, thin);
+    }
+  }
 }
 
 // ---------------------------------------------------------------- add, edit, remove
@@ -542,6 +666,7 @@ function toggleDiscover(show = disc.hidden): void {
 async function scan(): Promise<void> {
   const host = discInput.value.trim();
   if (!host) return discInput.focus();
+  if (isDemo()) return toast('Demo mode: nothing is scanned.');
   try {
     localStorage.setItem(HOST_KEY, host);
   } catch {
