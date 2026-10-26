@@ -285,6 +285,7 @@ This file is the build record: what exists and how it works. Install and use: `R
   woken (that takes about 17 s and the GPU holds one model at a time), a model on its own server (Strata) is never used, and the call
   goes to the router directly, not through the relay (the relay would unload other models to make room). 2. Claude Haiku through
   the Agent SDK, with the AUTO router's options (no tools, no settings, temp folder, nothing saved; up to 60 s).
+  `PHOSPHOR_CLEANUP_LOCAL=off` in `.env`: Haiku only.
 - **The check on every answer (shared/cleanup.ts):** not empty, not much longer than the text, not mostly dropped, no assistant
   opening ("Sure, here is..."), most words come from the text and most of the text's words are still there; for the local model also
   every longer sentence must still be there. An answer that fails counts like an error: the other model tries, and when both fail the

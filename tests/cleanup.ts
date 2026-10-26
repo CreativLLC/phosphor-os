@@ -20,7 +20,7 @@ import {
   type CleanupModel,
   type CleanupModels,
 } from '../shared/cleanup.ts';
-import { handleCleanup, readyLocal } from '../server/cleanup.ts';
+import { cleanupModels, handleCleanup, readyLocal } from '../server/cleanup.ts';
 
 let fail = 0;
 const check = (what: string, cond: boolean, detail = '') => {
@@ -146,6 +146,21 @@ check('local: nothing configured is not ready', (await readyLocal(null, router({
   check('local: an HTTP error is an error (the next model takes over)', await m.ask(args).then(() => false, () => true));
   const cut = (await readyLocal(cfg, router({ qwen: 'loaded' }, () => new Response(JSON.stringify({ content: [{ type: 'text', text: 'Add a' }], stop_reason: 'max_tokens' }))).f))!;
   check('local: an answer cut off at max_tokens is an error', await cut.ask(args).then(() => false, () => true));
+}
+
+{
+  // PHOSPHOR_CLEANUP_LOCAL=off: the local model is not asked at all (not even its status).
+  const real = globalThis.fetch;
+  let fetched = 0;
+  globalThis.fetch = (async () => {
+    fetched++;
+    throw new Error('no network in tests');
+  }) as typeof fetch;
+  process.env.PHOSPHOR_CLEANUP_LOCAL = 'off';
+  const m = await cleanupModels.local();
+  delete process.env.PHOSPHOR_CLEANUP_LOCAL;
+  globalThis.fetch = real;
+  check('PHOSPHOR_CLEANUP_LOCAL=off: no local model, nothing fetched', m === null && fetched === 0);
 }
 
 // ---- Sizes and timeouts ----

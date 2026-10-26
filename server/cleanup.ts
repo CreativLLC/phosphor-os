@@ -88,7 +88,11 @@ const askHaiku: Ask = async (a) => {
   }
 };
 
-export const cleanupModels: CleanupModels = { local: () => readyLocal(), haiku: { by: 'Haiku', ask: askHaiku } };
+// PHOSPHOR_CLEANUP_LOCAL=off: Haiku only (the local model's one slot stays free for local chats).
+export const cleanupModels: CleanupModels = {
+  local: async () => (process.env.PHOSPHOR_CLEANUP_LOCAL === 'off' ? null : readyLocal()),
+  haiku: { by: 'Haiku', ask: askHaiku },
+};
 
 function reply(res: ServerResponse, status: number, data: CleanupResponse): void {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(data));
