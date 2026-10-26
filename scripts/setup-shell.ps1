@@ -68,7 +68,8 @@ if ($Force -or -not (Test-Path $focusExe) -or (Get-Item $focusSrc).LastWriteTime
 # SYS panel helpers (our own source, same compiler): volume.exe reads and sets the PC volume; sysmon.exe reads
 # CPU, GPU, network and drive counters for server/system.ts. sysmon.cs uses the audio code in volume.cs.
 $volSrc = Join-Path $Project 'shell\volume.cs'
-foreach ($h in @(@{ Exe = 'volume.exe'; Src = @($volSrc); Main = @() }, @{ Exe = 'sysmon.exe'; Src = @((Join-Path $Project 'shell\sysmon.cs'), $volSrc); Main = @('/main:SysMon') })) {
+# paste.exe presses Ctrl+V for DICTATE in any app (the floating mic, shell/dictate.mjs).
+foreach ($h in @(@{ Exe = 'volume.exe'; Src = @($volSrc); Main = @() }, @{ Exe = 'sysmon.exe'; Src = @((Join-Path $Project 'shell\sysmon.cs'), $volSrc); Main = @('/main:SysMon') }, @{ Exe = 'paste.exe'; Src = @((Join-Path $Project 'shell\paste.cs')); Main = @() })) {
   $out = Join-Path $Root $h.Exe
   $newer = $h.Src | Where-Object { (Test-Path $out) -and (Get-Item $_).LastWriteTime -gt (Get-Item $out).LastWriteTime }
   if ($Force -or -not (Test-Path $out) -or $newer) {
