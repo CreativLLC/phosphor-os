@@ -18,6 +18,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons // Color alone would be QtQuick's own Color
 
 Scope {
   id: root
@@ -40,8 +41,8 @@ Scope {
 
   readonly property bool listening: take === "recording"
   readonly property bool working: take === "transcribing"
-  readonly property color fg: Color.foreground
-  readonly property color bg: Color.background
+  readonly property color fg: Commons.Color.foreground
+  readonly property color bg: Commons.Color.background
   readonly property color red: "#ff3b30" // the mic is on, in every theme (as in the bar's overlay)
   readonly property int disc: Style.space(34)
   readonly property int size: disc + Style.space(10) * 2 // room for the voice ring
@@ -77,8 +78,8 @@ Scope {
     left = clamp(isFinite(x) && settings.x !== undefined ? x : 1, 0, 1) * roomW
     top = clamp(isFinite(y) && settings.y !== undefined ? y : 0.85, 0, 1) * roomH
   }
-  onRoomWChanged: place()
-  onRoomHChanged: place()
+  onRoomWChanged: Qt.callLater(place)
+  onRoomHChanged: Qt.callLater(place)
 
   function save(patch) {
     var next = {}
@@ -119,10 +120,18 @@ Scope {
     if (!takeProc.running) takeProc.running = true
   }
 
-  function hideMic() {
-    save({ icon: false })
-    bubble = ""
-    Quickshell.execDetached(["notify-send", "-a", "DICTATE", "DICTATE", "The floating mic is hidden. Phosphor-OS shows it again: SETTINGS > VOICE > FLOATING MIC. Ctrl+Space still dictates."])
+  // A menu row. Here, not in the row: closing the menu destroys the row while its handler still runs.
+  function pick(id) {
+    if (id === "cleanup") {
+      save({ cleanup: !settings.cleanup })
+    } else if (id === "hide") {
+      save({ icon: false })
+      bubble = ""
+      Quickshell.execDetached(["notify-send", "-a", "DICTATE", "DICTATE", "The floating mic is hidden. Phosphor-OS shows it again: SETTINGS > VOICE > FLOATING MIC. Ctrl+Space still dictates."])
+    } else {
+      Quickshell.execDetached(["bash", script, "open"])
+      bubble = ""
+    }
   }
 
   Component.onCompleted: {
@@ -482,15 +491,7 @@ Scope {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: {
-                var id = row.modelData.id
-                if (id === "cleanup") root.save({ cleanup: !root.settings.cleanup })
-                else if (id === "hide") root.hideMic()
-                else {
-                  root.bubble = ""
-                  Quickshell.execDetached(["bash", root.script, "open"])
-                }
-              }
+              onClicked: root.pick(row.modelData.id)
             }
           }
         }

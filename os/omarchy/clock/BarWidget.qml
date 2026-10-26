@@ -22,6 +22,7 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons // Color alone would be QtQuick's own Color
 import qs.Ui
 
 BarWidget {
@@ -48,7 +49,7 @@ BarWidget {
   property string dictState: "idle"
   property string dictText: ""
   readonly property bool dictOn: dictState === "recording" || dictState === "transcribing"
-  readonly property color dictFg: root.bar ? root.bar.foreground : Color.foreground
+  readonly property color dictFg: root.bar ? root.bar.foreground : Commons.Color.foreground
   readonly property string dictFont: root.bar ? root.bar.fontFamily : Style.font.family
   // The bar's screen, read here: inside the window it would loop (its screen depends on whether it shows).
   readonly property var dictScreen: root.QsWindow.window ? root.QsWindow.window.screen : null
@@ -87,7 +88,7 @@ BarWidget {
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       anchors.bottomMargin: Style.space(67)
-      color: Util.alpha(Color.background, 0.95)
+      color: Util.alpha(Commons.Color.background, 0.95)
       border.color: root.dictFg
       border.width: Math.max(1, Style.space(2))
       radius: Style.cornerRadius

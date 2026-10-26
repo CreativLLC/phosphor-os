@@ -56,7 +56,12 @@ node_bin() {
 
 DIR=$(app_dir) || DIR=
 PORT=7337
-[[ -n $DIR ]] && { p=$(env_value PORT "$DIR/.env"); [[ $p =~ ^[0-9]+$ ]] && PORT=$p; }
+if [[ -n $DIR ]]; then # the server's port: PHOSPHOR_PORT in its .env (RETRO_PORT before the rename)
+  for key in PHOSPHOR_PORT RETRO_PORT PORT; do
+    p=$(env_value "$key" "$DIR/.env")
+    [[ $p =~ ^[0-9]+$ ]] && { PORT=$p; break; }
+  done
+fi
 URL="http://127.0.0.1:$PORT"
 
 login() {
@@ -65,18 +70,24 @@ login() {
   pw=$(env_value PHOSPHOR_PASSWORD "$DIR/.env")
   [[ -n $pw ]] || pw=$(env_value RETRO_PASSWORD "$DIR/.env")
   [[ -n $pw ]] || return 1
-  (umask 077; printf '%s' "$pw" | curl -s -o /dev/null -c "$JAR" --data-urlencode 'password@-' "$URL/login")
+  (umask 077; printf '%s' "$pw" | curl -s -o /dev/null -c "$JAR" --data-urlencode 'password@-' "$URL/login") || return 3
   grep -q rcs "$JAR" 2>/dev/null
 }
 
 # Wake the speech engine, logging in first when needed: 0 ok, 2 can't log in, 3 server down.
 warm() {
-  local code
-  [[ -s $JAR ]] || login || return 2
+  local code r
+  if [[ ! -s $JAR ]]; then
+    login
+    r=$?
+    ((r == 0)) || return $((r == 3 ? 3 : 2))
+  fi
   for _ in 1 2; do
     code=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X POST "$URL/api/voice/warm") || return 3
     [[ $code == 401 ]] || return 0
-    login || return 2
+    login
+    r=$?
+    ((r == 0)) || return $((r == 3 ? 3 : 2))
   done
   return 2
 }
