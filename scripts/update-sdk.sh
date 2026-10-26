@@ -49,6 +49,12 @@ npx tsc --noEmit -p . >> "$LOG" 2>&1 || fail "the type check failed"
 npm run test:router >> "$LOG" 2>&1 || fail "the router tests failed"
 log "installed $VERSION, checks passed"
 
+# Only the copy the unit runs may restart it: a test copy elsewhere once restarted the live server (2026-10-26).
+UNIT_DIR="$(systemctl --user show phosphor-os-server -p WorkingDirectory --value 2>/dev/null)"
+if [ "$RESTART" = 1 ] && [ -n "$UNIT_DIR" ] && [ "$UNIT_DIR" != "$ROOT" ]; then
+  log "restart skipped: phosphor-os-server runs $UNIT_DIR, not this copy"
+  exit 0
+fi
 if [ "$RESTART" = 1 ]; then
   # A timer outside this unit: the server cannot restart itself from inside (that would kill this script).
   systemd-run --user -q --on-active=5 systemctl --user restart phosphor-os-server >> "$LOG" 2>&1 \

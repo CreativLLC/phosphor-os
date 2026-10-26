@@ -48,6 +48,17 @@ function installed(): { version: string; claude: string | null } {
   return { version: String(p.version ?? ''), claude: typeof p.claudeCodeVersion === 'string' ? p.claudeCodeVersion : null };
 }
 
+// The night try belongs to the install the supervisor (scripts/serve.mjs) runs: its lock names our parent. A copy
+// started by hand (a test server in a worktree) skips it; on 2026-10-26 two such copies ran the update at 04:00
+// and the script restarted the live server twice.
+function supervised(): boolean {
+  try {
+    return (JSON.parse(readFileSync(join(DATA_DIR, 'serve.lock'), 'utf8')) as { pid?: unknown }).pid === process.ppid;
+  } catch {
+    return false;
+  }
+}
+
 const wantedRange = () => String((readPkg(join(ROOT, 'package.json')).dependencies as Record<string, string> | undefined)?.[PKG] ?? '');
 
 export function updateState(): SdkUpdate {
@@ -162,7 +173,7 @@ export function startUpdates(t: Tabs, send: (ev: ServerEvent) => void): void {
   // 04:00 local: update if one is waiting and nothing is busy; otherwise try again the next night.
   setInterval(() => {
     const now = new Date();
-    if (!found.pending || running || mem.failed === found.pending || !nightDue(now, mem.nightTried)) return;
+    if (!found.pending || running || mem.failed === found.pending || !nightDue(now, mem.nightTried) || !supervised()) return;
     mem.nightTried = dayKey(now);
     saveMemory();
     void start(false, 'night').then((r) => r.error && log(`night: skipped (${r.error})`));
