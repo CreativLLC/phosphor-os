@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "phosphor-os.dictate",
+  "name": "Phosphor-OS floating mic",
+  "version": "1.0.0",
+  "author": "Phosphor-OS",
+  "description": "DICTATE in any app with a click: a small floating mic on the desktop. Click, talk, click again: the words go in where the cursor is. Drag to move; right click for options.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}

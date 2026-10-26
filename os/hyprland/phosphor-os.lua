@@ -10,8 +10,8 @@
 --   Super + Alt + T  a plain terminal: the safety net, works even when Phosphor-OS does not
 --   Super + T        full size under the bar;  Super + Shift + T  floating on/off;  no window gaps
 --   Super + M        minimize (the taskbar button brings it back)
---   Ctrl + Space     DICTATE in any app: talk, press again, the words are typed at the cursor
---                    (in Phosphor-OS itself the key goes on to the app's own DICTATE)
+--   Ctrl + Space     DICTATE in any app: tap, talk, tap again; or hold it while you talk. The words go in at the
+--                    cursor (in Phosphor-OS itself the key goes on to the app's own DICTATE)
 -- Omarchy's own keys stay: Super + Space (Omarchy menu), Super + Return (terminal), Super + F (real full
 -- screen), Super + Shift + Space (bar on/off), Super + W (close a window; the desktop ignores it).
 
@@ -87,8 +87,22 @@ hl.bind("SUPER + M", hl.dsp.window.move({ workspace = "special:minimized", follo
 -- `shell toggle omarchy.clock` finds no omarchy.clock in the bar) and with Omarchy's own.
 hl.bind("SUPER + CTRL + ALT + D", hl.dsp.exec_cmd("omarchy-shell omarchy.clock toggle"), { description = "Calendar" })
 
--- Ctrl + Space: DICTATE anywhere (os/omarchy/clock/phosphor-dictate). Phosphor-OS has its own DICTATE on the same
--- key, with live text, so there the key is handed on to the app (down and up apart, like Omarchy's clipboard keys).
+-- Ctrl + Space: DICTATE anywhere (os/omarchy/clock/phosphor-dictate; the floating mic is os/omarchy/dictate). A tap
+-- starts a take and the next tap puts the words in; held longer than HOLD_MS it is push to talk: letting go puts them
+-- in. The key is watched with hl.is_key_down (Hyprland 0.56), not a release bind: that one misses when Ctrl comes up
+-- before Space. Without it (0.55) the key is tap only. Phosphor-OS has its own DICTATE on the same key, with live
+-- text, so there the key is handed on to the app (down and up apart, like Omarchy's clipboard keys).
+local HOLD_MS = 450
+local function watch_hold(held)
+  hl.timer(function()
+    if hl.is_key_down("space") then
+      watch_hold(held + 50)
+    elseif held >= HOLD_MS then
+      hl.dispatch(hl.dsp.exec_cmd(dictate .. " release"))
+    end
+  end, { timeout = 50, type = "oneshot" })
+end
+
 hl.bind("CTRL + SPACE", function()
   local w = hl.get_active_window()
   if w and w.class == "phosphor-os" then -- CLASS is a regex for rules; a Lua pattern reads "-" as a repeat
@@ -97,9 +111,12 @@ hl.bind("CTRL + SPACE", function()
       hl.dispatch(hl.dsp.send_key_state({ mods = "CTRL", key = "space", state = "up" }))
     end, { timeout = 50, type = "oneshot" })
   else
-    hl.dispatch(hl.dsp.exec_cmd(dictate .. " toggle"))
+    hl.dispatch(hl.dsp.exec_cmd(dictate .. " press"))
+    if hl.is_key_down then
+      watch_hold(0)
+    end
   end
-end, { description = "Dictate (any app)" })
+end, { description = "Dictate (any app): tap to start and stop, or hold to talk" })
 
 -- Safety net: no Omarchy launcher, no uwsm, just the first terminal that is installed.
 hl.bind(
