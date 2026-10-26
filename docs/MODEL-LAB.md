@@ -1,6 +1,6 @@
 # Model Lab: plan
 
-Status: built 2026-10-24 (first version). Runs Claude (Claude Code), GPT (Codex), every OpenCode Go model (opencode; Gemini, Grok and Kimi included), Gemini on the Google AI Pro plan (Antigravity, `agy`) and the local models, each in the box below. Not yet: OpenRouter, video mode extras, nightly backup. Live test with real models: `npx tsx tests/lab-live.ts` (private port and folder). Written 2026-10-23; the owner writes every prompt, the lab has no built-in tests.
+Status: built 2026-10-24 (first version); prompt LIBRARY and + MODELS added 2026-10-26. Runs Claude (Claude Code), GPT (Codex), every OpenCode Go model (opencode; Gemini, Grok and Kimi included), Gemini on the Google AI Pro plan (Antigravity, `agy`) and the local models, each in the box below. Not yet: OpenRouter, video mode extras, nightly backup. Live test with real models: `npx tsx tests/lab-live.ts` (private port and folder). Written 2026-10-23; the owner writes every prompt, the lab has no built-in tests.
 
 Goal: write a prompt, tick the models to send it to, and run it on all of them at once. See every result in one place, rate each one, and keep each result in its own folder. Archive or delete old ones. Look back at all of them years later. Also good for recording videos.
 
@@ -100,8 +100,8 @@ Rules that keep it readable a year from now:
 
 A new program, **LAB**: next to DOCS on the program bar, and in the launcher on the phone.
 
-1. **NEW TEST**: a big prompt box, an optional title, the model list with ticks (it remembers your last picks), a time limit, and START. All ticked models start at the same time (local models one at a time).
-2. **TEST**: one card for each model, side by side. While it runs: state, timer, tokens. When done: the reply, the files, and a live preview if the model made a web page (a locked frame, section 6). OPEN BIG, FILES, LOG. Under each card: 1 to 5 stars and a note. A table view shows the same results as rows: model, app, stars, time, tokens, cost.
+1. **NEW TEST**: a big prompt box, an optional title, the model list with ticks (it remembers your last picks), a time limit, and START. All ticked models start at the same time (local models one at a time). **LIBRARY** (next to DICTATE) opens every prompt used before, from HISTORY and ARCHIVE, newest first, one row per distinct prompt text: the title (of the newest test that used it), the start of the prompt, how many tests used it and the date of the last. A filter box searches titles and prompts. A pick fills the title and the prompt (both stay editable; if the box already has other text, it asks before replacing it). The models, effort and time limit stay as they are: pick them and START as usual, which makes a new test. This is how the same prompt is tested again later on new models.
+2. **TEST**: one card for each model, side by side. While it runs: state, timer, tokens. When done: the reply, the files, and a live preview if the model made a web page (a locked frame, section 6). OPEN BIG, FILES, LOG. Under each card: 1 to 5 stars and a note. A table view shows the same results as rows: model, app, stars, time, tokens, cost. **+ MODELS** (top right) runs the exact same prompt on more models inside the same test, with the test's own effort and time limit. It opens the same model picker as NEW TEST, without the models already in the test (a model that is already in is refused), and RUN. The new results join the same cards, the ranking and the table, and come last; a blind test that has not been revealed gives them the next letters (MODEL D, E, ...), so REVEAL waits until they have stars too. One test holds 12 models at most. It works on an archived test too (it stays in the archive).
 3. **HISTORY**: the big table of every test ever, newest first. Search the prompt text. Filter by date, model, app, stars. Charts: average stars per model, stars against cost, time per model. A row opens its test.
 4. **ARCHIVE**: archived tests, kept but hidden from HISTORY unless you ask. On any test: ARCHIVE, DELETE (it shows the size first), and REMOVE JUNK (deletes `node_modules` and build caches, keeps the reply, the files, the log and the stars).
 
@@ -122,13 +122,14 @@ A page a model made is unknown code. It must not reach the Phosphor API, which c
 
 | File | Does |
 |---|---|
-| `server/lab.ts` | tests and results on disk; `/api/lab/*`; the `/lab/v/` file server |
+| `server/lab.ts` | tests and results on disk; `/api/lab/*` (`GET prompts` is the library, `POST tests/<id>/models` is + MODELS); the `/lab/v/` file server; `runner` (the model list and the queue, which tests swap for fakes) |
 | `server/labrun.ts` | starts one result: makes the box, starts the app, reads its JSON stream, writes `result.json` and `reply.md`, stops it at the time limit |
 | `server/labapps.ts` | one small adapter for each app: its model list, its command line, and how to read the reply, tokens, cost and the end from its JSON |
-| `shared/lab.ts` | types for test and result (wire format) |
-| `web/src/lab.ts`, `web/src/lab.css` | the LAB screens |
+| `shared/lab.ts` | types for test and result (wire format); `promptLibrary` (the distinct-prompt list) |
+| `web/src/lab.ts`, `web/src/lab.css` | the LAB screens; `web/src/labdemo.ts` is their data in demo mode (`/?demo=1`) |
 | `scripts/lab-box.sh` | the bubblewrap command, so it can be tested alone |
 | `tests/lab.ts` | adapters on saved JSON samples, reading old schema files, the box hides HOME |
+| `tests/lab-queue.ts`, `tests/lab-library.ts` | the queue rules and effort levels; the prompt list and + MODELS (duplicates refused, blind letters, test.json kept) with a fake model list and queue, no model started |
 
 ## 8. Steps
 
@@ -138,7 +139,7 @@ A page a model made is unknown code. It must not reach the Phosphor API, which c
 | 1 | Runner, folders, NEW TEST, TEST with cards, stars and notes. | M |
 | 2 | HISTORY table, search and charts; ARCHIVE, DELETE, REMOVE JUNK; previews that need a server. | M |
 | 3 | Video mode: blind reveal, race timers, recording-safe. | S |
-| 4 | Later: OpenRouter models, "same app" tests, re-run a test on new models, a nightly backup copy of `data/lab/` without junk. | S each |
+| 4 | Later: OpenRouter models, "same app" tests, a nightly backup copy of `data/lab/` without junk. Done 2026-10-26: re-run a test on new models (the prompt LIBRARY and + MODELS, section 5). | S each |
 
 Effort: S is 1 to 2 days, M is 3 to 5 days (helper time, untested estimates).
 
@@ -150,3 +151,4 @@ Effort: S is 1 to 2 days, M is 3 to 5 days (helper time, untested estimates).
 - Many apps at once use a lot of memory. Each result has its own memory-limited scope (section 3).
 - A server restart stops running tests. On start, unfinished results are marked STOPPED, and RE-RUN starts them again.
 - Terms: each plan is used only in its maker's own app. No plan sign-in moves into another app.
+- + MODELS on a blind test: the new results take the next letters, so a model added alone is known by its letter (you just picked it).

@@ -57,6 +57,7 @@ const file = (t: LabTestFull) => join(t.folder, 'test.json');
 const stored = (t: LabTestFull) => JSON.parse(readFileSync(file(t), 'utf8')) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const setAt = (t: LabTestFull, at: number) => writeFileSync(file(t), JSON.stringify({ ...stored(t), at }));
 
+check((await api('models')).data.models.length === FAKE.length, 'GET /models gives the fake list (the page and the routes see the same models)');
 check((await api('prompts')).data.prompts.length === 0, 'GET /prompts: an empty lab has none');
 
 // ------------------------------------------------------------ the library from the folders (HISTORY and ARCHIVE)

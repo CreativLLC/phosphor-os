@@ -297,7 +297,7 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
   const m = req.method ?? 'GET';
   const parts = url.pathname.split('/').slice(3).map(decodeURIComponent); // after /api/lab/
   try {
-    if (parts[0] === 'models' && m === 'GET') return json(res, await labModels());
+    if (parts[0] === 'models' && m === 'GET') return json(res, await runner.models());
     if (parts[0] === 'storage' && m === 'GET') return json(res, await storage());
     if (parts[0] === 'junk' && m === 'POST') return json(res, { removed: removeJunk(all().map((t) => t.dir)) });
     if (parts[0] === 'prompts' && m === 'GET') return json(res, { prompts: promptLibrary(all().map((f) => readJson<Stored>(join(f.dir, 'test.json'))).filter((t) => t !== null)) });
