@@ -13,11 +13,11 @@ const calls = (n: number) => `${n} ${n === 1 ? 'CALL' : 'CALLS'}`;
 const tip = (c: DelegateCount, who: string) =>
   `${who}: ${c.calls} jobs for the local model${c.failed ? ` (${c.failed} failed: Claude did those itself)` : ''}. About ${kTok(c.keptOff)} tokens of file text it read that Claude never saw (about 4 characters a token, less the answers Claude read; a file Claude reads itself later comes off again). The local model read ${kTok(c.inTokens)} and wrote ${kTok(c.outTokens)} tokens.`;
 
-// Who runs a chat, from its model: Claude families by name, a picture model, anything else is a local model.
+// Who runs a chat, from its model: Claude families by name, Gemini, a picture model, anything else is a local model.
 function worker(t: TabState): string {
   if (t.info.auto) return 'AUTO';
   const m = t.info.model.toLowerCase();
-  return m.match(/haiku|sonnet|opus|fable|mythos|image/)?.[0].toUpperCase() ?? (m === 'default' ? 'SONNET' : m ? 'LOCAL' : 'SAME');
+  return m.match(/haiku|sonnet|opus|fable|mythos|image|gemini/)?.[0].toUpperCase() ?? (m === 'default' ? 'SONNET' : m ? 'LOCAL' : 'SAME');
 }
 
 function row(label: string): { row: HTMLElement; val: HTMLElement } {
