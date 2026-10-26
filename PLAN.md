@@ -268,6 +268,8 @@ This file is the build record: what exists and how it works. Install and use: `R
   preview line shows them), and when the take ends they are cleaned in one piece and go in at the cursor (the button says
   CLEANING...). If the clean-up fails, or Esc skips it, the words go in as spoken: nothing said is lost. UNDO brings the spoken
   words back. LAB's prompt does not use it (it is the owner's exact test prompt). `useDictation(button, box, clean)` in `voice.ts`.
+  SEND and the NEW CHAT / NEW PROJECT dialogs wait for the clean-up (Esc skips it); a cancelled take (Esc, a dialog taking
+  the mic) puts its held words in as spoken; a take whose chat was left meanwhile goes into that chat's message box.
 - **First message of a new chat or project:** the NEW CHAT and NEW PROJECT dialogs have an optional FIRST MESSAGE box with DICTATE
   and CLEAN UP (`web/src/firstmsg.ts`, the same voice code). It is not sent: when the chat opens, the text waits in its message box
   (a saved draft); you read it and press SEND. In the NEW CHAT dialog the dialog itself holds the focus when it opens, so a phone's
