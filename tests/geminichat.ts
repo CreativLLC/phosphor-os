@@ -215,6 +215,8 @@ else {
   check('closing saves the chat with its name', saved.title === tab.state.meta.title && saved.model === 'gemini:gemini-4-argon');
   const listed = savedGeminiChats().find((c) => c.conversation === conv);
   check('HISTORY lists saved Gemini chats; its search sees your words and the replies', !!listed && chatText(listed).includes('Write 3 short sentences about the moon.') && chatText(listed).includes("only natural satellite"));
+  const odd = new Tab(() => {}, { cwd, gemini: `../../${conv}` }); // HISTORY's open request names the chat
+  check('a conversation id that is not one is not used (a file name and an agy flag)', odd.geminiId === undefined && odd.state.info.agent === 'gemini');
   const reopened = new Tab(() => {}, { cwd, gemini: conv });
   await reopened.loadHistory();
   check('reopened from HISTORY: a Gemini chat on the model it last ran on', reopened.state.info.agent === 'gemini' && reopened.model === 'gemini:gemini-4-argon' && reopened.state.info.model === 'gemini:gemini-4-argon');

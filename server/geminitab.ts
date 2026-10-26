@@ -193,6 +193,9 @@ export function savedGeminiChats(): SavedGeminiChat[] {
 // What HISTORY's search looks through: your messages and Gemini's replies.
 export const chatText = (c: SavedGeminiChat): string => c.items.map((i) => (i.kind === 'user' || i.kind === 'claude' ? i.text : '')).filter(Boolean).join('\n');
 
+// An agy conversation id (a UUID): also a file name in data/gemini-chats and agy's --conversation.
+const CONVERSATION = /^[\w-]{8,64}$/;
+
 type Job = { text: string; files: StoredUpload[] };
 type Run = {
   child: ChildProcess;
@@ -235,7 +238,7 @@ export class GeminiChat {
     private host: GeminiHost,
     conversation?: string,
   ) {
-    this.conversation = conversation;
+    this.conversation = conversation && CONVERSATION.test(conversation) ? conversation : undefined; // it comes from the page too
   }
 
   // A message is shown at once and runs after the one before it (each message is its own agy run).
@@ -383,7 +386,7 @@ export class GeminiChat {
 
   // The conversation agy runs this chat in: saved with the tab, so the next message (and a restart) continues it.
   private adopt(id?: string): void {
-    if (!id || id === this.conversation || !/^[\w-]{8,64}$/.test(id)) return;
+    if (!id || id === this.conversation || !CONVERSATION.test(id)) return;
     this.conversation = id;
     this.host.persist();
   }
