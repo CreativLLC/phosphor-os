@@ -21,7 +21,7 @@ const MODE_LABELS: Record<string, string> = {
 const PICKER_MODES = [...new Set<string>([...MODES, 'bypassPermissions'])];
 const MODE_HELP = 'Permission mode: when Claude must ask you first. BYPASS never asks.';
 // A Gemini chat (server/geminitab.ts, agyMode) cannot stop to ask: each mode says what Gemini may do on its own.
-const GEMINI_MODE_HELP = 'Gemini cannot stop to ask. ASK FIRST: it reads and answers, changes nothing (it is stopped if it writes a file). PLAN ONLY: it writes a plan. AUTO-EDIT: it may change files in this folder. AUTO: also the commands agy finds safe, where Google offers it. Other commands are refused. BYPASS is not offered.';
+const GEMINI_MODE_HELP = 'Gemini cannot stop to ask. ASK FIRST: it reads and answers; this folder is read-only for it. PLAN ONLY: it writes a plan, and changes nothing here. AUTO-EDIT: it may change files in this folder. AUTO: also the commands agy finds safe, where Google offers it. Other commands are refused. BYPASS is not offered.';
 
 let log: HTMLElement;
 let input: HTMLTextAreaElement;

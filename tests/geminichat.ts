@@ -5,6 +5,7 @@
 // recordings: nothing real runs, every file goes to a temp folder.
 //   npx tsx tests/geminichat.ts
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -109,9 +110,15 @@ const conv = '698555f5-d6e6-48b4-ae34-0ab407023a76';
   check('AUTO not offered for the account: said once', notes(denied).filter((n) => /AUTO is not available/.test(n)).length === 1);
   check('no empty reply', replies(denied).length === 0);
 
+  // Without bubblewrap, ASK FIRST and PLAN ONLY stop at the first file write (agy's default and plan modes both write).
+  GeminiChat.bwrap = '';
   const asked = newTab();
   await play(asked, 'followup', 'Create a file named moon.txt.');
-  check('ASK FIRST: a file written anyway stops the run there, and the chat names the file', notes(asked).length === 1 && notes(asked)[0].startsWith(`Gemini changed ${join(cwd, 'moon.txt')}, which ASK FIRST does not allow`) && !asked.state.meta.busy && asked.state.stats.filesChanged.length === 1, JSON.stringify(notes(asked)));
+  check('ASK FIRST, no bubblewrap: a file written anyway stops the run there, and the chat names the file', notes(asked).length === 1 && notes(asked)[0].startsWith(`Gemini changed ${join(cwd, 'moon.txt')}, which ASK FIRST does not allow`) && !asked.state.meta.busy && asked.state.stats.filesChanged.length === 1, JSON.stringify(notes(asked)));
+  const goAhead = newTab({ mode: 'plan' });
+  await play(goAhead, 'followup', 'The plan is approved. Go ahead.');
+  check('PLAN ONLY, no bubblewrap: the same tripwire (plan mode writes once told to go ahead)', notes(goAhead).length === 1 && notes(goAhead)[0].startsWith(`Gemini changed ${join(cwd, 'moon.txt')}, which PLAN ONLY does not allow`), JSON.stringify(notes(goAhead)));
+  GeminiChat.bwrap = 'bwrap';
 
   const quota = newTab();
   await play(quota, 'quota', '/quota');
@@ -131,6 +138,22 @@ const conv = '698555f5-d6e6-48b4-ae34-0ab407023a76';
   const img = pic.state.items.find((i) => i.kind === 'image');
   check('a picture: shown in the chat as a PNG copy', img?.kind === 'image' && img.status === 'done' && img.width === 1 && img.model === 'Gemini 3.8 Flash' && !!img.path && existsSync(img.path), JSON.stringify(img));
   check("the picture helper: an Agent line with its role, its task as the body", tools(pic)[0]?.name === 'Agent' && tools(pic)[0].detail === 'Image Generator' && /red circle/.test(tools(pic)[0].body ?? ''), JSON.stringify(tools(pic)[0]));
+}
+
+// ---- ASK FIRST and PLAN ONLY see the chat's folder read-only (bubblewrap); the same run in AUTO-EDIT writes
+if (spawnSync('bwrap', ['--dev-bind', '/', '/', 'true']).status !== 0) console.log('SKIP: bubblewrap does not work here (read-only runs)');
+else {
+  const written = async (mode: string) => {
+    const dir = mkdtempSync(join(tmp, 'ro-'));
+    const t = newTab({ cwd: dir, mode });
+    await play(t, 'readonly', 'Create a file named a.txt containing hi.');
+    return { t, file: existsSync(join(dir, 'a.txt')) };
+  };
+  for (const mode of ['default', 'plan']) {
+    const { t, file } = await written(mode);
+    check(`${mode === 'plan' ? 'PLAN ONLY' : 'ASK FIRST'}: the write fails in the read-only folder; a failed Write line, no changed file, the reply`, !file && tools(t)[0]?.name === 'Write' && tools(t)[0].error === true && t.state.stats.filesChanged.length === 0 && notes(t).length === 0 && /read-only/.test(replies(t)[0]?.text ?? ''), JSON.stringify({ file, notes: notes(t), tools: tools(t) }));
+  }
+  check('AUTO-EDIT: the same run writes the file', (await written('acceptEdits')).file);
 }
 
 // ---- STOP and errors

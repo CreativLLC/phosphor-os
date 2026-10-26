@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -75,9 +75,10 @@ function labelOf(base: string): string {
 
 // The mode picker for a run that cannot stop to ask (agy's --mode; '' = agy's own default, which refuses commands):
 // - ASK FIRST: agy's default, and Gemini is told to read and answer only (READ_ONLY). agy has no read-only mode, and its
-//   plan mode answers even "pick a fruit" with a plan to review (tested 2026-10-25), so a file write is the tripwire:
-//   the run is stopped and the chat says which file (GeminiChat.step).
-// - PLAN ONLY: plan mode. Gemini writes a plan in its own folder and changes nothing here.
+//   plan mode answers even "pick a fruit" with a plan to review (tested 2026-10-25).
+// - PLAN ONLY: plan mode. Gemini writes a plan in its own folder.
+//   Both write files without asking in a headless run (default mode at once, plan mode once told "go ahead"; tested
+//   2026-10-26), so these runs see the chat's folder read-only (readOnly), or a file write is the tripwire.
 // - AUTO-EDIT: accept-edits. It may change files in the folder; commands are refused unless agy's own settings allow them.
 // - AUTO: agy's auto mode (edits, and the commands its checker finds safe). Where Google does not offer it for the
 //   account, agy says so and runs its default mode: file changes yes, commands no.
@@ -90,6 +91,17 @@ export const NO_BYPASS = "BYPASS is not offered for Gemini: agy has none of Clau
 // The MCP screen shows Claude Code's servers; agy has its own.
 export const GEMINI_MCP = "This chat is with Gemini: its connectors (MCP servers) are agy's own. `agy mcp list` in a terminal shows them.";
 const MODE_NAMES: Record<string, string> = { default: 'ASK FIRST', plan: 'PLAN ONLY', acceptEdits: 'AUTO-EDIT', auto: 'AUTO', bypassPermissions: 'AUTO' };
+
+// ASK FIRST and PLAN ONLY, when bubblewrap works: the run sees these folders read-only, and all else as it is (agy's own
+// folder, its sign-in in the desktop keyring, the network). --die-with-parent: STOP ends bwrap, and agy with it.
+// undefined = no bubblewrap here: GeminiChat.step stops the run at the first file write instead.
+let boxCheck: [string, boolean] | undefined; // bubblewrap, and whether it works here (unprivileged namespaces may be off)
+function readOnly(dirs: string[]): string[] | undefined {
+  if (boxCheck?.[0] !== GeminiChat.bwrap) boxCheck = [GeminiChat.bwrap, !!GeminiChat.bwrap && spawnSync(GeminiChat.bwrap, ['--dev-bind', '/', '/', 'true']).status === 0];
+  if (!boxCheck[1]) return undefined;
+  const own = join(homedir(), '.gemini');
+  return ['--dev-bind', '/', '/', ...dirs.flatMap((d) => ['--ro-bind', d, d]), '--bind-try', own, own, '--chdir', dirs[0], '--die-with-parent', '--'];
+}
 
 // ------------------------------------------------------------ what a run says
 
@@ -191,7 +203,8 @@ type Run = {
   timer: ReturnType<typeof setTimeout>;
   stopped: boolean;
   timedOut: boolean;
-  tripped?: string; // ASK FIRST: the file Gemini wrote anyway (the run was stopped there)
+  tripwire: boolean; // ASK FIRST or PLAN ONLY without bubblewrap: a file write stops the run
+  tripped?: string; // the file Gemini wrote anyway (the run was stopped there)
   reply?: { id: string; step?: number }; // the reply being written
   tools: Map<number, string>; // step index -> tool line id
   picture: boolean; // the picture tool ran
@@ -208,6 +221,7 @@ export class GeminiChat {
   static bin = geminiImage.bin;
   static brain = join(homedir(), '.gemini', 'antigravity-cli', 'brain');
   static dir = join(DATA_DIR, 'gemini-chats');
+  static bwrap = 'bwrap'; // bubblewrap, for the read-only runs ('' = none)
 
   conversation?: string;
   private items: Item[] = []; // this chat's own items (the tab also shows pictures from the image models)
@@ -315,9 +329,13 @@ export class GeminiChat {
     if (base) args.push('--model', base);
     if (level) args.push('--effort', level);
     if (this.conversation) args.push('--conversation', this.conversation);
-    for (const dir of new Set(job.files.map((f) => dirname(f.path)))) args.push('--add-dir', dir);
+    const dirs = [...new Set(job.files.map((f) => dirname(f.path)))];
+    for (const dir of dirs) args.push('--add-dir', dir);
 
-    const child = spawn(GeminiChat.bin, args, { cwd: this.host.state.info.cwd, env: env(), stdio: ['ignore', 'pipe', 'pipe'] });
+    const cwd = this.host.state.info.cwd;
+    const ro = agy === '' || agy === 'plan'; // ASK FIRST, PLAN ONLY
+    const box = ro && existsSync(GeminiChat.bin) ? readOnly([cwd, ...dirs]) : undefined; // no agy: the plain "not installed" note
+    const child = spawn(box ? GeminiChat.bwrap : GeminiChat.bin, box ? [...box, GeminiChat.bin, ...args] : args, { cwd, env: env(), stdio: ['ignore', 'pipe', 'pipe'] });
     const run: Run = {
       child,
       text: job.text,
@@ -328,6 +346,7 @@ export class GeminiChat {
       timer: setTimeout(() => ((run.timedOut = true), this.stop()), (TIMEOUT_S + 60) * 1000), // agy's own limit did not end it
       stopped: false,
       timedOut: false,
+      tripwire: ro && !box,
       tools: new Map(),
       picture: false,
       plain: '',
@@ -389,13 +408,17 @@ export class GeminiChat {
     const path = typeof p.Path === 'string' ? p.Path : '';
     const notes = path.startsWith(`${GeminiChat.brain}/`); // agy's own notes (a plan) in its folder, not in the chat's folder
     const label = TOOLS[name] ?? name;
+    const write = EDITS.has(name) && !!path && !notes; // a file in the chat's folder (or elsewhere), not agy's notes
+    const changed = () => {
+      const files = this.host.state.stats.filesChanged;
+      if (!files.includes(path)) files.push(path);
+      this.host.patch('stats');
+    };
     let id = run.tools.get(s.step_index ?? -1);
     if (!id) {
       id = randomUUID();
       run.tools.set(s.step_index ?? -1, id);
-      const stats = this.host.state.stats;
-      stats.toolCalls++;
-      if (EDITS.has(name) && path && !notes && !stats.filesChanged.includes(path)) stats.filesChanged.push(path);
+      this.host.state.stats.toolCalls++;
       // Pictures: the picture tool, or (seen 2026-10-25) a helper of type "image-generator" that saves into this
       // conversation's folder.
       if (/image/i.test(`${name} ${p.TypeName ?? ''}`)) run.picture = true;
@@ -403,12 +426,14 @@ export class GeminiChat {
       this.push({ id, kind: 'tool', name: label, detail });
       this.host.patch('stats');
       this.host.activity(`${label}: ${detail.slice(0, 80)}`);
-      if (EDITS.has(name) && path && !notes && !agyMode(run.mode) && !run.tripped) {
-        run.tripped = path; // ASK FIRST: no more steps after this one
+      if (write && run.tripwire && !run.tripped) {
+        run.tripped = path; // no more steps after this one; the file may be written already
+        changed();
         this.stop();
       }
     }
     if (s.state === 'ACTIVE') return;
+    if (write && s.state === 'DONE' && !s.error) changed(); // not a write the read-only folder refused
     const out = s.tool_info?.output ?? s.subagent_info?.subagents?.map((a) => a.initial_prompt).filter(Boolean).join('\n\n') ?? ''; // a helper: its task
     let body = typeof p.CommandLine === 'string' ? [p.CommandLine, out].filter(Boolean).join('\n\n') : out;
     if (notes && /\.md$/i.test(path)) {
@@ -433,7 +458,7 @@ export class GeminiChat {
     if (run.picture && this.conversation) await this.pictures(run).catch((e) => this.note(`Gemini made a picture, but it could not be shown: ${firstLine(e)}`));
     const fail = r ? (r.status === 'SUCCESS' ? '' : r.error || r.status || 'error') : code === 0 ? '' : run.error || lastError(run.stderr) || `agy ended with code ${code}`;
     if (run.timedOut) this.note(problem('timeout'));
-    else if (run.tripped) this.note(`Gemini changed ${run.tripped}, which ASK FIRST does not allow, so it was stopped there. Check that file. To let Gemini change files, pick AUTO-EDIT.`);
+    else if (run.tripped) this.note(`Gemini changed ${run.tripped}, which ${MODE_NAMES[run.mode] ?? 'ASK FIRST'} does not allow, so it was stopped there. Check that file. To let Gemini change files, pick AUTO-EDIT.`);
     else if (run.stopped) this.note('Stopped.');
     else if (fail) this.note(problem(fail));
     if (run.asked && this.conversation !== run.asked) this.note('agy could not find the earlier conversation, so this message started a new one: Gemini does not remember the messages above.');

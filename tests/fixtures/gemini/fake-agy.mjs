@@ -2,7 +2,8 @@
 // Stand-in for agy in tests/geminichat.ts. `models` prints models.txt. Otherwise it plays the recorded run named by
 // FAKE_AGY_RUN (<name>.jsonl in this folder): JSON lines to stdout ({{CWD}} = the folder it runs in, {{BRAIN}} =
 // FAKE_AGY_BRAIN), "#stderr <text>" to stderr, "#picture <path>" saves a tiny PNG there (what agy's picture helper does),
-// "#wait" waits for SIGINT (STOP), "#exit <code>" ends. Each run's arguments go to FAKE_AGY_LOG, one JSON line.
+// "#wait" waits for SIGINT (STOP), "#touch <name>" writes that file in its folder as agy's write tool does (it fails
+// where the folder is read-only), "#exit <code>" ends. Each run's arguments go to FAKE_AGY_LOG, one JSON line.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -38,6 +39,12 @@ for (const line of text.split('\n').filter(Boolean)) {
   else if (line.startsWith('#picture ')) {
     mkdirSync(dirname(line.slice(9)), { recursive: true });
     writeFileSync(line.slice(9), Buffer.from(PNG, 'base64'));
+  } else if (line.startsWith('#touch ')) {
+    try {
+      writeFileSync(line.slice(7), 'hi\n');
+    } catch (e) {
+      process.stderr.write(`write failed: ${e.code}\n`);
+    }
   } else if (line.startsWith('#exit ')) process.exit(Number(line.slice(6)));
   else {
     process.stdout.write(`${line}\n`);
