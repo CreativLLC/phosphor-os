@@ -1,0 +1,133 @@
+/* CLEAN UP (cleanup.ts): the button next to DICTATE, the UNDO chip above a box, the first-message box of the new chat
+   and project dialogs (firstmsg.ts), and the SETTINGS note. The composer's phone grid is in voice.css. PERF: the only
+   motion is a steps() blink of the working button's opacity. */
+
+.clean-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.clean-btn .clean-short {
+  display: none;
+}
+
+.clean-btn[data-state='busy'] {
+  cursor: progress;
+  animation: clean-blink 1s steps(1, end) infinite;
+}
+
+@keyframes clean-blink {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clean-btn[data-state='busy'] {
+    animation: none;
+  }
+}
+
+/* The chip: one dim line above the box, like the dictation preview line. */
+.clean-note {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 2px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.clean-note[hidden] {
+  display: none;
+}
+
+.clean-note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clean-undo {
+  flex: none;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: var(--fs-sm);
+  letter-spacing: 2px;
+}
+
+/* Medium message box (561 to 760 px, one row of buttons: layout.css): the short label leaves the pickers room. Under
+   600 px the row does not fit even so while Claude works (STOP shows): it wraps instead of cutting ATTACH off. */
+@container (min-width: 561px) and (max-width: 760px) {
+  #cleanup .clean-long {
+    display: none;
+  }
+
+  #cleanup .clean-short {
+    display: inline;
+  }
+}
+
+@container (min-width: 561px) and (max-width: 600px) {
+  #composer .composer-tools {
+    flex-wrap: wrap;
+  }
+}
+
+/* SETTINGS: the note under the ON / OFF buttons. */
+.clean-help {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  margin-top: 4px;
+}
+
+/* First message in the NEW CHAT and NEW PROJECT dialogs. */
+.first-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 0;
+}
+
+.first-msg .set-label {
+  margin-bottom: 0;
+}
+
+.first-msg textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 72px;
+  resize: vertical;
+}
+
+.first-msg-tools {
+  display: flex;
+  gap: 8px;
+}
+
+.first-msg-tools button {
+  flex: 1;
+  min-width: 0;
+}
+
+.first-msg #voice-live,
+.first-msg .clean-note {
+  flex-basis: auto;
+  padding: 0;
+}
+
+.first-msg + .buttons {
+  padding-top: 10px;
+}
+
+/* The dialog itself holds the focus when it opens, so a phone's keyboard stays down. */
+#newtab:focus {
+  outline: none;
+}

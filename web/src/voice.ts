@@ -1,4 +1,7 @@
 import type { TranscribeResponse, VoiceLiveEvent } from '../../shared/protocol.ts';
+import { addToDraft } from './chat.ts';
+import { autoCleanOn, cleanText, offerUndo, setDictating } from './cleanup.ts';
+import { store } from './store.ts';
 import { toast } from './ui.ts';
 import { shellApi } from './shellapi.ts';
 
@@ -17,6 +20,10 @@ import { shellApi } from './shellapi.ts';
 //
 // Each take's timing (tap to mic, audio, socket, first words) goes to the PC when the take ends:
 // data/voice-diag.log, one line per take, to find what makes a start slow on the phone.
+//
+// CLEAN UP AFTER DICTATING (SETTINGS, off by default; cleanup.ts): the phrases of a take are held back (the preview
+// line shows them), and when the take ends they are cleaned in one piece and go into the box. A clean-up that fails
+// or is skipped (Esc) puts the words in as spoken: nothing said is ever lost to it. UNDO brings the spoken words back.
 
 const RATE = 16000;
 const MAX_MS = 10 * 60_000; // the server takes up to 10 minutes live
@@ -44,7 +51,10 @@ type Take = {
   stopped: boolean;
   done: boolean;
   doneTimer: number;
-  inserted: boolean; // some text went into the message box
+  inserted: boolean; // some text went into the message box (or was held back to be cleaned)
+  hold: boolean; // CLEAN UP AFTER DICTATING is on for this take: the phrases wait in `held` until it ends
+  held: string; // the phrases so far, as spoken
+  tab: string | null; // the chat whose message box it was dictated into (null: another box); its held words go there
   ready: boolean; // the PC's voice engine is loaded (audio sent before that waits on the PC)
   waking: boolean; // the preview line says the engine is loading
   why: string; // how the take ended, for the timing log
@@ -83,21 +93,23 @@ let take: Take | null = null;
 let abort: AbortController | null = null;
 let startedAt = 0;
 let clock = 0;
+let cleaning = false; // the held words are being cleaned (state is 'busy')
+let cleanable = false; // the box being dictated into takes CLEAN UP AFTER DICTATING
 let session = 0; // bumps on every start/cancel, so a late answer from an old take is ignored
 
 // One button and the text box its words go into. The chat's message box is the main one; another screen (LAB's
 // prompt) can borrow dictation for its own box while it shows (useDictation).
-type Target = { btn: HTMLButtonElement; input: HTMLTextAreaElement; longLabel: HTMLElement; shortLabel: HTMLElement; meter: HTMLElement };
+type Target = { btn: HTMLButtonElement; input: HTMLTextAreaElement; longLabel: HTMLElement; shortLabel: HTMLElement; meter: HTMLElement; clean: boolean };
 let mainTarget: Target;
 
-function dress(button: HTMLButtonElement, box: HTMLTextAreaElement, where: string): Target {
+function dress(button: HTMLButtonElement, box: HTMLTextAreaElement, where: string, clean: boolean): Target {
   button.replaceChildren();
   button.classList.add('dict-btn');
   const dot = document.createElement('span');
   dot.className = 'dict-dot';
   dot.textContent = '●';
   dot.setAttribute('aria-hidden', 'true');
-  const t: Target = { btn: button, input: box, longLabel: document.createElement('span'), shortLabel: document.createElement('span'), meter: document.createElement('span') };
+  const t: Target = { btn: button, input: box, longLabel: document.createElement('span'), shortLabel: document.createElement('span'), meter: document.createElement('span'), clean };
   t.longLabel.className = 'dict-long';
   t.shortLabel.className = 'dict-short';
   t.meter.className = 'dict-meter';
@@ -113,15 +125,17 @@ function dress(button: HTMLButtonElement, box: HTMLTextAreaElement, where: strin
 
 function use(t: Target): void {
   ({ btn, input, longLabel, shortLabel, meter } = t);
+  cleanable = t.clean;
   input.before(liveLine);
   render();
 }
 
-// Dictate into another box (LAB's prompt) until the returned function is called; then the chat has it again.
-// A take still running in the other box is cancelled first.
-export function useDictation(button: HTMLButtonElement, box: HTMLTextAreaElement): () => void {
+// Dictate into another box (LAB's prompt, the first message of a new chat) until the returned function is called; then
+// the chat has it again. A take still running in the other box is cancelled first. clean: the box takes CLEAN UP
+// AFTER DICTATING (a prompt for an agent does; LAB's prompt is the owner's exact words, so it does not).
+export function useDictation(button: HTMLButtonElement, box: HTMLTextAreaElement, clean = false): () => void {
   if (state !== 'idle') cancel();
-  const t = dress(button, box, 'the prompt');
+  const t = dress(button, box, clean ? 'the box' : 'the prompt', clean);
   use(t);
   return () => {
     if (btn !== button) return;
@@ -138,7 +152,7 @@ export function mountVoice(button: HTMLButtonElement, box: HTMLTextAreaElement):
   liveLine.setAttribute('aria-live', 'polite');
   liveText = document.createElement('span');
   liveLine.append(liveText);
-  mainTarget = dress(button, box, 'the message box');
+  mainTarget = dress(button, box, 'the message box', true);
   use(mainTarget);
 
   // Ctrl+Space anywhere in the app; Esc cancels while dictating. Capture phase, so it runs first.
@@ -153,7 +167,8 @@ export function mountVoice(button: HTMLButtonElement, box: HTMLTextAreaElement):
       } else if (e.key === 'Escape' && state !== 'idle') {
         e.preventDefault();
         e.stopPropagation();
-        cancel();
+        if (cleaning) abort?.abort(); // skip the clean-up: the words go in as spoken
+        else cancel();
       }
     },
     true,
@@ -164,7 +179,7 @@ function toggle(e?: Event): void {
   if (state === 'idle') begin(e);
   else if (state === 'starting') cancel();
   else if (state === 'rec') void finish();
-  else toast('Still turning your words into text…', 2000);
+  else toast(cleaning ? 'Still cleaning up your words… (Esc puts them in as spoken)' : 'Still turning your words into text…', 2000);
 }
 
 const idleWaiters: (() => void)[] = []; // stopDictation() calls waiting for the take to end
@@ -185,6 +200,8 @@ export async function stopDictation(): Promise<void> {
   const idle = new Promise<void>((done) => idleWaiters.push(done));
   if (state === 'rec') void finish();
   await Promise.race([idle, new Promise((late) => setTimeout(late, STOP_WAIT_MS))]);
+  // CLEAN UP AFTER DICTATING holds every word until the take ends: wait for all of them (Esc puts them in as spoken).
+  if (take?.hold) await idle;
 }
 
 function render(): void {
@@ -200,7 +217,7 @@ function render(): void {
     long = `REC ${t}`;
     short = t;
   } else if (state === 'busy') {
-    long = 'TRANSCRIBING…';
+    long = cleaning ? 'CLEANING…' : 'TRANSCRIBING…';
     short = 'WAIT…';
   }
   longLabel.textContent = long;
@@ -208,6 +225,7 @@ function render(): void {
   if (state !== 'rec') meter.style.transform = 'scaleX(0)';
   liveLine.hidden = state === 'idle' || state === 'starting';
   liveLine.parentElement?.classList.toggle('dictating', !liveLine.hidden);
+  setDictating(state !== 'idle'); // CLEAN UP waits until the words are in
 }
 
 // The preview line shows the newest words; when they don't fit, the start is cut off.
@@ -238,7 +256,8 @@ function begin(ev?: Event): void {
     return;
   }
   const t: Take = {
-    id, chunks: [], samples: 0, sent: 0, ws: null, live: null, finalEnd: 0, stopped: false, done: false, doneTimer: 0, inserted: false,
+    id, chunks: [], samples: 0, sent: 0, ws: null, live: null, finalEnd: 0, stopped: false, done: false, doneTimer: 0, inserted: false, hold: cleanable && autoCleanOn(), held: '',
+    tab: input === mainTarget.input ? store.active : null,
     ready: false, waking: false, why: '', t0, marks: {}, lag: 0, lagTimer: 0, reported: false,
     info: {
       page: Math.round(t0), // ms since the page opened
@@ -380,12 +399,12 @@ function connect(t: Take): void {
       }
     } else if (ev.t === 'partial') {
       mark(t, 'partial');
-      setLive(ev.text);
+      setLive(t.held ? `${t.held} ${ev.text}`.trim() : ev.text);
     } else if (ev.t === 'final') {
       mark(t, 'final');
       t.finalEnd = Math.max(t.finalEnd, ev.end);
-      setLive('');
-      insert(ev.text, ev.joinPrev);
+      land(t, ev.text, ev.joinPrev);
+      setLive(t.held);
     } else if (ev.t === 'done') {
       mark(t, 'done');
       t.finalEnd = Math.max(t.finalEnd, ev.end);
@@ -503,7 +522,7 @@ async function fallback(t: Take): Promise<void> {
     const data = (await res.json().catch(() => ({ error: '' }))) as TranscribeResponse;
     if (t.id !== session) return;
     if (!res.ok || !('text' in data)) throw new Error(serverError(res.status, 'error' in data ? data.error : ''));
-    if (data.text.trim()) insert(data.text);
+    if (data.text.trim()) land(t, data.text);
     endTake();
     if (!data.text.trim() && t.finalEnd === 0) toast('No words heard. Try again a little closer to the mic.', 3000);
   } catch (e) {
@@ -516,7 +535,14 @@ async function fallback(t: Take): Promise<void> {
   }
 }
 
+// The take is over. With CLEAN UP AFTER DICTATING the held words are cleaned first (the button stays busy).
 function endTake(): void {
+  const t = take;
+  if (t?.hold && t.held.trim()) void landClean(t);
+  else finishTake();
+}
+
+function finishTake(): void {
   const focus = take?.inserted && matchMedia('(pointer: fine)').matches;
   dropTake();
   setState('idle');
@@ -534,23 +560,29 @@ function dropTake(): void {
   take = null;
 }
 
-// Esc: stop everything; text not yet in the message box is dropped.
+// Esc: stop everything; words not yet turned into text are dropped. Words held for CLEAN UP AFTER DICTATING go in as
+// spoken, like the phrases that land at once without it.
 function cancel(): void {
+  const t = take;
+  const held = t?.held.trim();
   session++;
+  cleaning = false;
   clearInterval(clock);
   rec?.close();
   rec = null;
   abort?.abort();
   abort = null;
+  if (t && held) landHeld(t, held);
   dropTake();
   setState('idle');
 }
 
 // Put the words at the cursor (or over the selected text), with a space on either side when needed.
 // A phrase that starts a sentence gets a capital letter. joinPrev: the last phrase's period was only a pause.
-function insert(raw: string, joinPrev = false): void {
+// Returns where the words now sit in the box (from, to), or null when there was nothing to put in.
+function insert(raw: string, joinPrev = false): [number, number] | null {
   let text = raw.trim();
-  if (!text) return;
+  if (!text) return null;
   let start = input.selectionStart ?? input.value.length;
   let end = input.selectionEnd ?? start;
   if (joinPrev && start === end) {
@@ -568,6 +600,58 @@ function insert(raw: string, joinPrev = false): void {
   input.setRangeText(pre + text + post, start, end, 'end');
   input.dispatchEvent(new Event('input', { bubbles: true })); // chat.ts saves the draft and resizes the box
   if (take) take.inserted = true;
+  return [start + pre.length, start + pre.length + text.length];
+}
+
+// A phrase of the take: into the box at once, or held back for the clean-up when the take ends.
+function land(t: Take, text: string, joinPrev = false): void {
+  if (!t.hold) {
+    insert(text, joinPrev);
+    return;
+  }
+  const words = text.trim();
+  if (!words) return;
+  if (joinPrev) t.held = t.held.replace(/([^.])\.\s*$/, '$1'); // the last period was only a pause
+  t.held = t.held ? `${t.held} ${words}` : words;
+  t.inserted = true;
+}
+
+// Held words go in at the cursor. One message box serves every chat: when the chat they were dictated in is not shown
+// any more, they go into that chat's unsent text instead (no UNDO there). Returns where they sit in the box, or null.
+function landHeld(t: Take, text: string): [number, number] | null {
+  if (!t.tab || t.tab === store.active) return insert(text);
+  addToDraft(t.tab, text);
+  toast('Your dictation went into the message box of the chat you dictated it in.', 5000);
+  return null;
+}
+
+// The held words are cleaned in one piece and go in at the cursor. UNDO (cleanup.ts) swaps them back to as spoken.
+// If the clean-up fails, or Esc skips it, the words go in as spoken: this never loses anything that was said.
+async function landClean(t: Take): Promise<void> {
+  const raw = t.held; // stays in t.held until it lands: a cancel() meanwhile puts it in as spoken
+  cleaning = true;
+  render();
+  setLive(raw);
+  const ctl = (abort = new AbortController());
+  let cleaned: { text: string; by: string } | null = null;
+  try {
+    cleaned = await cleanText(raw, 'prompt', ctl.signal);
+  } catch (e) {
+    if (t.id !== session) return; // cancel() took over
+    if (!ctl.signal.aborted) toast(`${e instanceof Error ? e.message : 'Clean up failed.'} Your words went in as spoken.`, 6000);
+  }
+  if (t.id !== session) return;
+  const away = !!t.tab && t.tab !== store.active;
+  const span = landHeld(t, away && cleaned ? cleaned.text : raw);
+  if (cleaned && span && cleaned.text !== raw.trim()) {
+    const spoken = input.value;
+    input.setRangeText(cleaned.text, span[0], span[1], 'end');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    offerUndo(input, spoken, input.value, cleaned.by);
+  }
+  cleaning = false;
+  abort = null;
+  finishTake();
 }
 
 function serverError(status: number, msg?: string): string {

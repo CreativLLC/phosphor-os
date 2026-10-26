@@ -245,6 +245,20 @@ function demoRouterTabs(): void {
   apply({ t: 'patch', tab: 'demo-p3', key: 'info', value: { ...cur('demo-p3').info, model: 'haiku' } });
 }
 
+// CLEAN UP in demo mode (cleanup.ts): no model is asked. The filler words, stutters and a "no wait" correction go,
+// and each sentence gets its capital letter, so the button and the UNDO chip can be seen working.
+export function demoCleanup(text: string): { text: string; by: string } {
+  const clean = text
+    .replace(/\b(?:um+|uh+|er+|hmm+)\b[,.]?\s*/gi, '')
+    .replace(/\b(?:you know|i mean|like),?\s+/gi, '')
+    .replace(/\b(\w+),?\s+\1\b/gi, '$1')
+    .replace(/\b(\w+),?\s+no,?\s+wait,?\s+(\w+)/gi, '$2')
+    .replace(/\s+([,.?!])/g, '$1')
+    .replace(/(^|[.?!]\s+)([a-z])/g, (_, lead: string, c: string) => lead + c.toUpperCase())
+    .trim();
+  return { text: clean, by: 'Demo' };
+}
+
 // Demo links go to Google's day view (no account here).
 const DEMO_NEW = 'https://calendar.google.com/calendar/r/eventedit?dates=';
 const demoEdit = (start: string) => {

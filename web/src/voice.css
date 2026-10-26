@@ -82,20 +82,50 @@
     display: inline;
   }
 
-  /* Claude idle: ATTACH OPTIONS DICTATE SEND, a quarter each (SEND took half before DICTATE). */
+  /* CLEAN UP (cleanup.ts) sits next to DICTATE and shows its short label too. */
+  #cleanup {
+    grid-area: auto;
+    grid-row: 1;
+    grid-column: span 3;
+    padding-inline: 4px;
+  }
+
+  #composer.opts-open #cleanup {
+    grid-row: 2;
+  }
+
+  #cleanup .clean-long {
+    display: none;
+  }
+
+  #cleanup .clean-short {
+    display: inline;
+  }
+
+  /* Claude idle: ATTACH OPTIONS DICTATE CLEAN SEND, a fifth each: 15 columns with 3 each. The pickers row keeps thirds. */
+  .composer-tools {
+    grid-template-columns: repeat(15, minmax(0, 1fr));
+  }
+
+  #composer.opts-open #model,
+  #composer.opts-open #effort,
+  #composer.opts-open .composer-tools #mode {
+    grid-column: span 5;
+  }
+
   #stop[hidden] + #send {
     grid-column: span 3;
   }
 
-  /* Claude working (STOP shows): five buttons, so 15 columns with 3 each. The pickers row keeps thirds. */
+  /* Claude working (STOP shows): six buttons, so 18 columns with 3 each. */
   #composer.busy .composer-tools {
-    grid-template-columns: repeat(15, minmax(0, 1fr));
+    grid-template-columns: repeat(18, minmax(0, 1fr));
   }
 
   #composer.busy.opts-open #model,
   #composer.busy.opts-open #effort,
   #composer.busy.opts-open .composer-tools #mode {
-    grid-column: span 5;
+    grid-column: span 6;
   }
 
   #composer.busy .composer-tools > button {

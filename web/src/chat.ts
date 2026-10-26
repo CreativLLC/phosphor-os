@@ -33,6 +33,12 @@ let pinned = true;
 let lastTop = 0;
 let jump: HTMLButtonElement;
 
+// Add to a tab's unsent text while another tab is shown (voice.ts: a dictation that ended after its chat was left).
+export function addToDraft(tab: string, text: string): void {
+  const old = drafts.get(tab)?.trimEnd() ?? '';
+  drafts.set(tab, old ? `${old} ${text}` : text);
+}
+
 // Put text into the message box (used by the file explorer's "insert path" button).
 export function insertIntoChat(text: string): void {
   const before = input.value && !input.value.endsWith(' ') ? input.value + ' ' : input.value;
@@ -63,10 +69,11 @@ export function mountChat(logEl: HTMLElement, composer: HTMLElement): void {
     if (!store.active) return;
     // Sending ends dictation; its last words go into this message.
     if (isDictating()) {
+      const tab = store.active;
       sendBtn.disabled = true;
       await stopDictation();
       sendBtn.disabled = false;
-      if (!store.active) return;
+      if (store.active !== tab) return; // another chat is shown now: the box holds its text, not this message
     }
     const text = input.value.trim();
     if (runAppCommand(text)) {
