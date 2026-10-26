@@ -224,10 +224,6 @@ export class GeminiChat {
     this.conversation = conversation;
   }
 
-  get busy(): boolean {
-    return !!this.run || this.queue.length > 0;
-  }
-
   // A message is shown at once and runs after the one before it (each message is its own agy run).
   send(text: string, files: StoredUpload[]): void {
     const attachments = files.map(({ path: _p, ...a }) => a);
