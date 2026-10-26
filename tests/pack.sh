@@ -531,6 +531,9 @@ echo "== M: scripts/migrate-from-retro-claude.sh on a fake home"
 mkhome M; h=$T/M; NEW=$h/phosphor-os OLDP=$h/retro-claude
 rsync -a --exclude .git --exclude node_modules --exclude data --exclude .env --exclude web/dist "$R/" "$NEW/"
 ln -s "$R/node_modules" "$NEW/node_modules" # never npm ci here: it would empty the real one through the link
+# ... so the copy's lock file is older than the installed packages: the setup then skips npm ci. A lock file newer than
+# them (a checkout or revert of package-lock.json) made it run, and it emptied the repo's node_modules.
+touch -r "$R/node_modules/.package-lock.json" -d '-1 minute' "$NEW/package-lock.json" || missing "npm ci in $R"
 mkdir -p "$NEW/web" && cp -r "$R/web/dist" "$NEW/web/dist"
 oldinstall M "$OLDP"
 printf '[Default Applications]\ntext/markdown=typora.desktop\ntext/plain=nvim.desktop\n' >"$h/.config/mimeapps.list" # your own pick
