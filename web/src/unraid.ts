@@ -12,7 +12,7 @@ import { fmtBytes, fmtDay, fmtKb, fmtSpan, fmtSpeed, fmtUptime, pctOf } from './
 const HIDE_KEY = 'phosphor.station.unraid.hide';
 const BAR_SEGS = 20;
 
-const LAMP: Record<Exclude<UnraidLinkState, 'ok'>, string> = { loading: 'WAIT…', down: 'NO ANSWER', auth: 'KEY REFUSED', wrong: 'NOT UNRAID?', error: 'ERROR' };
+const LAMP: Record<UnraidLinkState, string> = { loading: 'WAIT…', ok: 'ONLINE', down: 'NO ANSWER', auth: 'KEY REFUSED', wrong: 'NOT UNRAID?', error: 'ERROR' };
 
 export type UnraidPanel = { root: HTMLElement; set(r: UnraidResponse | null): void };
 
@@ -100,7 +100,7 @@ function head(r: UnraidResponse, s: UnraidSummary | null): HTMLElement {
   const h = el('div', 'un-head');
   const ok = r.state === 'ok';
   const started = !!s?.array?.started;
-  const word = !ok ? LAMP[r.state] : s?.array ? (started ? 'ARRAY STARTED' : `ARRAY ${s.array.state}`) : 'ONLINE';
+  const word = ok && s?.array ? (started ? 'ARRAY STARTED' : `ARRAY ${s.array.state}`) : LAMP[r.state];
   const lamp = el('span', `un-lamp ${ok && (started || !s?.array) ? 'un-up' : r.state === 'loading' ? 'un-wait' : 'un-down'}`, word);
   const when = r.okAt ? `${ok ? 'UPDATED' : 'LAST ANSWER'} ${timeAgo(r.okAt).toUpperCase()}` : '';
   const meta = [s?.version && `UNRAID ${s.version}`, s?.uptimeSec != null && `UP ${fmtUptime(s.uptimeSec)}`, when].filter(Boolean).join(' · ');
@@ -110,7 +110,7 @@ function head(r: UnraidResponse, s: UnraidSummary | null): HTMLElement {
 
 function banner(r: UnraidResponse): HTMLElement {
   const b = el('div', 'un-banner');
-  b.append(el('strong', '', r.state === 'loading' ? 'ASKING UNRAID…' : LAMP[r.state as Exclude<UnraidLinkState, 'ok'>]));
+  b.append(el('strong', '', r.state === 'loading' ? 'ASKING UNRAID…' : LAMP[r.state]));
   if (r.note) b.append(el('span', '', ` ${r.note}`));
   if (r.summary) b.append(el('span', 'un-dim', ' Below is the last answer.'));
   return b;
@@ -256,7 +256,8 @@ function backupsCard(s: UnraidSummary): HTMLElement {
   const c = card('BACKUPS');
   const p = s.parity;
   const last = p?.last;
-  const text = !p ? 'NOT KNOWN' : p.running ? `RUNNING NOW, ${p.progress ?? '?'}%` : !last ? 'NEVER RUN' : [{ ok: 'OK, 0 ERRORS', errors: `${last.errors ?? '?'} ERRORS`, cancelled: 'CANCELLED', failed: 'FAILED' }[last.result], fmtDay(last.at), last.durationSec != null ? fmtSpan(last.durationSec) : '', fmtSpeed(last.speed)].filter(Boolean).join(' · ');
+  const lastText = !last ? 'NEVER RUN' : [{ ok: 'OK, 0 ERRORS', errors: `${last.errors ?? '?'} ERRORS`, cancelled: 'CANCELLED', failed: 'FAILED' }[last.result], fmtDay(last.at), last.durationSec != null ? fmtSpan(last.durationSec) : '', fmtSpeed(last.speed)].filter(Boolean).join(' · ');
+  const text = !p ? 'NOT KNOWN' : p.running ? `RUNNING NOW, ${p.progress ?? '?'}%. LAST: ${lastText}` : lastText;
   const row = (k: string, v: string, bad = false) => {
     const r = el('div', `un-kv${bad ? ' un-hot' : ''}`);
     r.append(el('span', 'un-k', k), el('span', 'un-kvv', v));
