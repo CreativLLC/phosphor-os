@@ -19,11 +19,12 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { IMAGE_MODEL, isImageModel, LEAD_PREFIX, REPORT_PREFIX, type Agent, type ProjectRef, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
+import { IMAGE_MODEL, isGeminiModel, isImageModel, LEAD_PREFIX, REPORT_PREFIX, type Agent, type ProjectRef, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
 import { ttlFromUsage } from '../shared/cache.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
 import { DATA_DIR, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import { GeminiPainter } from './geminiimage.ts';
+import { fitEffort, GEMINI_MCP, GeminiChat, NO_BYPASS } from './geminitab.ts';
 import { painter, type Painter } from './imagegen.ts';
 import { editSize, imageSize, parseImageOptions, STEPS } from './imageopts.ts';
 import { LOCAL_RELAY_PORT, localLoaded } from './localrelay.ts';
@@ -79,7 +80,8 @@ const RESUME_MARGIN_MS = 90_000; // after the reset time, so the first request i
 const RESUME_RETRY_MS = 30 * 60_000; // reset time unknown: try again this much later
 type Waiter = { resolve: (r: PermissionResult) => void; input: Record<string, unknown>; title: string };
 
-export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: string; createdAt?: number; mode?: Mode; model?: string; effort?: Effort; auto?: boolean; agents?: Agent[]; resume?: Resume | null; images?: SavedImage[]; project?: ProjectRef };
+// gemini: the agy conversation of a Gemini chat (server/geminitab.ts).
+export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: string; createdAt?: number; mode?: Mode; model?: string; effort?: Effort; auto?: boolean; agents?: Agent[]; resume?: Resume | null; images?: SavedImage[]; project?: ProjectRef; gemini?: string };
 
 // A project's folder (its shared memory file), outside the workspace: no sync clutter, and every chat may edit it.
 export const projectDir = (id: string) => join(DATA_DIR, 'projects', id);
@@ -184,6 +186,7 @@ export class Tab {
   private painting = 0; // pictures of this tab not finished yet
   private paintEpoch = 0; // STOP bumps it: pictures still waiting are dropped
   private paintNote: string[] = []; // pictures made since Claude last heard: told with the next message to Claude
+  private geminiChat?: GeminiChat; // a Gemini chat: its messages go to agy instead of Claude (server/geminitab.ts)
 
   constructor(private emit: (ev: ServerEvent) => void, init: TabInit) {
     this.autoTitle = !init.title || init.title === 'New chat';
@@ -211,6 +214,59 @@ export class Tab {
     this.pendingModel = init.model;
     this.pendingEffort = init.effort;
     this.auto = init.auto ?? false;
+    if (isGeminiModel(init.model) || init.gemini) this.useGemini(init.gemini);
+  }
+
+  // The tab becomes a Gemini chat. Its info says so (the page hides what only Claude has), and BYPASS turns into AUTO.
+  private useGemini(conversation?: string): void {
+    this.geminiChat = new GeminiChat(
+      {
+        state: this.state,
+        settings: () => ({ model: this.pendingModel, mode: this.pendingMode ?? this.state.info.permissionMode, effort: this.pendingEffort }),
+        add: (item) => this.add(item),
+        update: (id, fields) => this.patchItem(id, fields),
+        delta: (id, text) => {
+          const item = this.state.items.find((i) => i.id === id);
+          if (item?.kind === 'claude') item.text += text;
+          this.emit({ t: 'delta', tab: this.id, id, text });
+        },
+        note: (text) => this.note(text),
+        busy: (on) => this.setBusy(on),
+        activity: (text) => this.setActivity(text),
+        patch: (key) => this.patch(key),
+        persist: () => this.onPersist?.(),
+      },
+      conversation,
+    );
+    this.state.info.agent = 'gemini';
+    if ((this.pendingMode ?? this.state.info.permissionMode) === 'bypassPermissions') this.pendingMode = this.state.info.permissionMode = 'auto';
+  }
+
+  // A chat stays with the one it started with: Claude Code and agy each keep their own conversation, and neither can
+  // continue the other's. Picture models work in both; a tab with nothing sent yet switches freely. true = refused.
+  private switchRefused(model: string | null): boolean {
+    const toGemini = !!model && isGeminiModel(model);
+    if ((model && isImageModel(model)) || toGemini === !!this.geminiChat) return false;
+    const started = this.geminiChat ? !!this.geminiChat.conversation : this.state.items.some((i) => i.kind === 'user' && !i.paint);
+    if (started) {
+      this.note(this.geminiChat ? 'This chat is with Gemini, and Claude cannot continue it. Press + for a new chat with Claude.' : 'This chat is with Claude, and Gemini cannot continue it. Press + for a new chat, then pick a Gemini model there.');
+      this.patch('info'); // the picker goes back
+      return true;
+    }
+    if (toGemini) {
+      this.close(true); // a Claude process the "/" menu or MCP screen started
+      this.useGemini();
+    } else {
+      this.geminiChat!.close();
+      this.geminiChat = undefined;
+      delete this.state.info.agent;
+    }
+    return false;
+  }
+
+  // The agy conversation of a Gemini chat (saved with the tab).
+  get geminiId(): string | undefined {
+    return this.geminiChat?.conversation;
   }
 
   get id(): string {
@@ -315,8 +371,8 @@ export class Tab {
       this.state.info = {
         ...this.state.info,
         model: this.state.info.model || model,
-        permissionMode: this.state.info.permissionMode || this.pendingMode || mode,
-        effort: this.state.info.effort || this.pendingEffort || effort,
+        permissionMode: this.state.info.permissionMode || this.pendingMode || (this.geminiChat && mode === 'bypassPermissions' ? 'auto' : mode), // NO_BYPASS
+        effort: this.state.info.effort || this.pendingEffort || (this.geminiChat ? '' : effort), // Claude's default level is not Gemini's
       };
       this.patch('info');
     } catch {
@@ -326,6 +382,10 @@ export class Tab {
 
   // Rebuild the chat from Claude Code's saved transcript (works for terminal sessions too).
   async loadHistory(): Promise<void> {
+    if (this.geminiChat) {
+      this.state.items = mergeImages(this.geminiChat.load(), this.imageLog);
+      return;
+    }
     const sid = this.state.meta.sessionId;
     if (!sid) return;
     // A chat started in another folder (e.g. the terminal at the workspace root) is saved under that
@@ -342,7 +402,11 @@ export class Tab {
     if (!auto) this.clearResume(); // the owner took over
     const imager = this.pendingModel === IMAGE_MODEL ? Tab.images : Tab.gemini.get(this.pendingModel ?? '');
     if (imager && !auto) return this.paint(text, files, imager);
-    const first = this.state.items.every((i) => i.kind !== 'user' || i.paint);
+    if (this.geminiChat) {
+      this.firstWordsTitle(text, files);
+      return this.geminiChat.send(text, files);
+    }
+    const first =this.state.items.every((i) => i.kind !== 'user' || i.paint);
     this.firstWordsTitle(text, files);
     const attachments = files.map(({ path: _p, ...a }) => a);
     // The item id is also the message uuid: file checkpoints (UNDO) are keyed by it.
@@ -535,10 +599,15 @@ export class Tab {
   async stop(): Promise<void> {
     this.stopEpoch++;
     this.paintEpoch++;
+    this.geminiChat?.stop();
     await this.q?.interrupt().catch(() => {});
   }
 
   async setMode(mode: Mode): Promise<void> {
+    if (this.geminiChat && mode === 'bypassPermissions') {
+      this.note(NO_BYPASS);
+      mode = 'auto';
+    }
     this.pendingMode = mode;
     if (this.q) await this.q.setPermissionMode(sdkMode(mode, this.pendingModel)!).catch(() => {});
     this.state.info.permissionMode = mode;
@@ -550,6 +619,7 @@ export class Tab {
   async undo(id: string, dryRun: boolean): Promise<void> {
     const reply = (r: { ok?: boolean; error?: string; files?: string[]; insertions?: number; deletions?: number }) =>
       this.emit({ t: 'undo_result', tab: this.id, id, dryRun, ok: false, files: [], insertions: 0, deletions: 0, ...r });
+    if (this.geminiChat) return reply({ error: 'UNDO works only in chats with Claude.' });
     if (this.state.meta.busy) return reply({ error: 'Claude is still working. Wait until it is done, or press STOP.' });
     const item = this.state.items.find((i) => i.id === id);
     if (item?.kind !== 'user') return reply({ error: 'That message is not in this chat.' });
@@ -570,6 +640,7 @@ export class Tab {
 
   // AUTO on or off. On: the next message is routed. Off: the tab keeps the model and effort it has now.
   setAuto(on: boolean): void {
+    if (on && this.switchRefused(null)) return;
     this.auto = on;
     this.state.info.auto = on;
     this.patch('info');
@@ -578,6 +649,11 @@ export class Tab {
 
   // The owner picking a model leaves AUTO; the router's own switches (byRouter) do not.
   async setModel(model: string, byRouter = false): Promise<void> {
+    if (this.switchRefused(model)) return;
+    if (isGeminiModel(model)) {
+      this.pendingEffort = fitEffort(model, this.pendingEffort); // Gemini has fewer levels
+      this.state.info.effort = this.pendingEffort ?? '';
+    }
     if (!byRouter) this.auto = false;
     // Each local model is its own Claude Code process too: its model name is fixed in that process's environment.
     const switching = !!this.q && localChoice(this.pendingModel)?.name !== localChoice(model)?.name;
@@ -608,6 +684,7 @@ export class Tab {
   // MCP servers this chat can use, for the MCP screen. Starts Claude's process if needed (nothing is sent).
   // Only safe fields go to the page: a server's config can hold keys.
   async mcpServers(): Promise<McpServer[]> {
+    if (this.geminiChat) throw new Error(GEMINI_MCP);
     if (!this.q) this.start();
     const list = await this.q!.mcpServerStatus();
     return list
@@ -635,6 +712,7 @@ export class Tab {
   // RECONNECT, or ON/OFF. Claude Code saves ON/OFF for this folder, like /mcp in the terminal.
   // Returns an error to show, if any.
   async mcpAction(name: string, action: McpAction): Promise<string | undefined> {
+    if (this.geminiChat) return GEMINI_MCP;
     if (!this.q) this.start();
     try {
       if (action === 'reconnect') await this.q!.reconnectMcpServer(name);
@@ -649,6 +727,7 @@ export class Tab {
 
   // Slash commands Claude Code runs in this chat (built-in, skills, plugins, custom), for the "/" menu.
   async commands(): Promise<SlashCommandInfo[]> {
+    if (this.geminiChat) return []; // agy has no command list to ask; its slash commands still work when typed
     if (!this.q) this.start();
     const seen = new Set<string>();
     const out: SlashCommandInfo[] = [];
@@ -703,6 +782,7 @@ export class Tab {
       this.gone = true;
       this.titleFromPrompt = false; // no more waiting for Claude's title: save the first-words name
       this.saveSessionTitle();
+      this.geminiChat?.close();
     }
     if (this.run) {
       this.run.closed = true;

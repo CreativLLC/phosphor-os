@@ -3,7 +3,8 @@
 
 // effort: thinking level (Claude Code "effort"); '' = the model's default.
 // auto: the tab is on AUTO, so a router picks model and effort for each message (model/effort show its last pick).
-export type Info = { cwd: string; model: string; permissionMode: string; effort: string; auto?: boolean };
+// agent: who the chat is with when it is not Claude: 'gemini' (server/geminitab.ts). The page hides what only Claude has.
+export type Info = { cwd: string; model: string; permissionMode: string; effort: string; auto?: boolean; agent?: 'gemini' };
 
 // A file the user attached. 'image' = Claude also sees it inline.
 // id '' = an image from an old chat that has no saved copy (no thumbnail).
@@ -199,6 +200,9 @@ export const AUTO_MODEL = 'auto';
 export const IMAGE_MODEL = 'image';
 // The local image model is IMAGE_MODEL; a cloud one is "image:<engine>:<model>" (Gemini: server/geminiimage.ts).
 export const isImageModel = (v?: string): boolean => v === IMAGE_MODEL || !!v?.startsWith(`${IMAGE_MODEL}:`);
+// Gemini chat models are "gemini:<agy model>", e.g. "gemini:gemini-4-argon": the tab talks to Gemini through Google's
+// Antigravity CLI (server/geminitab.ts) instead of Claude.
+export const isGeminiModel = (v?: string): boolean => !!v?.startsWith('gemini:');
 export type ModelChoice = { value: string; label: string; description: string; resolved?: string; efforts: Effort[] };
 export type ModelsResponse = { models: ModelChoice[] };
 

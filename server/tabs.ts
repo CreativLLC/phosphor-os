@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { basename, join } from 'node:path';
 import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
+import { geminiModels } from './geminitab.ts';
 import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
@@ -174,6 +175,7 @@ export class Tabs {
         await new Promise(() => {});
       })();
       const q = query({ prompt: idle, options: { cwd: config.cwd, persistSession: false } }); // leaves no chat in HISTORY
+      const gemini = geminiModels(); // Gemini chats through agy (server/geminitab.ts), asked at the same time
       try {
         const timeout = new Promise<never>((_, no) => setTimeout(() => no(new Error('model list timed out')), 30000));
         const list = await Promise.race([q.supportedModels(), timeout]);
@@ -187,6 +189,7 @@ export class Tabs {
             resolved: m.resolvedModel,
             efforts: m.supportsEffort === false ? [] : (m.supportedEffortLevels ?? [...EFFORTS]),
           })), ...(localModel?.models ?? []).map((m) => ({ value: m.value, label: m.label, description: 'Runs on this PC, no plan limits.', efforts: ['low', 'medium', 'xhigh'] as Effort[] })),
+            ...(await gemini),
             ...(imageModel ? [{ value: IMAGE_MODEL, label: imageModel.label, description: 'Makes pictures on this PC. Your message is the picture\'s description.', efforts: [] as Effort[] }] : []),
             ...geminiImage.models.map((m) => ({ value: m.value, label: m.label, description: 'Makes pictures with Gemini (your Google AI Pro sign-in). Your message is the picture\'s description.', efforts: [] as Effort[] }))],
         };
@@ -242,6 +245,7 @@ export class Tabs {
       resume: t.state.meta.resume ?? undefined,
       images: t.images.length ? t.images : undefined,
       project: t.project,
+      gemini: t.geminiId,
     }));
     writeFileSync(TABS_FILE, JSON.stringify(data, null, 2));
   }
