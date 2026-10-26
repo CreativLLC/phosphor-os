@@ -554,8 +554,10 @@ function dropTake(): void {
   take = null;
 }
 
-// Esc: stop everything; text not yet in the message box is dropped.
+// Esc: stop everything; words not yet turned into text are dropped. Words held for CLEAN UP AFTER DICTATING go in as
+// spoken, like the phrases that land at once without it.
 function cancel(): void {
+  const held = take?.held.trim();
   session++;
   cleaning = false;
   clearInterval(clock);
@@ -563,6 +565,7 @@ function cancel(): void {
   rec = null;
   abort?.abort();
   abort = null;
+  if (held) insert(held);
   dropTake();
   setState('idle');
 }
@@ -609,8 +612,7 @@ function land(t: Take, text: string, joinPrev = false): void {
 // The held words are cleaned in one piece and go in at the cursor. UNDO (cleanup.ts) swaps them back to as spoken.
 // If the clean-up fails, or Esc skips it, the words go in as spoken: this never loses anything that was said.
 async function landClean(t: Take): Promise<void> {
-  const raw = t.held;
-  t.held = '';
+  const raw = t.held; // stays in t.held until it lands: a cancel() meanwhile puts it in as spoken
   cleaning = true;
   render();
   setLive(raw);
