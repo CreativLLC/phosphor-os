@@ -1,6 +1,8 @@
 import './lab.css';
-import { LAB_EFFORTS, LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabEffort, type LabModel, type LabModelsResponse, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../../shared/lab.ts';
+import { LAB_EFFORTS, LAB_LETTERS, LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabEffort, type LabModel, type LabModelsResponse, type LabPrompt, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../../shared/lab.ts';
 import { closeDocs, isDocsOpen, onDocsToggle } from './docs.ts';
+import { demoLabApi } from './labdemo.ts';
+import { store } from './store.ts';
 import { button, confirmBox, el, toast } from './ui.ts';
 import { useDictation } from './voice.ts';
 
@@ -48,7 +50,6 @@ function effortText(t: LabTestFull, r: LabResult): string {
   return t.effort !== 'default' && r.effort !== t.effort ? `${ran} (ASKED ${EFFORT_NAME[t.effort]}${r.effort === 'default' ? ': IT HAS NO LEVELS' : ''})` : ran;
 }
 
-const LETTERS = 'ABCDEFGHIJKLMNOP';
 const RANGES: [string, string, number][] = [['30d', '30 DAYS', 30], ['90d', '90 DAYS', 90], ['1y', '1 YEAR', 366], ['all', 'ALL', Infinity]];
 const SANDBOX = 'allow-scripts allow-forms allow-modals allow-pointer-lock'; // same as the server's header
 
@@ -141,6 +142,7 @@ export const labCommands = [
 // ------------------------------------------------------------ server
 
 async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  if (isDemo()) return demoLabApi<T>(path, method, body);
   const r = await fetch(`/api/lab/${path}`, {
     method,
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
@@ -151,7 +153,11 @@ async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> 
   return data;
 }
 
-const fail = (e: unknown) => toast(e instanceof Error ? e.message : String(e), 6000);
+// Demo mode is decided after the mounts, but a deep link can open this screen before that.
+const isDemo = () => store.demo || new URLSearchParams(location.search).has('demo');
+
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const fail = (e: unknown) => toast(message(e), 6000);
 
 // ------------------------------------------------------------ frame
 
@@ -200,7 +206,7 @@ function render(): void {
     })
     .catch((e) => {
       if (view !== v) return;
-      box.replaceChildren(el('p', 'lab-empty', e instanceof Error ? e.message : String(e)));
+      box.replaceChildren(el('p', 'lab-empty', message(e)));
     });
 }
 
@@ -219,7 +225,7 @@ const costText = (r: LabResult) => (r.value === null ? 'PLAN' : `PLAN (≈${fmtM
 const costTip = 'Runs on your plan. In brackets: what the same run would cost at API prices, when the app reports it.';
 const runMs = (r: LabResult) => (r.state === 'running' ? Date.now() - r.startedAt : r.startedAt && r.endedAt ? r.endedAt - r.startedAt : 0);
 const isBlind = (t: LabTest | LabTestFull) => t.blind && !t.revealed;
-const nameOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? `MODEL ${LETTERS[i]}` : t.results[i].modelName);
+const nameOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? `MODEL ${LAB_LETTERS[i]}` : t.results[i].modelName);
 const appOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? 'hidden until you rate or rank them all' : `${t.results[i].appName} · ${t.results[i].account}`);
 const topStars = (t: LabTest | LabTestFull) => Math.max(0, ...t.results.map((r) => r.stars));
 // The best: the owner's #1 once they ranked, else the most stars (ties all count).
@@ -274,6 +280,63 @@ function select(label: string, options: [string, string][], value: string, chang
 
 // ------------------------------------------------------------ NEW TEST
 
+const limitText = (n: number) => (n < 60 ? `${n} MIN` : `${n / 60} HOUR`);
+
+// The model list with ticks, one group per app and account. NEW TEST and + MODELS both use it. `picked` is changed in
+// place and `changed` runs after each tick. Gives the heading row (count, filter, NONE) and the groups; `text.filter`
+// keeps what was typed in the filter.
+function modelPicker(list: LabModel[], picked: Set<string>, text: { filter: string }, changed: () => void): { head: HTMLElement; groups: HTMLElement } {
+  const count = el('span', 'lab-count');
+  const tally = () => (count.textContent = `${picked.size} PICKED`);
+  const groups = el('div', 'lab-groups');
+  const chips: { c: HTMLInputElement; l: HTMLLabelElement; m: LabModel }[] = [];
+  const byGroup = new Map<string, LabModel[]>();
+  for (const m of list) byGroup.set(`${m.appName} · ${m.account}`, [...(byGroup.get(`${m.appName} · ${m.account}`) ?? []), m]);
+  for (const [name, ms] of byGroup) {
+    const g = el('fieldset', 'lab-group');
+    g.append(el('legend', '', name));
+    for (const m of ms) {
+      const l = el('label', 'lab-chip');
+      const c = el('input');
+      c.type = 'checkbox';
+      c.checked = picked.has(m.id);
+      c.onchange = () => {
+        if (c.checked) picked.add(m.id);
+        else picked.delete(m.id);
+        l.classList.toggle('on', c.checked);
+        tally();
+        changed();
+      };
+      l.classList.toggle('on', c.checked);
+      l.title = m.id;
+      if (m.app === 'local') l.title += '\nRuns on this PC. Local models take turns (one GPU).';
+      l.append(c, el('span', '', m.name));
+      chips.push({ c, l, m });
+      g.append(l);
+    }
+    groups.append(g);
+  }
+  const filter = el('input', 'lab-search lab-model-filter');
+  filter.type = 'search';
+  filter.placeholder = 'Filter models';
+  filter.value = text.filter;
+  const applyFilter = () => {
+    text.filter = filter.value;
+    const q = filter.value.trim().toLowerCase();
+    for (const { l, m } of chips) l.hidden = !!q && !`${m.name} ${m.id} ${m.appName}`.toLowerCase().includes(q);
+    for (const g of groups.querySelectorAll<HTMLElement>('.lab-group')) g.hidden = ![...g.querySelectorAll('.lab-chip')].some((c) => !(c as HTMLElement).hidden);
+  };
+  filter.oninput = applyFilter;
+  const clear = () => {
+    for (const { c } of chips) if (c.checked) (c.checked = false), c.dispatchEvent(new Event('change'));
+  };
+  const head = el('div', 'lab-row');
+  head.append(el('h3', '', 'MODELS'), count, filter, button('NONE', clear));
+  tally();
+  applyFilter();
+  return { head, groups };
+}
+
 async function newView(): Promise<HTMLElement> {
   models = await api<LabModelsResponse>('models');
   const w = el('div', 'lab-new');
@@ -289,10 +352,8 @@ async function newView(): Promise<HTMLElement> {
   prompt.placeholder = 'Your prompt. Every model gets exactly this text.';
   prompt.value = draft.prompt;
   prompt.rows = 7;
-  const count = el('span', 'lab-count');
   const startBtn = button('', () => void start(startBtn), 'primary lab-start');
   const sync = () => {
-    count.textContent = `${draft.picked.size} PICKED`;
     startBtn.textContent = draft.picked.size ? `START ${draft.picked.size} MODEL${draft.picked.size > 1 ? 'S' : ''}` : 'PICK SOME MODELS';
     startBtn.disabled = !draft.picked.size || !draft.prompt.trim() || draft.picked.size > LAB_MAX_MODELS;
     if (draft.picked.size > LAB_MAX_MODELS) startBtn.textContent = `${LAB_MAX_MODELS} MODELS AT MOST`;
@@ -303,55 +364,11 @@ async function newView(): Promise<HTMLElement> {
     sync();
   };
 
-  // Models, one group per app and account.
-  const groups = el('div', 'lab-groups');
-  const chips: { c: HTMLInputElement; l: HTMLLabelElement; m: LabModel }[] = [];
-  const byGroup = new Map<string, LabModel[]>();
-  for (const m of models.models) byGroup.set(`${m.appName} · ${m.account}`, [...(byGroup.get(`${m.appName} · ${m.account}`) ?? []), m]);
-  for (const [name, ms] of byGroup) {
-    const g = el('fieldset', 'lab-group');
-    g.append(el('legend', '', name));
-    for (const m of ms) {
-      const l = el('label', 'lab-chip');
-      const c = el('input');
-      c.type = 'checkbox';
-      c.checked = draft.picked.has(m.id);
-      c.onchange = () => {
-        if (c.checked) draft.picked.add(m.id);
-        else draft.picked.delete(m.id);
-        l.classList.toggle('on', c.checked);
-        sync();
-      };
-      l.classList.toggle('on', c.checked);
-      l.title = m.id;
-      if (m.app === 'local') l.title += '\nRuns on this PC. Local models take turns (one GPU).';
-      l.append(c, el('span', '', m.name));
-      chips.push({ c, l, m });
-      g.append(l);
-    }
-    groups.append(g);
-  }
+  const { head: modelsHead, groups } = modelPicker(models.models, draft.picked, draft, sync);
   if (!models.models.length) groups.append(el('p', 'lab-empty', 'No models are ready. See the notes above.'));
-  const filter = el('input', 'lab-search lab-model-filter');
-  filter.type = 'search';
-  filter.placeholder = 'Filter models';
-  filter.value = draft.filter;
-  const applyFilter = () => {
-    draft.filter = filter.value;
-    const q = filter.value.trim().toLowerCase();
-    for (const { l, m } of chips) l.hidden = !!q && !`${m.name} ${m.id} ${m.appName}`.toLowerCase().includes(q);
-    for (const g of groups.querySelectorAll<HTMLElement>('.lab-group')) g.hidden = ![...g.querySelectorAll('.lab-chip')].some((c) => !(c as HTMLElement).hidden);
-  };
-  filter.oninput = applyFilter;
-  const clear = () => {
-    for (const { c } of chips) if (c.checked) (c.checked = false), c.dispatchEvent(new Event('change'));
-  };
-
-  const modelsHead = el('div', 'lab-row');
-  modelsHead.append(el('h3', '', 'MODELS'), count, filter, button('NONE', clear));
 
   const opts = el('div', 'lab-row lab-opts');
-  opts.append(select('TIME LIMIT', LAB_TIME_LIMITS.map((n): [string, string] => [String(n), n < 60 ? `${n} MIN` : `${n / 60} HOUR`]), String(draft.limit), (v) => (draft.limit = Number(v))));
+  opts.append(select('TIME LIMIT', LAB_TIME_LIMITS.map((n): [string, string] => [String(n), limitText(n)]), String(draft.limit), (v) => (draft.limit = Number(v))));
   const eff = select('EFFORT', LAB_EFFORTS.map((e): [string, string] => [e, EFFORT_NAME[e]]), draft.effort, (v) => {
     draft.effort = v as LabEffort;
     localStorage.setItem(EFFORT_KEY, v);
@@ -369,15 +386,61 @@ async function newView(): Promise<HTMLElement> {
   const foot = el('div', 'lab-row lab-foot');
   foot.append(startBtn, el('span', 'lab-dim', 'All models start at once, each in its own locked box and folder. Local models take turns.'));
 
+  // LIBRARY: a prompt used before fills the title and the prompt (both stay editable). The models and settings stay as they are.
+  const use = async (p: LabPrompt): Promise<boolean> => {
+    if (draft.prompt.trim() && draft.prompt.trim() !== p.prompt && !(await confirmBox('REPLACE YOUR PROMPT?', 'The prompt box has text in it. The prompt you picked takes its place.', 'REPLACE'))) return false;
+    draft.title = title.value = p.title;
+    draft.prompt = prompt.value = p.prompt;
+    sync();
+    return true;
+  };
+  const library = button('LIBRARY', () => void openLibrary(use), 'lab-library');
+  library.title = 'Every prompt you have used before: pick one to run it again, on the same models or new ones';
   const dictate = button('DICTATE', () => {}, 'lab-dictate');
   const promptHead = el('div', 'lab-row');
-  promptHead.append(el('h3', '', 'PROMPT'), el('span', 'lab-grow'), dictate);
+  promptHead.append(el('h3', '', 'PROMPT'), el('span', 'lab-grow'), library, dictate);
   w.append(promptHead, title, prompt, modelsHead, groups, opts, foot);
   if (view.kind === 'new') releaseDictation = useDictation(dictate, prompt); // not if the owner moved on while it loaded
   sync();
-  applyFilter();
   setTimeout(() => (draft.prompt ? null : prompt.focus({ preventScroll: true })), 0);
   return w;
+}
+
+// The LIBRARY box: every prompt used before (HISTORY and ARCHIVE), newest first, one row per distinct text. `use` fills
+// NEW TEST; it says false when the owner chose to keep what was typed, and the box stays open.
+async function openLibrary(use: (p: LabPrompt) => Promise<boolean>): Promise<void> {
+  const { d, body } = box('PROMPT LIBRARY');
+  body.classList.add('lab-box-fill');
+  const q = el('input', 'lab-search');
+  q.type = 'search';
+  q.placeholder = 'Filter by title or words in the prompt';
+  const list = el('div', 'lab-lib-list');
+  list.append(el('p', 'lab-empty', 'LOADING…'));
+  body.append(q, list);
+  if (matchMedia('(hover: hover)').matches) q.focus(); // not on a phone: the keyboard would cover the list
+  let prompts: LabPrompt[];
+  try {
+    prompts = (await api<{ prompts: LabPrompt[] }>('prompts')).prompts;
+  } catch (e) {
+    return void list.replaceChildren(el('p', 'lab-err', message(e)));
+  }
+  const choose = async (p: LabPrompt) => {
+    if (await use(p)) d.close();
+  };
+  const draw = () => {
+    const f = q.value.trim().toLowerCase();
+    const shown = prompts.filter((p) => !f || `${p.title} ${p.prompt}`.toLowerCase().includes(f));
+    list.replaceChildren(...shown.map((p) => libraryRow(p, () => void choose(p))));
+    if (!shown.length) list.append(el('p', 'lab-empty', prompts.length ? 'No prompt matches.' : 'No prompts yet. Every test you start is kept here.'));
+  };
+  q.oninput = draw;
+  draw();
+}
+
+function libraryRow(p: LabPrompt, pick: () => void): HTMLElement {
+  const row = button('', pick, 'lab-lib-row');
+  row.append(el('span', 'lab-strong lab-lib-title', p.title), el('span', 'lab-lib-text', p.prompt.slice(0, 300)), el('span', 'lab-dim lab-lib-meta', `${p.tests} TEST${p.tests === 1 ? '' : 'S'} · LAST ${fmtDate(p.at).toUpperCase()}`));
+  return row;
 }
 
 async function start(btn: HTMLButtonElement): Promise<void> {
@@ -421,7 +484,9 @@ async function testView(id: string): Promise<HTMLElement> {
   videoBtn.title = 'Big cards and race timers: made for recording';
   const blindBtn = button(isBlind(t) ? 'REVEAL' : t.blind ? 'BLIND OFF' : 'BLIND', () => void setBlind(t), isBlind(t) ? 'primary lab-reveal' : '');
   blindBtn.title = 'BLIND hides the model names, so the brand does not change your stars. REVEAL works once every result has stars, or all are ranked.';
-  head.append(back, h, el('span', 'lab-grow'), modeBtns, blindBtn, videoBtn);
+  const addBtn = button('+ MODELS', () => void openAddModels(t), 'lab-add');
+  addBtn.title = "Run this exact prompt on more models. They join this test's cards and ranking, with its effort and time limit.";
+  head.append(back, h, el('span', 'lab-grow'), modeBtns, addBtn, blindBtn, videoBtn);
 
   const meta = el('div', 'lab-meta');
   const sum = el('span', 'lab-sum', `${fmtTime(t.at)} · ${summary(t)} · EFFORT ${EFFORT_NAME[t.effort]}`);
@@ -479,6 +544,7 @@ function schedulePoll(id: string): void {
     if (view.kind !== 'test' || view.id !== id || !current) return;
     const old = current;
     current = t;
+    if (t.results.length !== old.results.length) return render(); // models were added (from another window)
     t.results.forEach((r, i) => {
       const o = old.results[i];
       if (!o) return;
@@ -754,6 +820,53 @@ function rerun(t: LabTestFull): void {
   toast('Same prompt and models. Change anything, then START.');
 }
 
+// + MODELS: this test's prompt on more models, with its effort and time limit. Their results join its cards and ranking
+// and come last, so a blind test gives them the next letters. The picker lists only the models not in the test yet.
+async function openAddModels(t: LabTestFull): Promise<void> {
+  const { d, body } = box('+ MODELS');
+  body.classList.add('lab-box-fill');
+  body.append(el('p', 'lab-empty', 'LOADING…'));
+  let list: LabModelsResponse;
+  try {
+    list = await api<LabModelsResponse>('models');
+  } catch (e) {
+    return void body.replaceChildren(el('p', 'lab-err', message(e)));
+  }
+  const room = LAB_MAX_MODELS - t.results.length;
+  const have = new Set(t.results.map((r) => r.model));
+  const left = list.models.filter((m) => !have.has(m.id));
+  if (room <= 0) return void body.replaceChildren(el('p', 'lab-dim', `This test has ${t.results.length} models, the most one test holds. Start a new test from the LIBRARY in NEW TEST instead.`));
+  const picked = new Set<string>();
+  const intro = el('p', 'lab-dim', `The same prompt, with EFFORT ${EFFORT_NAME[t.effort]} and TIME LIMIT ${limitText(t.timeLimitMin)} like the rest. The new results join this test's cards and ranking.${isBlind(t) ? ' It is blind: they get the next letters.' : ''}`);
+  const err = el('p', 'lab-err');
+  const run = button('', () => void submit(), 'primary lab-start');
+  const sync = () => {
+    run.textContent = picked.size > room ? `ROOM FOR ${room} MORE` : picked.size ? `RUN ${picked.size} MODEL${picked.size > 1 ? 'S' : ''}` : 'PICK SOME MODELS';
+    run.disabled = !picked.size || picked.size > room;
+  };
+  const submit = async () => {
+    run.disabled = true;
+    err.textContent = '';
+    try {
+      const { added } = await api<{ added: string[] }>(`tests/${encodeURIComponent(t.id)}/models`, 'POST', { models: [...picked] });
+      d.close();
+      toast(`${added.length} model${added.length > 1 ? 's' : ''} added. Running.`);
+      render();
+    } catch (e) {
+      err.textContent = message(e);
+      sync();
+    }
+  };
+  const { head, groups } = modelPicker(left, picked, { filter: '' }, sync);
+  if (!left.length) groups.append(el('p', 'lab-empty', 'Every model that is ready is already in this test.'));
+  const scroll = el('div', 'lab-scroll');
+  scroll.append(head, groups);
+  const foot = el('div', 'lab-row lab-box-foot');
+  foot.append(run, err);
+  body.replaceChildren(intro, ...list.notes.map((n) => el('p', 'lab-warn', n)), scroll, foot);
+  sync();
+}
+
 async function remove(t: LabTest | LabTestFull): Promise<void> {
   const ok = await confirmBox('DELETE THIS TEST?', `"${t.title}": ${t.results.length} results. Its folder on the PC is deleted for good.`, 'DELETE');
   if (!ok) return;
@@ -887,7 +1000,7 @@ async function openLog(t: LabTestFull, i: number): Promise<void> {
     body.append(el('h3', '', "THE APP'S OUTPUT (log.jsonl, one event per line)"), el('pre', 'lab-log', log || '(empty)'));
     if (stderr.trim()) body.append(el('h3', '', 'ERRORS AND NOTES (stderr)'), el('pre', 'lab-log', stderr));
   } catch (e) {
-    body.replaceChildren(el('p', 'lab-err', e instanceof Error ? e.message : String(e)));
+    body.replaceChildren(el('p', 'lab-err', message(e)));
   }
 }
 

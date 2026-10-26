@@ -52,13 +52,15 @@ body.has-shell #btn-lab {
 }
 
 .lab h2,
-.lab h3 {
+.lab h3,
+.lab-box h3 {
   margin: 0;
   font-weight: normal;
   letter-spacing: 2px;
 }
 
-.lab h3 {
+.lab h3,
+.lab-box h3 {
   color: var(--ph-dim);
   font-size: var(--fs-sm);
 }
@@ -155,7 +157,8 @@ body.has-shell #btn-lab {
   color: var(--ph-bright);
 }
 
-.lab .lab-model-filter {
+.lab .lab-model-filter,
+.lab-box .lab-model-filter {
   flex: 0 1 220px;
   min-height: 34px;
   margin-left: auto;
@@ -188,7 +191,8 @@ body.has-shell #btn-lab {
   line-height: 1.25;
 }
 
-.lab .lab-dictate {
+.lab .lab-dictate,
+.lab .lab-library {
   min-height: 40px;
   padding: 2px 18px;
   letter-spacing: 2px;
@@ -834,6 +838,74 @@ dialog.lab-box-wide {
   max-height: calc(90vh - 80px);
 }
 
+/* A box whose middle scrolls while the top (filter) and bottom (the RUN button) stay in view: LIBRARY and + MODELS. */
+.lab-box-fill {
+  overflow: hidden;
+}
+
+.lab-box-fill > * {
+  flex: 0 0 auto;
+}
+
+.lab-box-fill > .lab-scroll,
+.lab-box-fill > .lab-lib-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.lab-box-foot {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.lab-box-foot .lab-err {
+  margin: 0;
+}
+
+.lab-lib-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lab-lib-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  text-align: left;
+  letter-spacing: 0;
+}
+
+.lab-lib-row > span {
+  display: block;
+  min-width: 0;
+}
+
+.lab-lib-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-lib-text {
+  color: var(--ph);
+  font-size: var(--fs-sm);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.lab-lib-meta {
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
 .lab-big-frame {
   width: 100%;
   height: min(70vh, 720px);
@@ -870,6 +942,7 @@ dialog.lab-box-wide {
 .lab.lab-video .lab-bar,
 .lab.lab-video .lab-back,
 .lab.lab-video .lab-seg,
+.lab.lab-video .lab-add,
 .lab.lab-video .lab-meta,
 .lab.lab-video .lab-actions,
 .lab.lab-video .lab-card-acts,
