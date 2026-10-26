@@ -185,8 +185,8 @@ export type ClientEvent =
 
 // POST /api/upload?name=<file name> (raw bytes) -> Attachment. GET /api/upload/<id> -> the image (images only).
 
-// GET /api/history
-export type HistoryEntry = { sessionId: string; title: string; cwd: string; lastModified: number; openTab?: string };
+// GET /api/history. A Gemini chat (agent 'gemini') has sessionId "gemini:<its agy conversation>".
+export type HistoryEntry = { sessionId: string; title: string; cwd: string; lastModified: number; openTab?: string; agent?: 'gemini' };
 export type HistoryResponse = { sessions: HistoryEntry[] };
 // GET /api/history/search?q=words[&all=1]: chats whose own text (yours and Claude's) has every word.
 export type HistorySearchResponse = { hits: { sessionId: string; snippet: string }[] };

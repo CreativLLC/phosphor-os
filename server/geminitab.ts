@@ -160,6 +160,26 @@ export type GeminiHost = {
 // The chat as shown, in data/gemini-chats/<conversation>.json.
 export type SavedGeminiChat = { conversation: string; title: string; cwd: string; model?: string; createdAt: number; updatedAt: number; files: string[]; items: Item[] };
 
+// Every saved Gemini chat, for HISTORY.
+export function savedGeminiChats(): SavedGeminiChat[] {
+  let names: string[] = [];
+  try {
+    names = readdirSync(GeminiChat.dir).filter((f) => f.endsWith('.json'));
+  } catch {
+    return [];
+  }
+  return names.flatMap((f) => {
+    try {
+      return [JSON.parse(readFileSync(join(GeminiChat.dir, f), 'utf8')) as SavedGeminiChat];
+    } catch {
+      return []; // damaged: left out
+    }
+  });
+}
+
+// What HISTORY's search looks through: your messages and Gemini's replies.
+export const chatText = (c: SavedGeminiChat): string => c.items.map((i) => (i.kind === 'user' || i.kind === 'claude' ? i.text : '')).filter(Boolean).join('\n');
+
 type Job = { text: string; files: StoredUpload[] };
 type Run = {
   child: ChildProcess;
@@ -191,7 +211,7 @@ export class GeminiChat {
 
   conversation?: string;
   private items: Item[] = []; // this chat's own items (the tab also shows pictures from the image models)
-  private model?: string; // the last Gemini model it ran on
+  model?: string; // the last Gemini model it ran on (saved with the chat)
   private queue: Job[] = [];
   private run?: Run;
   private gone = false;

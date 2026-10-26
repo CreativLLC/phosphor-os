@@ -60,7 +60,7 @@ export function mountHistory(drawer: HTMLElement, openBtn: HTMLElement): void {
       ...[...byTitle, ...byText].map((s) => {
         const row = el('button', 'history-row');
         row.type = 'button';
-        row.append(el('span', 'h-title', s.title), el('span', 'h-meta', `${folderName(s.cwd)} · ${timeAgo(s.lastModified)}${s.openTab ? ' · OPEN' : ''}`));
+        row.append(el('span', 'h-title', s.title), el('span', 'h-meta', `${s.agent === 'gemini' ? 'GEMINI · ' : ''}${folderName(s.cwd)} · ${timeAgo(s.lastModified)}${s.openTab ? ' · OPEN' : ''}`));
         const snip = useHits ? hits.get(s.sessionId) : undefined;
         if (snip) row.append(marked(snip, words));
         row.onclick = () => {

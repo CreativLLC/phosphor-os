@@ -383,6 +383,8 @@ export class Tab {
   async loadHistory(): Promise<void> {
     if (this.geminiChat) {
       this.state.items = mergeImages(this.geminiChat.load(), this.imageLog);
+      this.pendingModel ??= this.geminiChat.model; // reopened from HISTORY: the model it last ran on
+      this.state.info.model ||= this.pendingModel ?? '';
       return;
     }
     const sid = this.state.meta.sessionId;

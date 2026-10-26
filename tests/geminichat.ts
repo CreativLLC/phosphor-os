@@ -16,7 +16,7 @@ const fake = join(fixtures, 'fake-agy.mjs');
 process.env.PHOSPHOR_IMAGE_DIR = join(tmp, 'images'); // read when the server modules load
 process.env.FAKE_AGY_BRAIN = join(tmp, 'brain');
 process.env.FAKE_AGY_LOG = join(tmp, 'argv.log');
-const { agyMode, fitEffort, GeminiChat, geminiModels, NO_BYPASS, parseAgyModels } = await import('../server/geminitab.ts');
+const { agyMode, chatText, fitEffort, GeminiChat, geminiModels, NO_BYPASS, parseAgyModels, savedGeminiChats } = await import('../server/geminitab.ts');
 const { Tab } = await import('../server/tab.ts');
 GeminiChat.bin = fake;
 GeminiChat.brain = join(tmp, 'brain');
@@ -190,6 +190,11 @@ const conv = '698555f5-d6e6-48b4-ae34-0ab407023a76';
   tab.close();
   const saved = JSON.parse(readFileSync(join(tmp, 'chats', `${conv}.json`), 'utf8'));
   check('closing saves the chat with its name', saved.title === tab.state.meta.title && saved.model === 'gemini:gemini-4-argon');
+  const listed = savedGeminiChats().find((c) => c.conversation === conv);
+  check('HISTORY lists saved Gemini chats; its search sees your words and the replies', !!listed && chatText(listed).includes('Write 3 short sentences about the moon.') && chatText(listed).includes("only natural satellite"));
+  const reopened = new Tab(() => {}, { cwd, gemini: conv });
+  await reopened.loadHistory();
+  check('reopened from HISTORY: a Gemini chat on the model it last ran on', reopened.state.info.agent === 'gemini' && reopened.model === 'gemini:gemini-4-argon' && reopened.state.info.model === 'gemini:gemini-4-argon');
 }
 
 rmSync(tmp, { recursive: true, force: true });
