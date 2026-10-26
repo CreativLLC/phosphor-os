@@ -299,6 +299,15 @@ const ask = async (d: Deps, args: Record<string, unknown>, extra: unknown = {}) 
   check('ask_local: stopped: STOPPED', stopped.error && /^LOCAL MODEL STOPPED/.test(stopped.text), stopped.text);
   const slow = await ask(deps({ rows: {}, answer: (_b, init) => new Promise((_, no) => init?.signal?.addEventListener('abort', () => no(new Error('aborted')))) }, { firstMs: 30 }), { task: 'x' });
   check('ask_local: no answer in time: TOO SLOW', slow.error && /^LOCAL MODEL TOO SLOW: no answer within/.test(slow.text), slow.text);
+  // The wait in the queue counts toward the time limit: a waited call plus a full run went past it.
+  const held = new JobQueue();
+  const busyFor = held.run(() => sleep(400), 2000);
+  const hang = (_b: Record<string, unknown>, init?: RequestInit) => new Promise<Response>((_, no) => init?.signal?.addEventListener('abort', () => no(new Error('aborted'))));
+  const t0 = Date.now();
+  const late = await ask(deps({ rows: {}, answer: hang }, { queue: held, waitMs: 2000, firstMs: 2000, totalMs: 600 }), { task: 'x' });
+  const took = Date.now() - t0;
+  await busyFor;
+  check('ask_local: the time limit counts from the call, the queue wait too', late.error && /TOO SLOW/.test(late.text) && took < 850, `${took} ms: ${late.text}`);
   const empty = await ask(deps({ rows: {}, answer: () => sse(answer(' ')) }), { task: 'x' });
   check('ask_local: an empty answer: FAILED', empty.error && /empty answer/.test(empty.text));
   check('ask_local: failures are counted as failed', counts.at(-1)?.failed === 1);

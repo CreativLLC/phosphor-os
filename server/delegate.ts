@@ -430,7 +430,7 @@ export type Deps = {
   relay: string; // where the relay listens
   waitMs: number; // longest wait for the queue
   firstMs: number; // longest wait for the first piece of the answer (model load + reading the prompt)
-  totalMs: number; // longest job
+  totalMs: number; // longest call, its wait in the queue included
 };
 
 const LIVE: Deps = {
@@ -486,6 +486,9 @@ export function askLocalTool(chat: DelegateChat, deps: Deps = LIVE) {
             const parts = files.map((f) => `<file path="${f.path}"${f.cut ? ` note="cut: its first ${f.text.length} of ${f.size} characters"` : ''}>\n${f.text}\n</file>`);
             const prompt = [...parts, `Task: ${args.task}`].join('\n\n');
             const reading = `Local model: reading${files.length ? ` ${files.length} ${files.length === 1 ? 'file' : 'files'}` : ''}`;
+            // The time limit counts from the call, the wait in the queue too: Claude waits on the whole call, and its
+            // calls run side by side, so a wait plus a full run went past the prompt cache's life.
+            const left = deps.totalMs - (Date.now() - t0);
             const r = await runLocal({
               url: deps.relay,
               key: deps.local!.key,
@@ -493,8 +496,8 @@ export function askLocalTool(chat: DelegateChat, deps: Deps = LIVE) {
               system: SYSTEM(words),
               prompt,
               maxTokens,
-              firstMs: deps.firstMs,
-              totalMs: deps.totalMs,
+              firstMs: Math.min(deps.firstMs, left),
+              totalMs: left,
               signal,
               fetch: deps.fetch,
               phase: (p) => chat.status(p === 'reading' ? reading : `Local model: ${p}`),
