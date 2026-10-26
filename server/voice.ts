@@ -150,7 +150,8 @@ function start(): Promise<void> {
   return ready;
 }
 
-async function transcribe(pcm: Buffer): Promise<{ text: string; ms: number }> {
+// One shot: 16 kHz mono 16-bit PCM -> text. Also used by the phone keyboard API (server/voiceapi.ts).
+export async function transcribe(pcm: Buffer): Promise<{ text: string; ms: number }> {
   await start();
   const proc = child;
   if (!proc?.connected) throw new Error('The voice engine stopped. Try again.');
@@ -164,6 +165,14 @@ async function transcribe(pcm: Buffer): Promise<{ text: string; ms: number }> {
     waiting.set(id, { resolve, reject, timer });
     proc.send({ t: 'decode', id, pcm: new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength) });
   });
+}
+
+// One-shot requests waiting for the engine: more than MAX_QUEUE are turned away (429).
+export const voiceQueueFull = () => waiting.size >= MAX_QUEUE;
+
+// Load the model now (a phone keyboard asks for the model list before it records).
+export function warmVoice(): void {
+  if (voiceInstalled()) start().catch((e) => console.error(`  ${e instanceof Error ? e.message : e}`));
 }
 
 // ---- Live dictation over /ws/voice ----

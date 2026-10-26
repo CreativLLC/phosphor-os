@@ -24,6 +24,7 @@ import { Tabs } from './tabs.ts';
 import { getUpload, receiveUpload, serveUpload } from './uploads.ts';
 import { usage } from './usage.ts';
 import { handleVoice, voiceSockets } from './voice.ts';
+import { handleKeyboardToken, handleVoiceApi } from './voiceapi.ts';
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -135,6 +136,9 @@ const server = createServer(async (req, res) => {
   // The desktop app opens a file from the PC in DOCS. Guarded by a key file instead of the cookie (server/docs.ts).
   if (url.pathname === '/api/docs/open-local') return await handleOpenLocal(req, res);
 
+  // PHONE KEYBOARD: OpenAI-style speech to text for phone keyboards, with its own token instead of the cookie (server/voiceapi.ts).
+  if (url.pathname.startsWith('/v1/')) return await handleVoiceApi(req, res, url);
+
   // LAB result files: sandboxed, opened by the test's key instead of the cookie (server/lab.ts).
   if (url.pathname.startsWith('/lab/v/') && req.method === 'GET') return serveLabFile(res, url);
 
@@ -175,6 +179,7 @@ const server = createServer(async (req, res) => {
     if (image) return serveImage(res, decodeURIComponent(image[1]));
     if (url.pathname.startsWith('/api/files/')) return await handleFiles(req, res, url, tabs);
     if (url.pathname === '/api/mcp' || url.pathname === '/api/commands') return await handleMcp(req, res, url, tabs);
+    if (url.pathname === '/api/voice/keyboard' || url.pathname === '/api/voice/keyboard/new') return await handleKeyboardToken(req, res, url);
     if (url.pathname === '/api/transcribe' || url.pathname === '/api/voice' || url.pathname.startsWith('/api/voice/')) return await handleVoice(req, res, url);
     if (url.pathname === '/api/push' || url.pathname.startsWith('/api/push/')) return await handlePush(req, res, url);
     if (url.pathname === '/api/usage') return sendJson(res, await usage(tabs, url.searchParams.has('details'), url.searchParams.has('fresh')));
