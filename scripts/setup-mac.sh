@@ -264,9 +264,6 @@ app_step() {
   # DICTATE: macOS shows this line when it asks for the microphone.
   /usr/libexec/PlistBuddy -c "Delete :NSMicrophoneUsageDescription" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Phosphor-OS uses the microphone for DICTATE (speech to text on this Mac)." "$plist"
-  # The floating mic presses Command+V through System Events to put dictated words into other apps (shell/dictate.mjs).
-  /usr/libexec/PlistBuddy -c "Delete :NSAppleEventsUsageDescription" "$plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c "Add :NSAppleEventsUsageDescription string Phosphor-OS presses Command+V to put dictated words into the app you are typing in." "$plist"
   local appdir="$dl/x/Electron.app/Contents/Resources/app"
   mkdir -p "$appdir"
   printf '%s\n' '{"name":"phosphor-os","productName":"Phosphor-OS","main":"index.mjs"}' >"$appdir/package.json"

@@ -1,6 +1,7 @@
-// DICTATE in any app and PHONE KEYBOARD, headless: the shared rules (shared/dictate.mjs: paste key per window class,
-// joining, CLEAN UP and its fallback, settings), the Linux paste (os/omarchy/clock/phosphor-dictate-paste.mjs, with
-// stand-in clipboard and key tools) and the phone keyboard API (server/voiceapi.ts: multipart, audio, token, limits).
+// DICTATE in any app (Ctrl+Space) and PHONE KEYBOARD, headless: the shared rules (shared/dictate.mjs: paste key per
+// window class, joining, CLEAN UP and its fallback, the setting), the Linux paste (os/omarchy/clock/
+// phosphor-dictate-paste.mjs, with stand-in clipboard and key tools) and the phone keyboard API (server/voiceapi.ts:
+// multipart, audio, token, limits).
 // No network, no real speech engine: the engine and the clock are fakes, the HTTP gate runs on a spare loopback port.
 // ffmpeg is used when it is installed (a sine tone, no speech), else that case is skipped.
 //   npx tsx tests/dictate-anywhere.ts
@@ -11,6 +12,7 @@ import { createServer, request, type IncomingMessage, type ServerResponse } from
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as shared from '../shared/dictate.mjs';
 import { cleanUp, finalText, isTerminal, joinPhrase, pasteKeys, pasteWords, readSettings, settingsFile } from '../shared/dictate.mjs';
 import { type ApiDeps, handleKeyboardToken, handleVoiceApi, keyboardToken, MODEL_ID, parseMultipart, sniffAudio, toPcm } from '../server/voiceapi.ts';
 import { focusedWindow, pasteText } from '../os/omarchy/clock/phosphor-dictate-paste.mjs';
@@ -35,10 +37,9 @@ try {
   }
   check('not a terminal: phosphor-os, code, chromium, footnotes', !['phosphor-os', 'code', 'chromium', 'footnotes'].some((c) => isTerminal(win(c))));
   check('no window or junk: not a terminal', !isTerminal(null) && !isTerminal({}) && !isTerminal({ tags: 'terminal' } as never));
-  check('Mac: Command+V; Windows: Ctrl+V, terminals too', pasteKeys('darwin', win('Alacritty')).mods === 'SUPER' && pasteKeys('win32', win('Alacritty')).mods === 'CTRL');
   check('the key is v', pasteKeys('linux', win('foot')).key === 'v');
   check('a terminal gets one line: a line break would run a command', pasteWords('linux', win('kitty'), 'One.\n\nrm -rf x\r\n') === 'One. rm -rf x ');
-  check('other programs get the lines as they are', pasteWords('linux', win('discord'), 'a\nb') === 'a\nb' && pasteWords('darwin', win('Alacritty'), 'a\nb') === 'a\nb');
+  check('other programs get the lines as they are', pasteWords('linux', win('discord'), 'a\nb') === 'a\nb');
 
   // ---------------------------------------------------------------- joining, the final text, settings
   let t = '';
@@ -48,16 +49,15 @@ try {
   check('joinPrev: the pause was mid-sentence, its period goes', joinPhrase('I went to the.', 'store today.', true) === 'I went to the store today.');
   check('an empty phrase changes nothing', joinPhrase('Hi.', '   ') === 'Hi.');
   check('final text: a space after a sentence end only', finalText(' Done. ') === 'Done. ' && finalText('no end') === 'no end' && finalText('Quote."') === 'Quote." ');
-  check('settings: defaults, shown, CLEAN UP off', JSON.stringify(readSettings('')) === '{"icon":true,"cleanup":false}');
-  check('settings: broken or odd values fall back, the spot stays', (() => {
-    const s = readSettings('{"icon":"no","cleanup":1,"x":0.5,"screen":"DP-1"}');
-    return s.icon === true && s.cleanup === false && s.x === 0.5 && s.screen === 'DP-1';
-  })());
-  check('settings: hidden, CLEAN UP on', (() => {
-    const s = readSettings('{"icon":false,"cleanup":true}');
-    return !s.icon && s.cleanup;
-  })());
+  check('settings: no file yet -> CLEAN UP off', JSON.stringify(readSettings('')) === '{"cleanup":false}');
+  check('settings: odd values and junk fall back to off', ['{"cleanup":1}', '{"cleanup":"yes"}', 'null', '[1]', '"cleanup"', '{', '7'].every((t) => readSettings(t).cleanup === false));
+  check('settings: CLEAN UP on; the floating mic\'s old keys in the file are ignored', JSON.stringify(readSettings('{"icon":false,"cleanup":true,"x":0.5,"screen":"DP-1"}')) === '{"cleanup":true}');
   check('settings file under ~/.config/phosphor-os', settingsFile('/h') === '/h/.config/phosphor-os/dictate.json');
+  // The take is a copy in ~/.config that only desktop.sh updates; this file is read live from the app's folder. A name the
+  // take imports must stay, or dictation breaks between a git pull and the next desktop.sh.
+  const take = readFileSync(new URL('../os/omarchy/clock/phosphor-dictate-live.mjs', import.meta.url), 'utf8');
+  const wanted = (/const \{([^}]+)\} = lib;/.exec(take)?.[1] ?? '').split(',').map((n) => n.trim()).filter(Boolean);
+  check('the take only uses what shared/dictate.mjs exports', wanted.length >= 7 && wanted.every((n) => typeof (shared as Record<string, unknown>)[n] === 'function'), wanted.join(','));
 
   // ---------------------------------------------------------------- CLEAN UP and its fallback
   const answer = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })) as unknown as typeof fetch;
@@ -140,6 +140,9 @@ try {
   };
   await pasteText('Hi. ', { keysFor, run: mine, sleep });
   check('paste: something copied in the meantime is left alone', userCopied.clip.data?.toString() === 'copied meanwhile');
+  d = desk(win('discord'), { data: Buffer.from('old'), type: 'text/plain', sensitive: false });
+  p = await pasteText('Hi. ', { keysFor, run: (c: string, a: string[], o: object) => (c === 'wl-copy' ? { status: 1, stdout: '' } : d.run(c, a, o)), sleep });
+  check('paste: wl-copy does not work -> not ok, no key sent', p.ok === false && d.pasted() === '' && !d.log.some((l) => l.includes('dispatch')));
   d = desk(win('discord'), { data: Buffer.from('old'), type: 'text/plain', sensitive: false });
   check('the focused window at the stop: its address', focusedWindow(d.run) === '0x1' && focusedWindow(desk(null, d.clip).run) === '');
   p = await pasteText('Hi. ', { keysFor, target: '0x1', run: d.run, sleep });

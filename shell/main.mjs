@@ -320,8 +320,7 @@ function createWindow(show) {
   });
 
   web = mountWeb({ win, isApp, prefs, savePrefs, onFullscreenKey: () => setFullscreen(!win.isFullScreen()) });
-  // DICTATE in any app: the floating mic (Windows, Mac) or the pack's settings (Linux): shell/dictate.mjs
-  mountDictate({ prefs, savePrefs, isApp, base: BASE, preload: join(ROOT, 'shell', 'preload.cjs'), partition: PARTITION, globalKeys: GLOBAL_KEYS, showApp: showWindow });
+  mountDictate({ isApp }); // DICTATE in any app: its one setting for SETTINGS > VOICE (Linux, shell/dictate.mjs)
   if (show) showWindow();
 }
 

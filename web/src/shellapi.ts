@@ -18,9 +18,9 @@ export type WebAction = 'back' | 'forward' | 'reload' | 'stop' | 'close' | 'outs
 export type InstalledApp = { id: string; name: string; hint?: string; words?: string; icon?: string };
 export type Game = { id: string; name: string; hint?: string }; // id = Steam appid
 
-// DICTATE in any app (shell/dictate.mjs): where the floating mic lives ('pack': the Omarchy pack's, 'app': this app's
-// own window on Windows and Mac, 'none': not set up here), whether it shows, CLEAN UP, and its key.
-export type DictateInfo = { where: 'pack' | 'app' | 'none'; icon: boolean; cleanup: boolean; keys: string };
+// DICTATE in any app (shell/dictate.mjs, Linux): whether the Omarchy pack's take is set up here ('pack', else 'none')
+// and CLEAN UP for the words that go into other apps.
+export type DictateInfo = { where: 'pack' | 'none'; cleanup: boolean };
 
 // STATION skins (shell/skins.mjs): the app's theme and which addresses get which app's skin.
 export type SkinConfig = { theme: string; crt: string; sites: { origin: string; kind: string }[] };
@@ -55,14 +55,9 @@ export type PhosphorShell = {
   showInFolder?(path: string): Promise<boolean>;
   // Open a picture file in the system image viewer. Optional: an older desktop app does not have it.
   openImage?(path: string): Promise<boolean>;
-  // DICTATE in any app: the floating mic's settings. Optional: an older desktop app does not have them.
+  // DICTATE in any app: its CLEAN UP setting. Optional: an older desktop app does not have them.
   dictate?(): Promise<DictateInfo | null>;
-  setDictate?(patch: { icon?: boolean; cleanup?: boolean }): Promise<DictateInfo | null>;
-  // The floating mic page's own calls (Windows, Mac): put the words into the app in front, its menu, moving it.
-  dictatePaste?(text: string): Promise<'pasted' | 'copied' | 'failed'>;
-  dictateMenu?(): void;
-  dictateDrag?(phase: 'start' | 'move' | 'end', dx: number, dy: number): void;
-  onDictateCommand?(fn: (c: string) => void): void;
+  setDictate?(patch: { cleanup?: boolean }): Promise<DictateInfo | null>;
 };
 
 declare global {

@@ -4,15 +4,15 @@ import { store } from './store.ts';
 import { button, confirmBox, el, toast } from './ui.ts';
 
 // SETTINGS > VOICE:
-// - DICTATE in any app (desktop app only): the floating mic SHOW / HIDE and CLEAN UP, through the desktop app
-//   (shell/dictate.mjs; on Linux the Omarchy pack's settings file). Read again each time SETTINGS opens, since the
-//   mic's own right-click menu changes the same settings.
+// - CLEAN UP for DICTATE in any app (Ctrl+Space; the desktop app on Linux only): the words are tidied before they go
+//   into the other app. The setting is the Omarchy pack's file, read and written through the desktop app
+//   (shell/dictate.mjs), and read again each time SETTINGS opens.
 // - PHONE KEYBOARD (every device, so the phone can copy its key): this PC's speech engine for a phone keyboard such as
 //   Dictate Keyboard: the base URL, the API key (COPY, NEW TOKEN), the model, the steps. API: server/voiceapi.ts.
 
 type Keyboard = { token: string; base: string | null; model: string };
 
-const DEMO_INFO: DictateInfo = { where: 'pack', icon: true, cleanup: false, keys: 'Super+H (tap, or hold to talk)' };
+const DEMO_INFO: DictateInfo = { where: 'pack', cleanup: false };
 const DEMO_KEYBOARD: Keyboard = { token: 'phos_demo0000000000000000000000000000000000k3y', base: 'https://your-pc.your-tailnet.ts.net/v1/', model: 'parakeet-tdt-0.6b-v2' };
 
 export function voiceSection(): HTMLElement {
@@ -31,20 +31,18 @@ export function voiceSection(): HTMLElement {
     });
     return s;
   };
-  const set = async (patch: { icon?: boolean; cleanup?: boolean }) => {
-    if (store.demo && info) info = { ...info, ...patch };
-    else info = (await shellApi?.setDictate?.(patch).catch(() => null)) ?? info;
+  const set = async (cleanup: boolean) => {
+    if (store.demo && info) info = { ...info, cleanup };
+    else info = (await shellApi?.setDictate?.({ cleanup }).catch(() => null)) ?? info;
     draw();
   };
   const draw = () => {
-    if (!info) return anywhere.replaceChildren(); // a browser or the phone: the floating mic belongs to the desktop app
+    if (!info) return anywhere.replaceChildren(); // a browser or the phone: the setting belongs to the desktop app
     if (info.where === 'none') return anywhere.replaceChildren(el('div', 'voice-note', 'DICTATE in any app needs the desktop pack on this PC: bash scripts/setup-linux.sh'));
     anywhere.replaceChildren(
-      el('div', 'set-sub', 'FLOATING MIC'),
-      seg([['SHOW', info.icon], ['HIDE', !info.icon]], (i) => void set({ icon: i === 0 })),
-      el('div', 'set-sub', 'CLEAN UP'),
-      seg([['ON', info.cleanup], ['OFF', !info.cleanup]], (i) => void set({ cleanup: i === 0 })),
-      el('div', 'voice-note', `DICTATE in any app: click the mic (or ${info.keys}), talk, click again. The words go in where the cursor is, in the window that has the keyboard. CLEAN UP tidies them first.`),
+      el('div', 'set-sub', 'CLEAN UP IN ANY APP'),
+      seg([['ON', info.cleanup], ['OFF', !info.cleanup]], (i) => void set(i === 0)),
+      el('div', 'voice-note', 'DICTATE in any app: press Ctrl+Space, talk, press again. The words go in where the cursor is, in the window that has the keyboard. CLEAN UP tidies them first.'),
     );
   };
   const load = async () => {

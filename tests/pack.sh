@@ -27,6 +27,7 @@ svsame() { diff -r -x page "$SV" "$1" && diff -r "$PAGE" "$1/page"; }
 NF=$R/os/omarchy/notifications
 CK=$R/os/omarchy/clock
 OLD=$R/tests/fixtures/retro-claude-pack # desktop.sh and install-fonts.sh as they were before the rename
+FLOAT=$R/tests/fixtures/floating-mic-pack # desktop.sh as it was while the floating mic existed (until 2026-10-26)
 OMARCHY_JSON=${OMARCHY_PATH:-/usr/share/omarchy}/config/omarchy/shell.json # where desktop.sh reads it
 if [[ ! -f $OMARCHY_JSON ]]; then # a stand-in Omarchy folder with its default shell.json (Omarchy 4.0.4, MIT)
   export OMARCHY_PATH=$T/omarchy
@@ -230,7 +231,7 @@ echo "== H: plugins[] has a user plugin; user edits shell.json after setup"
 mkhome H; h=$T/H/.config/omarchy
 jq -S '.plugins=[{"id":"acme.weather"}]' "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t"; cp "$h/shell.json" "$T/H.json0"
 q H bash "$D"
-check "appended after the user's plugin" jq -e '.plugins|map(.id)==["acme.weather","phosphor-os.screensaver","phosphor-os.notifications","phosphor-os.dictate"]' "$h/shell.json"
+check "appended after the user's plugin" jq -e '.plugins|map(.id)==["acme.weather","phosphor-os.screensaver","phosphor-os.notifications"]' "$h/shell.json"
 jq -S '.idle.screensaver=420' "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t"
 q H bash "$D" --undo
 check "undo: our entry out, user plugin and change kept" bash -c "jq -S '.idle.screensaver=420' '$T/H.json0' | cmp -s - '$h/shell.json'"
@@ -242,7 +243,7 @@ q I bash "$OLDPACK/desktop.sh"
 check "old pack: old plugin, old notes, old fonts folder" test -d "$h/plugins/retro-claude.screensaver" -a -f "$T/I/.local/state/RetroClaude/desktop.state" -a -d "$T/I/.local/share/fonts/retro-claude"
 rm -f "$T/I/stub.log"; q I bash "$D"
 check "upgrade: new plugin in, old one out" bash -c "$(declare -f svsame); SV='$SV'; PAGE='$PAGE'; svsame '$h/plugins/phosphor-os.screensaver' >/dev/null && [[ ! -e '$h/plugins/retro-claude.screensaver' ]]"
-check "upgrade: plugins[] has only the new ids" jq -e '.plugins|map(.id)==["phosphor-os.screensaver","phosphor-os.notifications","phosphor-os.dictate"]' "$h/shell.json"
+check "upgrade: plugins[] has only the new ids" jq -e '.plugins|map(.id)==["phosphor-os.screensaver","phosphor-os.notifications"]' "$h/shell.json"
 check "upgrade: fonts folder moved, not downloaded" bash -c "[[ -d '$T/I/.local/share/fonts/phosphor-os' && ! -e '$T/I/.local/share/fonts/retro-claude' ]] && ! grep -q curl '$T/I/stub.log'"
 check "upgrade: keeps using the old notes folder" test -f "$T/I/.local/state/RetroClaude/desktop.state" -a ! -e "$T/I/.local/state/PhosphorOS"
 snap I >"$T/I.r1"; q I bash "$D"; snap I >"$T/I.r2"; check "upgrade: run 2 no-op" cmp -s "$T/I.r1" "$T/I.r2"
@@ -482,10 +483,33 @@ fi
 mkhome W; q W bash "$D"
 h=$T/W/.config/omarchy
 check "desktop.sh: the indicator's state file exists before the bar starts" test -e "$T/W/.local/state/phosphor-os/dictate"
-check "floating mic: plugin copied, in plugins[], its settings file made (shown, CLEAN UP off)" bash -c "diff -r '$R/os/omarchy/dictate' '$h/plugins/phosphor-os.dictate' >/dev/null && jq -e '[.plugins[]|select(.id==\"phosphor-os.dictate\")]|length==1' '$h/shell.json' >/dev/null && jq -e '.icon==true and .cleanup==false' '$T/W/.config/phosphor-os/dictate.json' >/dev/null"
-check "floating mic: never takes the keyboard, a layer over windows, only the round mic takes clicks" bash -c "grep -q 'keyboardFocus: WlrKeyboardFocus.None' '$R/os/omarchy/dictate/Service.qml' && grep -q 'WlrLayer.Top' '$R/os/omarchy/dictate/Service.qml' && grep -q 'mask: Region { item: face }' '$R/os/omarchy/dictate/Service.qml'"
+check "no floating mic: no plugin, no entry in plugins[], no settings file made" bash -c "[[ ! -e '$h/plugins/phosphor-os.dictate' && ! -e '$T/W/.config/phosphor-os' ]] && ! grep -q phosphor-os.dictate '$h/shell.json'"
 q W bash "$D" --undo
-check "undo: the state file, the mic plugin, its entry and its settings go" bash -c "[[ ! -e '$T/W/.local/state/phosphor-os/dictate' && ! -e '$h/plugins/phosphor-os.dictate' && ! -e '$T/W/.config/phosphor-os' ]] && ! grep -q phosphor-os.dictate '$h/shell.json'"
+check "undo: the state file goes" test ! -e "$T/W/.local/state/phosphor-os/dictate"
+
+echo "== X: the pack with the floating mic (until 2026-10-26) ran first, then this one: the mic is taken out; undo after it"
+# A copy of the pack folder with that version's desktop.sh and a stand-in plugin folder, next to the built page.
+FLOATREPO=$T/floatrepo FLOATPACK=$T/floatrepo/os/omarchy
+mkdir -p "$FLOATREPO/os" "$FLOATREPO/web"
+cp -r "$R/os/omarchy" "$FLOATPACK" && cp -r "$R/os/mpv" "$FLOATREPO/os/mpv" && ln -s "$R/web/dist" "$FLOATREPO/web/dist"
+cp "$FLOAT/desktop.sh" "$FLOATPACK/desktop.sh" && cp -r "$FLOAT/dictate" "$FLOATPACK/dictate"
+mkhome X; h=$T/X/.config/omarchy
+q X bash "$FLOATPACK/desktop.sh"
+check "that version: the plugin, its entry in plugins[] and its settings file are in" bash -c "[[ -d '$h/plugins/phosphor-os.dictate' && -f '$T/X/.config/phosphor-os/dictate.json' ]] && jq -e '[.plugins[]|select(.id==\"phosphor-os.dictate\")]|length==1' '$h/shell.json' >/dev/null"
+jq -S '.plugins += [{"id":"acme.weather"}]' "$h/shell.json" >"$h/t" && cat "$h/t" >"$h/shell.json" && rm "$h/t" # a plugin of your own, added since
+snap X >"$T/X.old"; tenv X bash "$D" --dry-run >"$T/X.dry" 2>&1; snap X >"$T/X.x"
+check "dry-run changes nothing, and shows the mic going" bash -c "cmp -s '$T/X.old' '$T/X.x' && grep -q 'rm -rf .*phosphor-os.dictate' '$T/X.dry' && grep -q 'phosphor-os.dictate' '$T/X.dry'"
+q X bash "$D"
+check "this version: the plugin folder is gone and its entry too; the others stay" bash -c "[[ ! -e '$h/plugins/phosphor-os.dictate' ]] && jq -e '.plugins|map(.id)==[\"phosphor-os.screensaver\",\"phosphor-os.notifications\",\"acme.weather\"]' '$h/shell.json' >/dev/null"
+check "this version: the notes about the mic are gone; CLEAN UP's settings file stays for undo" bash -c "! grep -qE '^(dict_dir|json_dict)=' '$T/X/.local/state/PhosphorOS/desktop.state' && grep -q '^dictate_settings=' '$T/X/.local/state/PhosphorOS/desktop.state' && [[ -f '$T/X/.config/phosphor-os/dictate.json' ]]"
+check "this version: the clock plugin is its own" diff -r "$CK" "$h/plugins/phosphor-os.clock"
+snap X >"$T/X.r1"; q X bash "$D"; snap X >"$T/X.r2"; check "run 3 changes nothing" cmp -s "$T/X.r1" "$T/X.r2"
+mkhome Y; snap Y >"$T/Y.before"
+q Y bash "$FLOATPACK/desktop.sh"; q Y bash "$D"; q Y bash "$D" --undo; snap Y >"$T/Y.u"
+check "that version, this version, undo: byte-for-byte as before" cmp -s "$T/Y.before" "$T/Y.u"
+mkhome Z; snap Z >"$T/Z.before"
+q Z bash "$FLOATPACK/desktop.sh"; q Z bash "$D" --undo; snap Z >"$T/Z.u"
+check "that version, then undo without a re-run: the mic goes too, byte-for-byte as before" cmp -s "$T/Z.before" "$T/Z.u"
 
 # ------------------------------------------------------------------ an install made under the old name
 
@@ -565,7 +589,7 @@ check "Hyprland: old line swapped for the new one" bash -c "! grep -q retro-clau
 check "menu entry swapped" bash -c "[[ -f '$h/.local/share/applications/phosphor-os.desktop' && ! -e '$h/.local/share/applications/retro-claude.desktop' ]]"
 check "Phosphor Docs menu entry opens DOCS, and a Markdown file in it" bash -c "grep -qx 'Name=Phosphor Docs' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Exec=bash \".*/scripts/phosphor-os.sh\" --docs %f\$' '$h/.local/share/applications/phosphor-docs.desktop' && grep -q '^Keywords=docs;' '$h/.local/share/applications/phosphor-docs.desktop' && grep -qx 'MimeType=text/markdown;text/x-markdown;' '$h/.local/share/applications/phosphor-docs.desktop'"
 check "Markdown opens in Phosphor Docs; text/plain untouched" bash -c "grep -qx 'text/markdown=phosphor-docs.desktop' '$h/.config/mimeapps.list' && grep -qx 'text/x-markdown=phosphor-docs.desktop' '$h/.config/mimeapps.list' && grep -qx 'text/plain=nvim.desktop' '$h/.config/mimeapps.list'"
-check "screensaver plugin swapped" bash -c "[[ -d '$h/.config/omarchy/plugins/phosphor-os.screensaver' && ! -e '$h/.config/omarchy/plugins/retro-claude.screensaver' ]] && jq -e '.plugins|map(.id)==[\"phosphor-os.screensaver\",\"phosphor-os.notifications\",\"phosphor-os.dictate\"]' '$h/.config/omarchy/shell.json' >/dev/null"
+check "screensaver plugin swapped" bash -c "[[ -d '$h/.config/omarchy/plugins/phosphor-os.screensaver' && ! -e '$h/.config/omarchy/plugins/retro-claude.screensaver' ]] && jq -e '.plugins|map(.id)==[\"phosphor-os.screensaver\",\"phosphor-os.notifications\"]' '$h/.config/omarchy/shell.json' >/dev/null"
 check "run 1 ends with the setup's Done" grep -q '^== Done' "$T/M.run1"
 snap M phosphor-os retro-claude .npm >"$T/M.r1"
 mig --yes >"$T/M.run2" 2>&1; snap M phosphor-os retro-claude .npm >"$T/M.r2"

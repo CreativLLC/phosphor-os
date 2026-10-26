@@ -1,12 +1,11 @@
-// DICTATE in any app: the rules every way of dictating into another program shares. Plain JavaScript with no
-// imports, so the desktop app (shell/dictate.mjs), the Linux take (os/omarchy/clock/phosphor-dictate-live.mjs,
-// which loads it from the app's folder), the floating mic page and the tests all use the same code.
+// DICTATE in any app: the rules the Linux take (os/omarchy/clock/phosphor-dictate-live.mjs, which loads this file
+// from the app's folder), the desktop app's settings bridge (shell/dictate.mjs) and the tests share. Plain JavaScript
+// with no imports. The take is a copy in ~/.config that only desktop.sh updates, while this file is read live from the
+// app's folder: what the take calls here keeps its name and arguments.
 
-// The settings, shared by the floating mic (its right-click menu), SETTINGS in the app and the take:
-// ~/.config/phosphor-os/dictate.json = { icon, cleanup, screen, x, y } (x, y: where the mic sits, 0..1 of the
-// room on that screen). Unknown or broken values fall back to these.
-export const SETTINGS_DEFAULTS = { icon: true, cleanup: false };
-
+// The setting, kept by SETTINGS > VOICE and read by the take at each stop:
+// ~/.config/phosphor-os/dictate.json = { cleanup } (default off). Anything else in the file (the floating mic kept
+// its spot and more there until 2026-10-26), or a broken file, is ignored.
 export function settingsFile(home) {
   return `${home}/.config/phosphor-os/dictate.json`;
 }
@@ -16,10 +15,9 @@ export function readSettings(text) {
   try {
     s = JSON.parse(text);
   } catch {
-    /* none yet, or broken: the defaults */
+    /* none yet, or broken: the default */
   }
-  if (!s || typeof s !== 'object' || Array.isArray(s)) s = {};
-  return { ...s, icon: s.icon !== false, cleanup: s.cleanup === true };
+  return { cleanup: s?.cleanup === true };
 }
 
 // Terminal emulators, by window class. Omarchy also tags its terminals "terminal" (default/hypr/apps/terminals.lua).
@@ -34,9 +32,8 @@ export function isTerminal(win) {
 }
 
 // The paste shortcut the focused program takes, with Hyprland's modifier names. Terminals on Linux paste with
-// Ctrl+Shift+V (Ctrl+V is a control character there); a Mac pastes with Command+V everywhere.
+// Ctrl+Shift+V (Ctrl+V is a control character there).
 export function pasteKeys(platform, win) {
-  if (platform === 'darwin') return { mods: 'SUPER', key: 'v' };
   if (platform === 'linux' && isTerminal(win)) return { mods: 'CTRL SHIFT', key: 'v' };
   return { mods: 'CTRL', key: 'v' };
 }

@@ -662,7 +662,7 @@ function serverError(status: number, msg?: string): string {
 
 // A USB mic that dropped off and came back (a USB switch, 2026-10-22) can read as "no microphone" while the
 // browser still lists the old device. Asking for the device list again and retrying once picks up the new one.
-export async function openMic(): Promise<MediaStream> {
+async function openMic(): Promise<MediaStream> {
   const want = { audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
   try {
     return await navigator.mediaDevices.getUserMedia(want);
@@ -675,7 +675,7 @@ export async function openMic(): Promise<MediaStream> {
   }
 }
 
-export function micError(e: unknown): string {
+function micError(e: unknown): string {
   const name = e instanceof DOMException ? e.name : '';
   if (name === 'NotAllowedError' || name === 'SecurityError')
     return 'Microphone blocked. Allow it for this site (lock icon next to the address), then try again.';
@@ -774,13 +774,13 @@ registerProcessor('phosphor-dictate', PhosphorDictate);
 let workletUrl = '';
 
 // Load the recorder code into this audio context. Started at the tap, so it loads while the mic starts.
-export function loadWorklet(ctx: AudioContext): Promise<void> {
+function loadWorklet(ctx: AudioContext): Promise<void> {
   if (!ctx.audioWorklet) return Promise.reject(new Error('this browser has no AudioWorklet'));
   workletUrl ||= URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }));
   return ctx.audioWorklet.addModule(workletUrl);
 }
 
-export class Recorder {
+class Recorder {
   private flushed: (() => void) | null = null;
   private node: AudioWorkletNode | null = null;
   private source: MediaStreamAudioSourceNode;
@@ -840,7 +840,7 @@ export class Recorder {
 }
 
 // 16 kHz mono 16-bit WAV of the recorded blocks, from sample `from` on.
-export function toWav(chunks: Int16Array<ArrayBuffer>[], from: number): Blob {
+function toWav(chunks: Int16Array<ArrayBuffer>[], from: number): Blob {
   const parts: Int16Array<ArrayBuffer>[] = [];
   let skip = from;
   let n = 0;

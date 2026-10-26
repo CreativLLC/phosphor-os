@@ -1,8 +1,7 @@
-export type DictateSettings = { icon: boolean; cleanup: boolean; screen?: string; x?: number; y?: number; [key: string]: unknown };
+export type DictateSettings = { cleanup: boolean };
 export type ActiveWindow = { class?: string; initialClass?: string; tags?: string[] } | null | undefined;
 export type CleanUpResult = { text: string; cleaned: boolean; by: string; error: string };
 
-export const SETTINGS_DEFAULTS: { icon: boolean; cleanup: boolean };
 export function settingsFile(home: string): string;
 export function readSettings(text: string): DictateSettings;
 export function isTerminal(win: ActiveWindow): boolean;
