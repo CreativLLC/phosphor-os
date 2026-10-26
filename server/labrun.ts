@@ -349,6 +349,9 @@ async function plan(app: LabApp, model: string, prompt: string, home: string, as
     writeFileSync(join(home, '.gemini', 'antigravity-cli', 'settings.json'), JSON.stringify({ trustedWorkspaces: [WORK] }) + '\n');
     const sh = [
       'eval "$(printf lab-box | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null)"',
+      // The keyring takes its D-Bus name a moment after it answers. A secret-tool call before that starts a second,
+      // locked keyring with a password prompt the box cannot show (2026-10-24 and 10-26, with several models running).
+      'i=0; until dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:org.freedesktop.secrets 2>/dev/null | grep -q true; do i=$((i+1)); [ $i -gt 100 ] && { echo "the keyring in the box did not start" >&2; exit 3; }; sleep 0.05; done',
       `secret-tool store --label="Password for 'antigravity' on 'gemini'" service gemini username antigravity || exit 3`,
       'm="$1"; p="$2"; shift 2',
       'exec /opt/agy/agy -p "$p" --model "$m" --output-format stream-json --dangerously-skip-permissions "$@" </dev/null',
