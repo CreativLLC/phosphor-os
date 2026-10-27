@@ -946,6 +946,212 @@ dialog.lab-box-fill {
   word-break: break-all;
 }
 
+/* ---------- FOLLOW UP: the fair-play badge and the chat panel ---------- */
+
+.lab-ups {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+.lab-card-top .lab-ups {
+  margin-right: auto;
+}
+
+/* A small window over the cards at the bottom right, so the card it changes stays in view; the whole screen on a phone. */
+.lab-chat {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 50;
+  width: min(560px, calc(100vw - 28px));
+  height: min(80vh, 820px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--ph);
+  background: var(--bg);
+  box-shadow: 0 8px 40px rgb(0 0 0 / 0.6), 0 0 18px rgb(var(--ph-rgb) / 0.2);
+}
+
+.lab-chat-head h2 {
+  min-width: 0;
+  flex: 0 1 auto;
+  color: var(--ph-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lab-chat-log > * {
+  flex: 0 0 auto;
+}
+
+.lab-chat-prompt summary {
+  cursor: pointer;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.lab-chat-prompt pre {
+  margin: 6px 0 0;
+  padding: 8px;
+  max-height: 14em;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+}
+
+.lab-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 92%;
+}
+
+.lab-msg-model {
+  align-self: flex-start;
+}
+
+.lab-msg-you {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.lab-msg-head {
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+  gap: 4px 8px;
+  width: 100%;
+}
+
+.lab .lab-msg-head button {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.lab-msg-text {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 22em;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+}
+
+.lab-msg-you .lab-msg-text {
+  color: var(--ph-bright);
+  background: rgb(var(--ph-rgb) / 0.08);
+  border-color: rgb(var(--ph-rgb) / 0.5);
+}
+
+.lab-msg-wait {
+  color: var(--accent);
+  letter-spacing: 2px;
+  text-shadow: none;
+  animation: lab-blink 1.2s steps(2, start) infinite;
+}
+
+.lab-chat-older {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px dashed var(--line);
+  font-size: var(--fs-sm);
+}
+
+.lab-chat-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.lab-chat-in {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 4.5em;
+  max-height: 40vh;
+  resize: vertical;
+  line-height: 1.25;
+  background: var(--bg-deep);
+}
+
+.lab-chat #voice-live {
+  margin-bottom: -2px;
+}
+
+.lab-chat-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.lab .lab-send {
+  min-height: 40px;
+  padding: 2px 22px;
+  letter-spacing: 2px;
+}
+
+/* A wide screen keeps the cards beside the chat, so the card it changes is not under it. */
+@media (min-width: 1100px) {
+  .lab-chat {
+    width: min(560px, 36vw);
+  }
+
+  .lab.lab-chatting .lab-main {
+    padding-right: calc(min(560px, 36vw) + 28px);
+  }
+}
+
+.lab-starline {
+  color: var(--ph-dim);
+  letter-spacing: 1px;
+}
+
+.lab-starline-on {
+  color: var(--ph-bright);
+}
+
+@media (max-width: 700px) {
+  .lab-chat {
+    inset: 0;
+    width: auto;
+    height: auto;
+    border: none;
+    box-shadow: none;
+    padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+  }
+
+  .lab-msg {
+    max-width: 100%;
+  }
+}
+
 /* ---------- Video mode: full screen, big, for recording ---------- */
 
 .lab.lab-video .lab-bar,

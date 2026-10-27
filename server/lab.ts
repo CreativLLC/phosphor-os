@@ -4,12 +4,14 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import { LAB_EFFORTS, LAB_MAX_MODELS, LAB_TIME_LIMITS, promptLibrary, type LabEffort, type LabModel, type LabNewTest, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../shared/lab.ts';
+import { LAB_EFFORTS, LAB_FOLLOW_UP_MAX, LAB_MAX_MODELS, LAB_TIME_LIMITS, promptLibrary, type LabEffort, type LabModel, type LabNewTest, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../shared/lab.ts';
+import { followUpPrompt, labBuildDir, saveVersion, versionNumbers, versionsOf } from './labfollow.ts';
 import { buildPage, buildState, JUNK, LAB_DIR, labModels, listFiles, liveOf, markStopped, pickPage, queueRun, readJson, stopRuns, writeJson } from './labrun.ts';
 
 // Model Lab (docs/MODEL-LAB.md): tests and results as plain folders, the /api/lab/* routes, and the file viewer.
 // The folder is the truth: data/lab/tests/<year>/<id>/ (or archive/), each with prompt.md, test.json and one folder
-// per model (result.json, reply.md, log.jsonl, files/). Moving or deleting a folder by hand is fine.
+// per model (result.json, reply.md, log.jsonl, files/, and versions/ once it has a follow-up or a RUN AGAIN). Moving or
+// deleting a folder by hand is fine.
 
 const exec = promisify(execFile);
 const TESTS = join(LAB_DIR, 'tests');
@@ -53,13 +55,13 @@ function load(f: Found): (LabTest & { key: string }) | null {
   const results = t.results.map(({ dir }): LabResult => {
     const r = readJson<LabResult>(join(f.dir, dir, 'result.json'));
     const live = r?.state === 'running' ? liveOf(f.dir, dir) : null;
-    return r ? { ...r, dir, rank: r.rank ?? 0, timeUp: r.timeUp ?? false, effort: r.effort ?? '', tokens: live?.tokens ?? r.tokens } : { ...blank(dir, dir), state: 'failed', error: 'result.json is missing.' };
+    return r ? { ...r, dir, rank: r.rank ?? 0, timeUp: r.timeUp ?? false, effort: r.effort ?? '', followUps: r.followUps ?? [], tokens: live?.tokens ?? r.tokens } : { ...blank(dir, dir), state: 'failed', error: 'result.json is missing.' };
   });
   return { id: t.id, title: t.title, prompt: t.prompt, at: t.at, archived: f.archived, blind: !!t.blind, revealed: !!t.revealed, timeLimitMin: t.timeLimitMin, effort: t.effort ?? 'default', results, key: t.key };
 }
 
 function blank(dir: string, model: string): LabResult {
-  return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, effort: '', note: '', error: '' };
+  return { dir, model, modelName: model, app: 'claude', appName: '', appVersion: '', account: '', state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, effort: '', note: '', error: '', followUps: [] };
 }
 
 function full(f: Found): LabTestFull | null {
@@ -180,19 +182,90 @@ function patchTest(f: Found, body: Record<string, unknown>): void {
   }
 }
 
-// RUN AGAIN: one result from scratch (its files, reply and log go), same prompt and model.
-function runAgain(f: Found, dir: string, minutes: unknown): void {
+// What a result that runs again starts with (FOLLOW UP and RUN AGAIN).
+const FRESH = { state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, effort: '', error: '' } as const;
+const saving = new Set<string>(); // result folders that are keeping a version now
+
+// A result that may change: it is in the test, and nothing runs, builds or keeps a version in its folder.
+function settled(f: Found, dir: string): string {
   if (!DIR.test(dir)) throw new Error('No such result.');
   const t = readJson<Stored>(join(f.dir, 'test.json'));
   const rd = join(f.dir, dir);
   const r = readJson<LabResult>(join(rd, 'result.json'));
   if (!t || !r || !t.results.some((x) => x.dir === dir)) throw new Error('No such result.');
   if (r.state === 'running' || r.state === 'queued') throw new Error('It is still running.');
-  for (const n of ['files', 'reply.md', 'log.jsonl', 'stderr.txt', 'build.json', 'build.log']) rmSync(join(rd, n), { recursive: true, force: true });
-  mkdirSync(join(rd, 'files'));
-  writeJson(join(rd, 'result.json'), { ...r, state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, stars: 0, rank: 0, timeUp: false, effort: '', note: '', error: '' });
+  if (buildState(rd) === 'building') throw new Error('Its page is being built. Try again when the build is done.');
+  if (saving.has(rd)) throw new Error('It is keeping its earlier version. Try again in a moment.');
+  return rd;
+}
+
+// saveVersion, with no other change to the folder meanwhile. Call it right after settled(), with nothing awaited in
+// between, so two requests at once cannot both pass.
+async function keep(rd: string, copyFiles: boolean): Promise<number> {
+  saving.add(rd);
+  try {
+    return await saveVersion(rd, copyFiles);
+  } finally {
+    saving.delete(rd);
+  }
+}
+
+// A result's output changed: it leaves the ranking (its own result.json says rank 0), and the ones below move up.
+function unrank(f: Found, t: Stored, dir: string, rank: number): void {
+  if (!(rank > 0)) return;
+  for (const x of t.results) {
+    const rf = join(f.dir, x.dir, 'result.json');
+    const o = x.dir === dir ? null : readJson<LabResult>(rf);
+    if (o && o.rank > rank) writeJson(rf, { ...o, rank: o.rank - 1 });
+  }
+}
+
+// FOLLOW UP: more words for one result's model. It works on in the same files folder with the test's effort and time
+// limit, through the queue (a local model still runs alone). What the result has now is kept as a version first. Its
+// stars and rank go: its output changes, so the owner rates it again. A blind test stays blind.
+async function followUp(f: Found, dir: string, words: unknown): Promise<number> {
+  const text = typeof words === 'string' ? words.trim() : '';
+  if (!text) throw new Error('Write what it should do first.');
+  if (text.length > LAB_FOLLOW_UP_MAX) throw new Error(`A follow-up is ${LAB_FOLLOW_UP_MAX.toLocaleString('en')} characters at most.`);
+  const rd = settled(f, dir);
+  let reply = '';
+  try {
+    reply = readFileSync(join(rd, 'reply.md'), 'utf8');
+  } catch {
+    /* it had none */
+  }
+  const built = labBuildDir(rd);
+  const version = await keep(rd, true);
+  if (built) rmSync(join(rd, 'files', built), { recursive: true, force: true });
+  // Read again after the copy: stars or a note may have come in meanwhile.
+  const t = readJson<Stored>(join(f.dir, 'test.json'));
+  const file = join(rd, 'result.json');
+  const r = readJson<LabResult>(file);
+  if (!t || !r) throw new Error('No such result.');
+  const before = r.followUps ?? [];
+  const prompt = followUpPrompt(t.prompt, { ...r, followUps: before }, reply, text);
+  writeFileSync(join(rd, 'prompt.md'), prompt + '\n'); // what the model gets, for the record (LOG shows it)
+  writeJson(file, { ...r, ...FRESH, followUps: [...before, { text, at: Date.now(), version }] });
+  unrank(f, t, dir, r.rank);
+  runner.queue({ testDir: f.dir, dir, prompt, timeLimitMin: t.timeLimitMin, effort: t.effort ?? 'default' });
+  return version;
+}
+
+// RUN AGAIN: one result from scratch with the test's prompt. What it had is kept as a version first (its files folder
+// moves there), so the run starts in an empty folder.
+async function runAgain(f: Found, dir: string, minutes: unknown): Promise<number> {
+  const rd = settled(f, dir);
+  const version = await keep(rd, false);
+  mkdirSync(join(rd, 'files'), { recursive: true });
+  const t = readJson<Stored>(join(f.dir, 'test.json'));
+  const file = join(rd, 'result.json');
+  const r = readJson<LabResult>(file);
+  if (!t || !r) throw new Error('No such result.');
+  writeJson(file, { ...r, ...FRESH, note: '', followUps: [] });
+  unrank(f, t, dir, r.rank);
   const limit = LAB_TIME_LIMITS.includes(Number(minutes)) ? Number(minutes) : t.timeLimitMin;
-  queueRun({ testDir: f.dir, dir, prompt: t.prompt, timeLimitMin: limit, effort: t.effort ?? 'default' });
+  runner.queue({ testDir: f.dir, dir, prompt: t.prompt, timeLimitMin: limit, effort: t.effort ?? 'default' });
+  return version;
 }
 
 function patchResult(f: Found, dir: string, body: Record<string, unknown>): void {
@@ -214,7 +287,7 @@ function move(f: Found, toArchive: boolean): void {
   renameSync(f.dir, dest);
 }
 
-// Junk folders inside the results' files/ (it does not look inside them).
+// Junk folders inside the results' files/, theirs and their versions' (it does not look inside them).
 function junkDirs(dirs: string[]): string[] {
   const out: string[] = [];
   const walk = (dir: string, depth: number) => {
@@ -234,7 +307,10 @@ function junkDirs(dirs: string[]): string[] {
   };
   for (const d of dirs) {
     const t = readJson<Stored>(join(d, 'test.json'));
-    for (const r of t?.results ?? []) walk(join(d, r.dir, 'files'), 0);
+    for (const r of t?.results ?? []) {
+      walk(join(d, r.dir, 'files'), 0);
+      for (const n of versionNumbers(join(d, r.dir))) walk(join(d, r.dir, 'versions', String(n), 'files'), 0);
+    }
   }
   return out;
 }
@@ -334,8 +410,12 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
     }
     if (parts[2] === 'results' && parts[3]) {
       if (parts.length === 4 && m === 'PATCH') return (patchResult(f, parts[3], await body(req)), json(res, { ok: true }));
-      if (parts.length === 5 && parts[4] === 'again' && m === 'POST') return (runAgain(f, parts[3], (await body(req)).timeLimitMin), json(res, { ok: true }));
+      if (parts.length === 5 && parts[4] === 'again' && m === 'POST') return json(res, { version: await runAgain(f, parts[3], (await body(req)).timeLimitMin) });
+      if (parts.length === 5 && parts[4] === 'followup' && m === 'POST') return json(res, { version: await followUp(f, parts[3], (await body(req)).text) });
+      if (parts.length === 5 && parts[4] === 'versions' && m === 'GET' && DIR.test(parts[3])) return json(res, { versions: versionsOf(join(f.dir, parts[3])) });
       if (parts.length === 5 && parts[4] === 'build' && m === 'POST' && DIR.test(parts[3])) {
+        const state = readJson<LabResult>(join(f.dir, parts[3], 'result.json'))?.state;
+        if (state === 'running' || state === 'queued' || saving.has(join(f.dir, parts[3]))) return json(res, { error: 'It is still running.' }, 400);
         const root = join(f.dir, parts[3], 'files');
         const { buildDir } = pickPage(root, listFiles(root));
         if (buildDir === null) return json(res, { error: 'Nothing to build: no package.json with a build script.' }, 400);
@@ -361,7 +441,13 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
         } catch {
           /* never built */
         }
-        return json(res, { log: log.length > 400_000 ? `…\n${log.slice(-400_000)}` : log, stderr: err.slice(-20_000), build: build.slice(-40_000) });
+        let prompt = '';
+        try {
+          prompt = readFileSync(join(f.dir, parts[3], 'prompt.md'), 'utf8');
+        } catch {
+          /* not a follow-up: it got the test's prompt */
+        }
+        return json(res, { log: log.length > 400_000 ? `…\n${log.slice(-400_000)}` : log, stderr: err.slice(-20_000), build: build.slice(-40_000), prompt: prompt.slice(0, 200_000) });
       }
     }
     return json(res, { error: 'not found' }, 404);
@@ -455,9 +541,11 @@ function rewrite(text: string, type: string, site: string): string {
 // framed only by this app. The key in the path stands in for the login, because a sandboxed page's own requests
 // (its scripts, pictures) carry no cookie. One key opens one test, read-only. Any origin may read the files
 // (Access-Control-Allow-Origin *): the sandboxed page itself counts as another origin, and module scripts,
-// "crossorigin" style sheets and fetch() all need that. The key is still the lock.
+// "crossorigin" style sheets and fetch() all need that. The key is still the lock. <result>@<n> shows the files of
+// the result's version n (versions/<n>/files).
 export function serveLabFile(res: ServerResponse, url: URL): void {
-  const [key = '', id = '', dir = '', ...rest] = url.pathname.split('/').slice(3).map(decodeURIComponent);
+  const [key = '', id = '', seg = '', ...rest] = url.pathname.split('/').slice(3).map(decodeURIComponent);
+  const [, dir = '', version = ''] = /^([^@]*)(?:@([1-9]\d{0,5}))?$/.exec(seg) ?? [];
   const f = find(id);
   const t = f && readJson<Stored>(join(f.dir, 'test.json'));
   const ok = !!t && DIR.test(dir) && key.length === t.key.length && timingSafeEqual(Buffer.from(key), Buffer.from(t.key));
@@ -467,7 +555,7 @@ export function serveLabFile(res: ServerResponse, url: URL): void {
   let root = '';
   let file = '';
   try {
-    root = realpathSync(resolve(f.dir, dir, 'files'));
+    root = realpathSync(resolve(f.dir, dir, ...(version ? ['versions', version] : []), 'files'));
     file = realpathSync(resolve(root, ...rest));
     if (inside(file, root) && statSync(file).isDirectory()) file = realpathSync(join(file, 'index.html'));
   } catch {
@@ -485,7 +573,7 @@ export function serveLabFile(res: ServerResponse, url: URL): void {
       }
     if (!existsSync(join(siteDir, 'index.html'))) siteDir = root;
     const rel = siteDir.slice(root.length).split(sep).filter(Boolean).map(encodeURIComponent);
-    const site = ['/lab/v', key, id, dir, ...rel].join('/');
+    const site = ['/lab/v', key, id, seg, ...rel].join('/');
     body = rewrite(body.toString('utf8'), type, site);
   }
   res.removeHeader('X-Frame-Options');
