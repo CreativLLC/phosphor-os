@@ -589,9 +589,10 @@ export class Tab {
     // Held to the efforts the chosen model supports (only when the model list is already known; never waited for).
     const supported = Tab.knownModels?.()?.models.find((m) => m.value === d.model)?.efforts;
     const effort = supported ? clampEffort(d.effort, supported) : d.effort;
-    const applied = { ...d, effort };
+    // The AUTO tag says who decided and how long it took: "(decision model, 0.9 s)" or "(Haiku, 3.1 s)".
+    const applied = { ...d, effort, reason: `${d.reason} (${r.engine}, ${(r.ms / 1000).toFixed(1)} s)` };
     if (effort && effort !== this.pendingEffort) await this.setEffort(effort as Effort, true);
-    const line = { time: new Date().toISOString(), tab: this.id, msg: text.slice(0, 120), pick: r.pick, applied: { model: d.model, effort }, reason: d.reason, ms: r.ms, ...(r.error ? { error: r.error } : {}) };
+    const line = { time: new Date().toISOString(), tab: this.id, msg: text.slice(0, 120), pick: r.pick, applied: { model: d.model, effort }, reason: d.reason, engine: r.engine, decision: r.decision, ms: r.ms, ...(r.error ? { error: r.error } : {}) };
     appendFile(join(DATA_DIR, 'auto-router.jsonl'), JSON.stringify(line) + '\n', () => {}); // tuning log; a failed write is not worth a warning
     return applied;
   }

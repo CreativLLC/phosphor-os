@@ -1,7 +1,10 @@
-// AUTO router: reading Haiku's answer and the stickiness rule (shared/router.ts). Pure, nothing is asked of a model.
+// AUTO router: reading Haiku's answer, the decision model's answers and the stickiness rule (shared/router.ts), and
+// the order of the engines (server/router.ts) with fakes. Nothing is asked of a model.
 //   npm run test:router        (= npx tsx tests/router.ts)
 
-import { clampEffort, decide, parsePick, type RoutePick } from '../shared/router.ts';
+import type { Answers, DecideResult, Questions } from '../shared/decide.ts';
+import { clampEffort, decide, parsePick, pickFromAnswers, ROUTE_MIN_CONFIDENCE, type RoutePick, type RouteQuestions } from '../shared/router.ts';
+import { DECIDE_ROUTE_TIMEOUT_MS, routeMessage, type HaikuResult, type RouteDeps, type RouteInput } from '../server/router.ts';
 
 let fail = 0;
 const check = (what: string, cond: boolean, detail = '') => {
@@ -53,6 +56,66 @@ check('unsupported xhigh drops to the highest allowed', clampEffort('xhigh', ['l
 check('below the lowest allowed: the lowest', clampEffort('low', ['medium', 'high']) === 'medium');
 check('a model with no levels: none', clampEffort('high', []) === '');
 check('no effort stays none', clampEffort('', ['low', 'high']) === '');
+
+// pickFromAnswers: the decision model's answers
+const answers = (model: string, conf: number, effort: string, newTopic = 0.1): Answers<RouteQuestions> => ({
+  model: { type: 'choice', choice: model, probabilities: { [model]: 0.8 }, confidence: conf },
+  effort: { type: 'choice', choice: effort, probabilities: { [effort]: 0.6 }, confidence: 0.3 },
+  newTopic: { type: 'noul', p: newTopic, yes: newTopic >= 0.5, confidence: Math.abs(2 * newTopic - 1) },
+});
+check('sure: the pick, its confidence as the reason', same(pickFromAnswers(answers('sonnet', 0.62, 'medium', 0.9)), { model: 'sonnet', effort: 'medium', newTopic: true, reason: '62% sure' }));
+check('unsure: no pick (Haiku decides)', pickFromAnswers(answers('opus', ROUTE_MIN_CONFIDENCE - 0.01, 'high')) === null);
+check('at the bar: the pick', pickFromAnswers(answers('haiku', ROUTE_MIN_CONFIDENCE, 'low'))?.model === 'haiku');
+check('opus gets at least high', pickFromAnswers(answers('opus', 0.7, 'medium'))?.effort === 'high' && pickFromAnswers(answers('opus', 0.7, 'xhigh'))?.effort === 'xhigh');
+check('sonnet and haiku keep a low level', pickFromAnswers(answers('sonnet', 0.7, 'low'))?.effort === 'low' && pickFromAnswers(answers('haiku', 0.7, 'low'))?.effort === 'low');
+check('new topic from the noul answer', pickFromAnswers(answers('sonnet', 0.7, 'low', 0.2))?.newTopic === false);
+
+// routeMessage: the decision model first, Haiku when it is off, down, slow or unsure
+const input: RouteInput = { text: 'rename foo to bar', attachments: 0, title: 'T', turns: 2, current: { model: 'sonnet', effort: 'medium' }, lastReply: 'Done.' };
+const haikuPick: HaikuResult = { pick: { model: 'opus', effort: 'high', newTopic: false, reason: 'from haiku' }, raw: '{}', error: '', ms: 5 };
+function fakes(result: DecideResult<Questions>) {
+  const seen = { haiku: 0, state: '', timeout: 0, questions: [] as string[] };
+  const deps: RouteDeps = {
+    decide: (async (state: string, q: Questions, o: { timeoutMs?: number }) => {
+      seen.state = state;
+      seen.timeout = o.timeoutMs ?? 0;
+      seen.questions = Object.keys(q);
+      return result;
+    }) as RouteDeps['decide'],
+    haiku: async () => (seen.haiku++, haikuPick),
+  };
+  return { deps, seen };
+}
+{
+  const { deps, seen } = fakes({ ok: true, answers: answers('haiku', 0.8, 'low', 0.2), model: 'kev', inputTokens: 400, ms: 900 });
+  const r = await routeMessage(input, deps);
+  check('decision model sure: its pick, no Haiku call', r.engine === 'decision model' && r.pick?.model === 'haiku' && seen.haiku === 0 && r.decision === 'picked', JSON.stringify(r));
+  check('the three rubric questions, a short timeout', seen.questions.join() === 'model,effort,newTopic' && seen.timeout === DECIDE_ROUTE_TIMEOUT_MS && DECIDE_ROUTE_TIMEOUT_MS <= 2000);
+  check('the state is what Haiku reads', seen.state.includes('Chat title: T') && seen.state.includes('rename foo to bar') && seen.state.includes('sonnet / medium'));
+  check('raw keeps the probabilities for the tuning log', JSON.parse(r.raw).by === 'kev' && JSON.parse(r.raw).newTopic === 0.2);
+}
+{
+  const { deps, seen } = fakes({ ok: true, answers: answers('haiku', 0.1, 'low'), model: 'kev', inputTokens: 400, ms: 900 });
+  const r = await routeMessage(input, deps);
+  check('decision model unsure: Haiku decides', r.engine === 'Haiku' && r.pick?.reason === 'from haiku' && seen.haiku === 1 && r.decision === 'unsure (10%)', JSON.stringify(r));
+}
+for (const reason of ['off', 'down', 'timeout', 'error'] as const) {
+  const { deps, seen } = fakes({ ok: false, reason, error: reason === 'down' ? 'ECONNREFUSED' : '', ms: 1 });
+  const r = await routeMessage(input, deps);
+  check(`decision model ${reason}: Haiku decides`, r.engine === 'Haiku' && seen.haiku === 1 && r.pick?.model === 'opus' && r.decision.startsWith(reason), JSON.stringify(r));
+}
+{
+  const long = { ...input, text: 'x'.repeat(5000) };
+  const { deps, seen } = fakes({ ok: false, reason: 'off', error: '', ms: 0 });
+  await routeMessage(long, deps);
+  check('a long message is cut shorter for the decision model', seen.state.length < 2500, String(seen.state.length));
+}
+{
+  const { deps } = fakes({ ok: false, reason: 'timeout', error: '', ms: 1500 });
+  deps.haiku = async () => ({ pick: null, raw: '', error: 'timeout', ms: 8000 });
+  const r = await routeMessage(input, deps);
+  check('both fail: no pick, the error kept (the tab keeps its model)', r.pick === null && r.error === 'timeout' && r.engine === 'Haiku');
+}
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

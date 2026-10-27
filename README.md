@@ -62,7 +62,7 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 **Work in chat tabs**
 - One Claude Code session per tab, each in its own folder; tabs come back after a restart
 - Done and needs-you markers on every tab, and a phone buzz when a turn finishes or the agent waits for you
-- AUTO: picks the model and thinking level for each message
+- AUTO: picks the model and thinking level for each message (a small decision model on your CPU decides first when you set one up, `docs/LOCAL-MODEL.md`; else Claude Haiku)
 - Undo from any of your messages (puts back the files the agent changed after it)
 - Projects: a lead chat splits big work into thread chats (one per job), starts and steers them, and gets their reports; they sit together in the tab bar and in THREADS, and share one memory file. + CHAT adds your own chat to a project; PROJECTS lists every project, open or closed, and opens one with its chats
 - Dictation: talk instead of type; the speech engine runs on your PC. CLEAN UP turns messy speech or typing into a clear request (fillers and restarts out, spoken corrections applied; the local model or Haiku does it), with UNDO

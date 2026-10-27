@@ -1,5 +1,6 @@
-// AUTO model: pure parts of the router (server/router.ts asks Haiku; this file reads its answer and decides
-// what is applied). No imports, so tests/router.ts runs it headless.
+// AUTO model: pure parts of the router (server/router.ts asks the decision model, else Haiku; this file reads the
+// answer and decides what is applied). Type imports only, so tests/router.ts runs it headless.
+import type { Answers, Questions } from './decide.ts';
 
 export const ROUTE_MODELS = ['haiku', 'sonnet', 'opus'] as const; // low to high
 export const ROUTE_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
@@ -78,4 +79,43 @@ export function clampEffort(effort: string, supported: string[]): string {
   const ranked = supported.filter((e) => EFFORT_RANK.includes(e)).sort((a, b) => EFFORT_RANK.indexOf(a) - EFFORT_RANK.indexOf(b));
   const want = EFFORT_RANK.indexOf(effort);
   return [...ranked].reverse().find((e) => EFFORT_RANK.indexOf(e) <= want) ?? ranked[0] ?? '';
+}
+
+// The same rubric as typed questions for a decision model (server/decide.ts). The state is the text Haiku reads.
+export const ROUTE_QUESTIONS = {
+  model: {
+    type: 'choice',
+    instructions: 'Which Claude model should handle the new message in a coding and ops assistant? A pick that is too low costs quality, one too high only costs tokens.',
+    criteria: {
+      opus: 'planning, architecture, design; debugging or why something is broken; multi-file or multi-step code work; agentic tasks that run tools for a while; ambiguous or high-stakes work; writing meant for other people',
+      sonnet: 'well-specified edits; single-file changes; explanations; summaries; routine ops like git, installs, config tweaks; questions answerable with a few tool calls',
+      haiku: 'trivial only: yes or no, tiny lookups, rename, reformat short text, chit-chat',
+    },
+  },
+  effort: {
+    type: 'choice',
+    instructions: 'How much thinking does the new message need?',
+    criteria: { low: 'trivial', medium: 'routine', high: 'real work', xhigh: 'only hard design or debugging' },
+  },
+  newTopic: {
+    type: 'noul',
+    instructions: 'Does the new message start a different task or subject than the chat so far?',
+    criteria: { true: 'a different task or subject, or the first message of the chat', false: 'it continues, refines or answers the current work' },
+  },
+} as const satisfies Questions;
+export type RouteQuestions = typeof ROUTE_QUESTIONS;
+
+// A decision model's pick is trusted only when it is this sure of the model (TypeSafe's choice confidence: 0 = all
+// options equally likely). Below it, Haiku decides. 0.25 on the hand-made set (docs/LOCAL-MODEL.md): Kev-0.8B is
+// right above it about as often as Haiku, wrong more often below it; Clef-Flash is above it for almost every message.
+export const ROUTE_MIN_CONFIDENCE = 0.25;
+
+// The decision model's answers as a pick, or null when it is unsure (ask Haiku instead).
+// Lean high, as the rubric says: Opus is for real work, so it gets at least high.
+export function pickFromAnswers(a: Answers<RouteQuestions>): RoutePick | null {
+  if (a.model.confidence < ROUTE_MIN_CONFIDENCE) return null;
+  const model = a.model.choice as RouteModel;
+  const chosen = a.effort.choice as RouteEffort;
+  const effort = model === 'opus' && EFFORT_RANK.indexOf(chosen) < EFFORT_RANK.indexOf('high') ? 'high' : chosen;
+  return { model, effort, newTopic: a.newTopic.yes, reason: `${Math.round(a.model.confidence * 100)}% sure` };
 }
