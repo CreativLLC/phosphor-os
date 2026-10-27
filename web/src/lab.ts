@@ -927,6 +927,7 @@ async function remove(t: LabTest | LabTestFull): Promise<void> {
 // The open FOLLOW UP panel. It draws its result from `current` (the poll keeps it fresh) and the versions kept so far.
 type Chat = { testId: string; dir: string; panel: HTMLElement; log: HTMLElement; input: HTMLTextAreaElement; send: HTMLButtonElement; versions: LabVersion[] | null; release: () => void };
 let chat: Chat | null = null;
+const chatDrafts = new Map<string, string>(); // what was typed and not sent, per result, while the page is open
 
 // FOLLOW UP: more words for one result's model, in a small panel over the cards (the whole screen on a phone). The same
 // model works on in its own folder (server/labfollow.ts); the card shows WORKING, then the new page.
@@ -942,6 +943,7 @@ function openChat(t: LabTestFull, i: number): void {
   input.rows = 3;
   input.maxLength = LAB_FOLLOW_UP_MAX;
   input.placeholder = 'What should it change?';
+  input.value = chatDrafts.get(`${t.id}/${t.results[i].dir}`) ?? '';
   const dictate = button('DICTATE', () => {}, 'lab-dictate');
   const send = button('SEND', () => void sendFollowUp(), 'primary lab-send');
   send.title = 'Send (Ctrl+Enter)';
@@ -972,6 +974,7 @@ function openChat(t: LabTestFull, i: number): void {
 function closeChat(quiet = false): void {
   if (!chat) return;
   chat.release();
+  chatDrafts.set(`${chat.testId}/${chat.dir}`, chat.input.value);
   chat.panel.remove();
   rootEl?.classList.remove('lab-chatting');
   chat = null;
