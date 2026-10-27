@@ -12,6 +12,7 @@ export type LabEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export const LAB_EFFORTS: LabEffort[] = ['default', 'low', 'medium', 'high', 'xhigh', 'max'];
 export const LAB_MAX_MODELS = 12; // in one test, + MODELS included
 export const LAB_LETTERS = 'ABCDEFGHIJKLMNOP'; // blind mode names the results MODEL A, B, ... in the order of the test's results
+export const LAB_FOLLOW_UP_MAX = 20_000; // characters in one follow-up
 
 export interface LabModel {
   id: string; // "<app>:<model id in that app>", e.g. "opencode:opencode-go/kimi-k3.1-pro"
@@ -46,6 +47,22 @@ export interface LabResult {
   effort: string; // the level it ran at ('default' = the app chose), '' before it started
   note: string;
   error: string;
+  followUps: LabFollowUp[]; // the owner's follow-ups since its last run from scratch, oldest first
+}
+
+// FOLLOW UP: more words for a result's model once it has finished. It works on in the same files folder; what the
+// result had just before is kept as a version (versions/<version>/ in the result folder, server/labfollow.ts).
+export interface LabFollowUp {
+  text: string;
+  at: number;
+  version: number; // the version that holds the result as it was just before this follow-up
+}
+
+// A version of a result kept before a follow-up or RUN AGAIN: its result.json, reply and files as they were then.
+export interface LabVersion extends LabResult {
+  n: number; // versions/<n>/ in the result folder; the viewer shows its files at <view><result dir>@<n>/<path>
+  reply: string;
+  page: string; // a web page in its files, or ''
 }
 
 export interface LabFile {

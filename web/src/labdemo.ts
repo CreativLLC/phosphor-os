@@ -58,7 +58,7 @@ function result(m: LabModel, at: number, i: number, stars: number, says: string,
   const ms = (140 + ((i * 53) % 170)) * 1000;
   return {
     dir: dirOf(m), model: m.id, modelName: m.name, app: m.app, appName: m.appName, appVersion: '1.0.0', account: m.account,
-    state: 'done', startedAt: at, endedAt: at + ms, tokens: 9000 + ((i * 7919) % 60) * 1000, value: m.app === 'opencode' ? null : 0.08 + i * 0.05, stars, rank: 0, timeUp: false, effort: 'default', note: '', error: '',
+    state: 'done', startedAt: at, endedAt: at + ms, tokens: 9000 + ((i * 7919) % 60) * 1000, value: m.app === 'opencode' ? null : 0.08 + i * 0.05, stars, rank: 0, timeUp: false, effort: 'default', note: '', error: '', followUps: [],
     reply: says, files: [{ path: 'index.html', bytes: 4200 + i * 700 }], page: '', build: '', canBuild: false, ...over,
   };
 }
