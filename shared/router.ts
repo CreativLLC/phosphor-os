@@ -1,5 +1,6 @@
-// AUTO model: pure parts of the router (server/router.ts asks Haiku; this file reads its answer and decides
-// what is applied). No imports, so tests/router.ts runs it headless.
+// AUTO model: pure parts of the router (server/router.ts asks the decision model, else Haiku; this file reads the
+// answer and decides what is applied). Type imports only, so tests/router.ts runs it headless.
+import type { Answers, Questions } from './decide.ts';
 
 export const ROUTE_MODELS = ['haiku', 'sonnet', 'opus'] as const; // low to high
 export const ROUTE_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
@@ -79,3 +80,27 @@ export function clampEffort(effort: string, supported: string[]): string {
   const want = EFFORT_RANK.indexOf(effort);
   return [...ranked].reverse().find((e) => EFFORT_RANK.indexOf(e) <= want) ?? ranked[0] ?? '';
 }
+
+// The same rubric as typed questions for a decision model (server/decide.ts). The state is the text Haiku reads.
+export const ROUTE_QUESTIONS = {
+  model: {
+    type: 'choice',
+    instructions: 'Which Claude model should handle the new message in a coding and ops assistant? A pick that is too low costs quality, one too high only costs tokens.',
+    criteria: {
+      opus: 'planning, architecture, design; debugging or why something is broken; multi-file or multi-step code work; agentic tasks that run tools for a while; ambiguous or high-stakes work; writing meant for other people',
+      sonnet: 'well-specified edits; single-file changes; explanations; summaries; routine ops like git, installs, config tweaks; questions answerable with a few tool calls',
+      haiku: 'trivial only: yes or no, tiny lookups, rename, reformat short text, chit-chat',
+    },
+  },
+  effort: {
+    type: 'choice',
+    instructions: 'How much thinking does the new message need?',
+    criteria: { low: 'trivial', medium: 'routine', high: 'real work', xhigh: 'only hard design or debugging' },
+  },
+  newTopic: {
+    type: 'noul',
+    instructions: 'Does the new message start a different task or subject than the chat so far?',
+    criteria: { true: 'a different task or subject, or the first message of the chat', false: 'it continues, refines or answers the current work' },
+  },
+} as const satisfies Questions;
+export type RouteQuestions = typeof ROUTE_QUESTIONS;

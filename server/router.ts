@@ -36,7 +36,7 @@ export type RouteResult = { pick: RoutePick | null; ms: number; error: string; r
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}...` : s);
 
-const describe = (i: RouteInput) =>
+export const describe = (i: RouteInput) =>
   [
     `Chat title: ${i.title || '(none)'}`,
     `Turns so far: ${i.turns}`,
