@@ -233,9 +233,12 @@ const appOf = (t: LabTest | LabTestFull, i: number) => (isBlind(t) ? 'hidden unt
 const topStars = (t: LabTest | LabTestFull) => Math.max(0, ...t.results.map((r) => r.stars));
 // The best: the owner's #1 once they ranked, else the most stars (ties all count).
 const isWinner = (t: LabTest | LabTestFull, r: LabResult) => (t.results.some((x) => x.rank > 0) ? r.rank === 1 : r.stars > 0 && r.stars === topStars(t));
-// REVEAL: once nothing runs and every finished result has stars, or every one has a place in the ranking.
+// REVEAL: once nothing runs and every DONE result has stars, or every one has a place in the ranking. A run that hit
+// the plan limit, failed or was stopped may be rated but never holds REVEAL back (the owner, 2026-10-27: limit runs
+// left a half-made page and kept a test blind for good).
+const owed = (r: LabResult) => r.state === 'done';
 const canReveal = (t: LabTest | LabTestFull) => {
-  const done = t.results.filter(ratable);
+  const done = t.results.filter(owed);
   return !t.results.some(busy) && (done.every((r) => r.stars > 0) || done.every((r) => r.rank > 0));
 };
 const rated = (t: LabTest) => t.results.filter((r) => r.stars > 0);
@@ -508,7 +511,7 @@ async function testView(id: string): Promise<HTMLElement> {
   }, video ? 'on' : '');
   videoBtn.title = 'Big cards and race timers: made for recording';
   const blindBtn = button(isBlind(t) ? 'REVEAL' : t.blind ? 'BLIND OFF' : 'BLIND', () => void setBlind(t), isBlind(t) ? 'primary lab-reveal' : '');
-  blindBtn.title = 'BLIND hides the model names, so the brand does not change your stars. REVEAL works once every result has stars, or all are ranked.';
+  blindBtn.title = 'BLIND hides the model names, so the brand does not change your stars. REVEAL works once every DONE result has stars, or all are ranked. Runs that hit a limit, failed or stopped do not count.';
   const addBtn = button('+ MODELS', () => void openAddModels(t), 'lab-add');
   addBtn.title = "Run this exact prompt on more models. They join this test's cards and ranking, with its effort and time limit.";
   head.append(back, h, el('span', 'lab-grow'), modeBtns, addBtn, blindBtn, videoBtn);
@@ -1371,7 +1374,7 @@ function testsTable(shown: LabTest[], archive = false): HTMLElement {
     } else
       tr.append(
         el('td', 'lab-nowrap', avg ? `${avg.toFixed(1)} ★` : '-'),
-        el('td', 'lab-nowrap', run ? `${run} RUNNING` : t.results.some((r) => ratable(r) && !r.stars) ? 'TO RATE' : 'DONE'),
+        el('td', 'lab-nowrap', run ? `${run} RUNNING` : t.results.some((r) => owed(r) && !r.stars) ? 'TO RATE' : 'DONE'),
       );
     tb.tBodies[0].append(tr);
   }
