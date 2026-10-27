@@ -1,10 +1,10 @@
 import './lab.css';
-import { LAB_EFFORTS, LAB_LETTERS, LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabEffort, type LabModel, type LabModelsResponse, type LabPrompt, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull } from '../../shared/lab.ts';
+import { LAB_EFFORTS, LAB_FOLLOW_UP_MAX, LAB_LETTERS, LAB_MAX_MODELS, LAB_TIME_LIMITS, type LabEffort, type LabFollowUp, type LabModel, type LabModelsResponse, type LabPrompt, type LabResult, type LabResultFull, type LabStorage, type LabTest, type LabTestFull, type LabVersion } from '../../shared/lab.ts';
 import { closeDocs, isDocsOpen, onDocsToggle } from './docs.ts';
 import { demoLabApi } from './labdemo.ts';
 import { store } from './store.ts';
 import { button, confirmBox, el, toast } from './ui.ts';
-import { useDictation } from './voice.ts';
+import { isDictating, stopDictation, useDictation } from './voice.ts';
 
 // LAB (docs/MODEL-LAB.md): one prompt to many AI models, each in its own app inside a locked box (server/labrun.ts).
 // Results are folders on the PC (server/lab.ts); this file only shows them, rates them and starts new tests.
@@ -74,6 +74,7 @@ export function mountLab(btn: HTMLElement | null): void {
       return;
     }
     if (document.querySelector('.lab-full')) return void closeFull(); // back closes the full-screen view first
+    if (chat) return void closeChat(true); // then the FOLLOW UP panel
     if (isOpen && (history.state as { phosphorLab?: boolean } | null)?.phosphorLab !== true) closeLab(true);
   });
   const q = new URLSearchParams(location.search);
@@ -126,6 +127,7 @@ export function closeLab(fromPop = false): void {
   releaseDictation?.();
   releaseDictation = null;
   closeFull(true);
+  closeChat(true);
   for (const d of document.querySelectorAll<HTMLDialogElement>('dialog.lab-box')) d.remove();
   if (!fromPop && (history.state as { phosphorLab?: boolean } | null)?.phosphorLab) {
     pendingBack++;
@@ -193,6 +195,7 @@ function render(): void {
   clearTimeout(poll);
   releaseDictation?.();
   releaseDictation = null;
+  if (chat && (view.kind !== 'test' || view.id !== chat.testId)) closeChat();
   for (const b of nav.querySelectorAll<HTMLElement>('button')) b.classList.toggle('on', b.dataset.v === view.kind || (view.kind === 'test' && b.dataset.v === (current?.archived ? 'archive' : 'history')));
   rootEl.classList.toggle('lab-video', view.kind === 'test' && video);
   const v = view;
@@ -242,7 +245,17 @@ const busy = (r: LabResult) => r.state === 'running' || r.state === 'queued';
 // failed late or was stopped (the owner: if it looks done, it can be rated). List views carry no page: stars count.
 const ratable = (r: LabResult) => r.state === 'done' || r.stars > 0 || (!busy(r) && !!(r as Partial<LabResultFull>).page);
 const working = (r: LabResultFull) => busy(r) || r.build === 'building'; // keep polling while true
-const pageUrl = (t: LabTestFull, r: LabResultFull, path = r.page) => `${t.view}${encodeURIComponent(r.dir)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${r.endedAt}`;
+// v: one of the result's kept versions (the viewer serves it at <result>@<n>).
+const pageUrl = (t: LabTestFull, r: LabResultFull, path = r.page, v?: LabVersion) => `${t.view}${encodeURIComponent(r.dir)}${v ? `@${v.n}` : ''}/${path.split('/').map(encodeURIComponent).join('/')}?v=${(v ?? r).endedAt}`;
+
+// The fair-play mark: the owner asked this result for changes after its answer, so it had more help than the prompt.
+function upsBadge(r: LabResult): HTMLElement | string {
+  const n = r.followUps.length;
+  if (!n) return '';
+  const b = el('span', 'lab-ups', `+${n} FOLLOW-UP${n > 1 ? 'S' : ''}`);
+  b.title = `You asked it for changes ${n > 1 ? `${n} times` : 'once'} after its answer, so it had more help than the others. Each follow-up cleared its stars and rank.`;
+  return b;
+}
 
 function stateLabel(r: LabResult): string {
   if (r.state === 'running') return `RUNNING ${fmtClock(runMs(r))}`;
@@ -253,6 +266,13 @@ function stateLabel(r: LabResult): string {
 
 function starText(n: number): string {
   return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+
+// Stars as a short line, the given ones bright: small ★ and ☆ look alike.
+function starLine(n: number): HTMLElement {
+  const line = el('span', 'lab-starline');
+  line.append(el('span', 'lab-starline-on', '★'.repeat(n)), '☆'.repeat(5 - n));
+  return line;
 }
 
 function summary(t: LabTest | LabTestFull): string {
@@ -523,6 +543,7 @@ async function testView(id: string): Promise<HTMLElement> {
   if (t.results.some(working)) schedulePoll(t.id);
   if (t.results[openAfterLoad]) setTimeout((i: number) => openFull(t, i), 0, openAfterLoad);
   openAfterLoad = -1;
+  if (chat?.testId === t.id) drawChat();
   return w;
 }
 
@@ -536,7 +557,7 @@ function fillResults(t: LabTestFull, body: HTMLElement): void {
 }
 
 // While models run: fetch the test again every 2 s and redraw only what changed (pages that are showing stay put).
-function schedulePoll(id: string): void {
+function schedulePoll(id: string, ms = 2000): void {
   clearTimeout(poll);
   poll = window.setTimeout(async () => {
     if (!isOpen || view.kind !== 'test' || view.id !== id) return;
@@ -553,10 +574,11 @@ function schedulePoll(id: string): void {
     t.results.forEach((r, i) => {
       const o = old.results[i];
       if (!o) return;
-      if (o.state !== r.state || o.page !== r.page || o.files.length !== r.files.length || o.build !== r.build) {
+      if (o.state !== r.state || o.page !== r.page || o.files.length !== r.files.length || o.build !== r.build || o.followUps.length !== r.followUps.length || o.rank !== r.rank) {
         main.querySelector(`.lab-card[data-i="${i}"]`)?.replaceWith(card(t, i));
         const row = main.querySelector(`tr[data-i="${i}"]`);
         if (row) row.replaceWith(resultRow(t, i));
+        if (chat?.dir === r.dir) void (o.followUps.length !== r.followUps.length ? loadVersions() : drawChat());
       } else for (const e of main.querySelectorAll<HTMLElement>(`[data-tok="${i}"]`)) e.textContent = `${fmtTok(r.tokens)} TOK`;
     });
     const sum = main.querySelector('.lab-sum');
@@ -565,12 +587,12 @@ function schedulePoll(id: string): void {
     const stop = main.querySelector<HTMLElement>('.lab-stop');
     if (stop) stop.hidden = !t.results.some(busy);
     if (t.results.some(working)) schedulePoll(id);
-  }, 2000);
+  }, ms);
 }
 
 function tickClocks(): void {
-  if (!current || view.kind !== 'test') return;
-  for (const e of main.querySelectorAll<HTMLElement>('[data-clock]')) {
+  if (!current || view.kind !== 'test' || !rootEl) return;
+  for (const e of rootEl.querySelectorAll<HTMLElement>('[data-clock]')) {
     const r = current.results[Number(e.dataset.clock)];
     if (r) e.textContent = stateLabel(r);
   }
@@ -586,10 +608,12 @@ function card(t: LabTestFull, i: number): HTMLElement {
   if (busy(r)) state.dataset.clock = String(i);
   const name = el('div', 'lab-name', nameOf(t, i));
   if (r.rank) name.prepend(el('span', 'lab-rank', `#${r.rank}`));
-  top.append(name, state);
+  top.append(name, upsBadge(r), state);
 
+  const ups = r.followUps.length;
+  const following = busy(r) && ups > 0; // the files are the old ones until it is done: show WORKING, not them
   const pane = el('div', 'lab-view');
-  if (r.page) {
+  if (r.page && !following) {
     const f = el('iframe');
     f.setAttribute('sandbox', SANDBOX);
     f.title = `${nameOf(t, i)}: its page`;
@@ -598,7 +622,8 @@ function card(t: LabTestFull, i: number): HTMLElement {
     pane.append(f);
     pane.onclick = () => openFull(t, i);
   } else if (busy(r)) {
-    pane.append(el('div', 'lab-wait', r.state === 'queued' ? (r.app === 'local' ? 'WAITING: A LOCAL MODEL RUNS ALONE, AFTER THE OTHERS' : 'WAITING FOR ITS TURN') : 'WORKING…'));
+    pane.append(el('div', 'lab-wait', r.state === 'queued' ? (r.app === 'local' ? 'WAITING: A LOCAL MODEL RUNS ALONE, AFTER THE OTHERS' : 'WAITING FOR ITS TURN') : following ? `WORKING ON FOLLOW-UP ${ups}…` : 'WORKING…'));
+    if (following) pane.append(el('p', 'lab-reply-line', `YOU: ${r.followUps[ups - 1].text}`));
   } else if (r.build === 'building') {
     pane.append(el('div', 'lab-wait', 'BUILDING THE PAGE…'));
   } else if (r.canBuild) {
@@ -613,7 +638,7 @@ function card(t: LabTestFull, i: number): HTMLElement {
   } else {
     pane.append(el('pre', `lab-reply${r.error ? ' lab-err' : ''}`, r.reply || r.error || '(no reply)'));
   }
-  if (r.page && (r.reply || r.error)) pane.append(el('p', 'lab-reply-line', r.reply || r.error));
+  if (r.page && !following && (r.reply || r.error)) pane.append(el('p', 'lab-reply-line', r.reply || r.error));
 
   const stats = el('div', 'lab-stats');
   const tok = el('span', '', `${fmtTok(r.tokens)} TOK`);
@@ -626,7 +651,12 @@ function card(t: LabTestFull, i: number): HTMLElement {
   const big = button('OPEN BIG', () => openFull(t, i));
   big.disabled = busy(r) && !r.page;
   acts.append(big, button('FILES', () => openFiles(t, i)), button('LOG', () => void openLog(t, i)));
-  if (r.state === 'failed' || r.state === 'limit' || r.state === 'stopped' || r.timeUp) acts.append(button('RUN AGAIN', () => void runAgain(t, i), 'lab-again'));
+  if (!busy(r) || ups) {
+    const follow = button('FOLLOW UP', () => openChat(t, i), 'lab-follow');
+    follow.title = 'Ask this model for changes: it works on in its own folder. What it has now is kept as a version.';
+    acts.append(follow);
+  }
+  if (!busy(r)) acts.append(button('RUN AGAIN', () => void runAgain(t, i), r.state === 'done' && !r.timeUp ? '' : 'lab-again'));
 
   const rate = el('div', 'lab-rate');
   rate.append(starsWidget(t, i));
@@ -721,7 +751,9 @@ function resultRow(t: LabTestFull, i: number): HTMLElement {
   tok.dataset.tok = String(i);
   const cost = el('td', 'lab-nowrap', costText(r));
   cost.title = costTip;
-  tr.append(el('td', 'lab-nowrap', r.rank ? `#${r.rank}` : '-'), el('td', 'lab-strong', nameOf(t, i)), el('td', 'lab-dim', appOf(t, i)), st, stars, tok, cost, el('td', '', String(r.files.length)), el('td', 'lab-dim', r.note));
+  const who = el('td', 'lab-strong', nameOf(t, i));
+  who.append(' ', upsBadge(r));
+  tr.append(el('td', 'lab-nowrap', r.rank ? `#${r.rank}` : '-'), who, el('td', 'lab-dim', appOf(t, i)), st, stars, tok, cost, el('td', '', String(r.files.length)), el('td', 'lab-dim', r.note));
   return tr;
 }
 
@@ -753,7 +785,9 @@ function rankView(t: LabTestFull): HTMLElement {
       move(dragFrom, pos);
     };
     const who = el('div', 'lab-rank-who');
-    who.append(el('div', 'lab-strong', nameOf(t, i)), el('div', 'lab-dim', `${r.stars ? starText(r.stars) : 'no stars'} · ${appOf(t, i)}`));
+    const nm = el('div', 'lab-strong', nameOf(t, i));
+    nm.append(' ', upsBadge(r));
+    who.append(nm, el('div', 'lab-dim', `${r.stars ? starText(r.stars) : 'no stars'} · ${appOf(t, i)}`));
     const up = button('▲', () => move(pos, pos - 1), 'lab-rank-move');
     const down = button('▼', () => move(pos, pos + 1), 'lab-rank-move');
     up.disabled = pos === 0;
@@ -765,7 +799,7 @@ function rankView(t: LabTestFull): HTMLElement {
   });
   w.append(head, list);
   const out = t.results.filter((r) => !ratable(r));
-  if (out.length) w.append(el('p', 'lab-dim', `Not in the ranking (did not finish): ${out.map((r) => nameOf(t, t.results.indexOf(r))).join(', ')}.`));
+  if (out.length) w.append(el('p', 'lab-dim', `Not in the ranking (not finished): ${out.map((r) => nameOf(t, t.results.indexOf(r))).join(', ')}.`));
   if (!done.length) w.append(el('p', 'lab-empty', 'Nothing has finished yet.'));
   return w;
 }
@@ -782,12 +816,16 @@ async function saveRanking(t: LabTestFull, dirs: string[]): Promise<void> {
   }
 }
 
-// RUN AGAIN: that one model from scratch, with at least an hour.
+// RUN AGAIN: that one model from scratch, with at least an hour. The server keeps what it had as a version. A DONE
+// result asks first: its result is replaced.
 async function runAgain(t: LabTestFull, i: number): Promise<void> {
   const r = t.results[i];
+  if (r.state === 'done' && !(await confirmBox('RUN IT AGAIN?', 'This replaces its result; the old one is kept as a version. Its stars, rank and note are cleared.', 'RUN AGAIN'))) return;
+  const limit = Math.max(60, t.timeLimitMin);
   try {
-    await api(`tests/${t.id}/results/${r.dir}/again`, 'POST', { timeLimitMin: Math.max(60, t.timeLimitMin) });
-    toast('Running it again with a 1-hour limit.');
+    await api(`tests/${t.id}/results/${r.dir}/again`, 'POST', { timeLimitMin: limit });
+    toast(`Running it again with a time limit of ${limitText(limit).toLowerCase()}. The old one is kept as a version.`);
+    if (chat?.dir === r.dir) void loadVersions();
     render();
   } catch (e) {
     fail(e);
@@ -884,12 +922,174 @@ async function remove(t: LabTest | LabTestFull): Promise<void> {
   }
 }
 
+// ------------------------------------------------------------ FOLLOW UP: a small chat with one result
+
+// The open FOLLOW UP panel. It draws its result from `current` (the poll keeps it fresh) and the versions kept so far.
+type Chat = { testId: string; dir: string; panel: HTMLElement; log: HTMLElement; input: HTMLTextAreaElement; send: HTMLButtonElement; versions: LabVersion[] | null; release: () => void };
+let chat: Chat | null = null;
+
+// FOLLOW UP: more words for one result's model, in a small panel over the cards (the whole screen on a phone). The same
+// model works on in its own folder (server/labfollow.ts); the card shows WORKING, then the new page.
+function openChat(t: LabTestFull, i: number): void {
+  closeChat(true);
+  const panel = el('aside', 'lab-chat');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', `Follow up: ${nameOf(t, i)}`);
+  const head = el('div', 'lab-row lab-chat-head');
+  head.append(el('h2', '', `FOLLOW UP · ${nameOf(t, i)}`), el('span', 'lab-grow'), button('CLOSE', () => closeChat()));
+  const log = el('div', 'lab-chat-log');
+  const input = el('textarea', 'lab-chat-in');
+  input.rows = 3;
+  input.maxLength = LAB_FOLLOW_UP_MAX;
+  input.placeholder = 'What should it change?';
+  const dictate = button('DICTATE', () => {}, 'lab-dictate');
+  const send = button('SEND', () => void sendFollowUp(), 'primary lab-send');
+  send.title = 'Send (Ctrl+Enter)';
+  const row = el('div', 'lab-row');
+  row.append(dictate, el('span', 'lab-grow'), send);
+  const foot = el('div', 'lab-chat-foot');
+  foot.append(input, row, el('p', 'lab-dim lab-chat-note', 'Same model, effort and time limit, in its own folder. What it has now is kept as a version; its stars and rank are cleared.'));
+  panel.append(head, log, foot);
+  panel.onkeydown = (e) => {
+    if (e.key === 'Escape') closeChat();
+    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void sendFollowUp();
+  };
+  rootEl!.append(panel);
+  rootEl!.classList.add('lab-chatting');
+  chat = { testId: t.id, dir: t.results[i].dir, panel, log, input, send, versions: null, release: useDictation(dictate, input) };
+  try {
+    const s = history.state as { chat?: boolean; full?: boolean } | null;
+    if (s?.chat || s?.full) history.replaceState({ phosphorLab: true, chat: true }, '');
+    else history.pushState({ phosphorLab: true, chat: true }, '');
+  } catch {
+    /* fine without the back button */
+  }
+  drawChat();
+  void loadVersions();
+  if (matchMedia('(hover: hover)').matches) input.focus({ preventScroll: true }); // not on a phone: the keyboard would cover the chat
+}
+
+function closeChat(quiet = false): void {
+  if (!chat) return;
+  chat.release();
+  chat.panel.remove();
+  rootEl?.classList.remove('lab-chatting');
+  chat = null;
+  if (!quiet && (history.state as { chat?: boolean } | null)?.chat) {
+    pendingBack++;
+    history.back();
+  }
+}
+
+async function loadVersions(): Promise<void> {
+  const c = chat;
+  if (!c) return;
+  try {
+    const { versions } = await api<{ versions: LabVersion[] }>(`tests/${encodeURIComponent(c.testId)}/results/${encodeURIComponent(c.dir)}/versions`);
+    if (chat !== c) return;
+    c.versions = versions;
+    drawChat();
+  } catch (e) {
+    fail(e);
+  }
+}
+
+// The chat: the prompt (folded), earlier runs kept by RUN AGAIN, the first reply, then each follow-up and its reply. A
+// turn's output is in the version kept just before the next follow-up; the last one's is the result itself.
+function drawChat(): void {
+  const c = chat;
+  if (!c || !current || current.id !== c.testId) return;
+  const t = current;
+  const i = t.results.findIndex((x) => x.dir === c.dir);
+  if (i < 0) return closeChat();
+  const r = t.results[i];
+  const ups = r.followUps;
+  const prompt = el('details', 'lab-chat-prompt');
+  prompt.open = c.log.querySelector<HTMLDetailsElement>('.lab-chat-prompt')?.open ?? false;
+  prompt.append(el('summary', '', 'THE PROMPT'), el('pre', '', t.prompt));
+  const items: HTMLElement[] = [prompt];
+  const used = new Set(ups.map((u) => u.version));
+  const older = (c.versions ?? []).filter((v) => !used.has(v.n));
+  if (older.length) items.push(olderRuns(t, i, older));
+  for (let k = 0; k <= ups.length; k++) {
+    if (k) items.push(chatYou(ups[k - 1]));
+    items.push(chatReply(t, i, k, k < ups.length ? c.versions?.find((v) => v.n === ups[k].version) : r));
+  }
+  const atEnd = c.log.scrollHeight - c.log.scrollTop - c.log.clientHeight < 60;
+  c.log.replaceChildren(...items);
+  if (atEnd) c.log.scrollTop = c.log.scrollHeight;
+  c.send.disabled = busy(r);
+  c.send.textContent = busy(r) ? 'WORKING…' : 'SEND';
+}
+
+function chatYou(u: LabFollowUp): HTMLElement {
+  const m = el('div', 'lab-msg lab-msg-you');
+  m.append(el('div', 'lab-msg-head lab-dim', `YOU · ${fmtTime(u.at).toUpperCase()}`), el('pre', 'lab-msg-text', u.text));
+  return m;
+}
+
+// One reply. out: the result as that turn left it (a kept version, or the result now); undefined while versions load.
+function chatReply(t: LabTestFull, i: number, k: number, out: LabResultFull | LabVersion | undefined): HTMLElement {
+  const m = el('div', 'lab-msg lab-msg-model');
+  const head = el('div', 'lab-row lab-msg-head');
+  head.append(el('span', 'lab-strong', `${nameOf(t, i)} · ${k ? `FOLLOW-UP ${k}` : 'FIRST RUN'}`));
+  if (!out) return (m.append(head, el('p', 'lab-dim', 'LOADING…')), m);
+  const v = 'n' in out ? out : undefined;
+  const state = el('span', 'lab-dim', stateLabel(out));
+  if (!v && busy(out)) state.dataset.clock = String(i);
+  head.append(state);
+  if (v?.stars) head.append(starLine(v.stars));
+  head.append(el('span', 'lab-grow'));
+  if (!busy(out) && (out.page || out.reply)) head.append(button(v ? `VIEW V${v.n}` : 'VIEW', () => openFull(t, i, v)));
+  const waiting = out.state === 'queued' ? (out.app === 'local' ? 'WAITING: A LOCAL MODEL RUNS ALONE, AFTER THE OTHERS' : 'WAITING FOR ITS TURN') : 'WORKING…';
+  const text = busy(out) ? waiting : out.reply.trim() || out.error || '(no reply)';
+  m.append(head, el('pre', `lab-msg-text${busy(out) ? ' lab-msg-wait' : !out.reply.trim() && out.error ? ' lab-err' : ''}`, text));
+  return m;
+}
+
+// Versions from before a RUN AGAIN: not part of this chat, but kept and viewable.
+function olderRuns(t: LabTestFull, i: number, vs: LabVersion[]): HTMLElement {
+  const w = el('div', 'lab-chat-older');
+  w.append(el('div', 'lab-dim', 'EARLIER RUNS (KEPT BY RUN AGAIN)'));
+  for (const v of vs) {
+    const n = v.followUps.length;
+    const row = el('div', 'lab-row');
+    row.append(el('span', '', [`V${v.n}`, n ? `AFTER ${n} FOLLOW-UP${n > 1 ? 'S' : ''}` : 'FIRST RUN', stateLabel(v), v.endedAt ? fmtDate(v.endedAt).toUpperCase() : ''].filter(Boolean).join(' · ')));
+    if (v.stars) row.append(starLine(v.stars));
+    row.append(el('span', 'lab-grow'));
+    if (v.page || v.reply) row.append(button('VIEW', () => openFull(t, i, v)));
+    w.append(row);
+  }
+  return w;
+}
+
+async function sendFollowUp(): Promise<void> {
+  const c = chat;
+  if (!c || c.send.disabled) return;
+  if (isDictating()) await stopDictation(); // the last words land in the box first
+  const text = c.input.value.trim();
+  if (!text) return void c.input.focus();
+  c.send.disabled = true;
+  c.send.textContent = 'SENDING…';
+  try {
+    await api(`tests/${encodeURIComponent(c.testId)}/results/${encodeURIComponent(c.dir)}/followup`, 'POST', { text });
+    if (c.input.value.trim() === text) c.input.value = '';
+    schedulePoll(c.testId, 0); // the card shows WORKING, the chat its new turn
+  } catch (e) {
+    fail(e);
+    if (chat === c) drawChat();
+  }
+}
+
 // ------------------------------------------------------------ full screen and boxes
 
 // OPEN BIG: the result fills the whole screen. A small CLOSE at the top right; DETAILS folds open at the bottom.
-function openFull(t: LabTestFull, i: number): void {
+// v: one of its kept versions instead (from the FOLLOW UP chat), shown the same way but read-only.
+function openFull(t: LabTestFull, i: number, v?: LabVersion): void {
   closeFull(true);
-  const r = t.results[i];
+  const now = t.results[i];
+  const r = v ?? now;
+  const url = r.page ? pageUrl(t, now, r.page, v) : '';
   const d = el('div', 'lab-full');
   d.tabIndex = -1;
   const close = button('✕', () => closeFull(), 'lab-full-close');
@@ -899,43 +1099,56 @@ function openFull(t: LabTestFull, i: number): void {
     const f = el('iframe', 'lab-full-frame');
     f.setAttribute('sandbox', SANDBOX);
     f.title = `${nameOf(t, i)}: its page`;
-    f.src = pageUrl(t, r);
+    f.src = url;
     d.append(f);
   } else d.append(el('pre', `lab-full-text${r.error && !r.reply ? ' lab-err' : ''}`, r.reply || r.error || '(no reply yet)'));
 
   const info = el('details', 'lab-full-info');
   const sum = el('summary');
-  sum.append(el('span', 'lab-strong', nameOf(t, i)), el('span', 'lab-dim', ` · ${stateLabel(r)} · DETAILS`));
+  sum.append(el('span', 'lab-strong', nameOf(t, i)), el('span', 'lab-dim', ` · ${v ? `VERSION ${v.n} (EARLIER) · ` : ''}${stateLabel(r)} · DETAILS`));
   const inner = el('div', 'lab-full-inner');
   const facts = el('div', 'lab-facts');
-  const fact = (k: string, v: string) => facts.append(el('span', 'lab-dim', k), el('span', '', v));
+  const fact = (k: string, val: string) => facts.append(el('span', 'lab-dim', k), el('span', '', val));
   fact('APP', appOf(t, i));
-  if (r.rank) fact('RANK', `#${r.rank} of ${t.results.filter((x) => x.rank > 0).length}`);
-  if (!isBlind(t)) fact('VERSION', r.appVersion || '-');
+  if (r.rank) fact('RANK', v ? `#${r.rank} (then)` : `#${r.rank} of ${t.results.filter((x) => x.rank > 0).length}`);
+  if (!isBlind(t)) fact('APP VERSION', r.appVersion || '-');
   fact('TIME', r.startedAt ? fmtClock(runMs(r)) : '-');
   fact('EFFORT', effortText(t, r));
   fact('TOKENS', fmtTok(r.tokens));
   fact('COST', costText(r));
-  fact('FILES', String(r.files.length));
-  inner.append(facts, starsWidget(t, i));
+  if (!v) fact('FILES', String(now.files.length));
+  if (r.followUps.length) fact('FOLLOW-UPS', String(r.followUps.length));
+  const then = el('p', 'lab-dim');
+  if (v?.stars) then.append(starLine(v.stars), ' (its stars then)');
+  else then.textContent = 'It had no stars then.';
+  inner.append(facts, v ? then : starsWidget(t, i));
   if (r.page && r.reply) inner.append(el('pre', 'lab-reply', r.reply));
   if (r.error) inner.append(el('p', 'lab-err', r.error));
   if (r.page) {
     const open = el('a', 'lab-link', 'OPEN THE PAGE IN A NEW TAB');
-    open.href = pageUrl(t, r);
+    open.href = url;
     open.target = '_blank';
     open.rel = 'noopener noreferrer';
     inner.append(open);
   }
-  const nav2 = el('div', 'lab-row');
-  if (t.results.length > 1) {
-    nav2.append(
-      button('< PREV', () => openFull(t, (i - 1 + t.results.length) % t.results.length)),
-      button('NEXT >', () => openFull(t, (i + 1) % t.results.length)),
-    );
+  if (!v) {
+    const nav2 = el('div', 'lab-row');
+    if (t.results.length > 1) {
+      nav2.append(
+        button('< PREV', () => openFull(t, (i - 1 + t.results.length) % t.results.length)),
+        button('NEXT >', () => openFull(t, (i + 1) % t.results.length)),
+      );
+    }
+    nav2.append(button('FILES', () => openFiles(t, i)), button('LOG', () => void openLog(t, i)));
+    if (!busy(now) || now.followUps.length)
+      nav2.append(
+        button('FOLLOW UP', () => {
+          closeFull(true); // the chat takes this back-button entry
+          openChat(t, i);
+        }),
+      );
+    inner.append(nav2);
   }
-  nav2.append(button('FILES', () => openFiles(t, i)), button('LOG', () => void openLog(t, i)));
-  inner.append(nav2);
   info.append(sum, inner);
   d.append(close, info);
   d.onkeydown = (e) => {

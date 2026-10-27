@@ -1,7 +1,8 @@
-import { LAB_MAX_MODELS, promptLibrary, type LabApp, type LabEffort, type LabModel, type LabNewTest, type LabResultFull, type LabTestFull } from '../../shared/lab.ts';
+import { LAB_MAX_MODELS, promptLibrary, type LabApp, type LabEffort, type LabModel, type LabNewTest, type LabResultFull, type LabTestFull, type LabVersion } from '../../shared/lab.ts';
 
 // Fake data for LAB in demo mode (/?demo=1): no real API call is made and no model runs. The tests live in memory. A
-// result added to a test goes WAITING, RUNNING, DONE in a few seconds, so the cards can be watched filling in.
+// result added to a test (or followed up) goes WAITING, RUNNING, DONE in a few seconds, so the cards can be watched
+// filling in. The coffee shop test has a result with one FOLLOW UP and the version kept before it.
 
 const now = Date.now();
 const DAY = 86_400_000;
@@ -48,7 +49,7 @@ const SEEDS: Seed[] = [
     says: ['Done. One index.html with a canvas: arrow keys steer, apples count up in the corner, and a game over screen has a restart key.', 'I made index.html. The snake speeds up every five apples and the walls wrap around.', 'Built it as a single file, no libraries. Press any arrow key to start.', 'The page is ready: a grid, a score and a game over message. About 120 lines.'],
   },
   { title: 'Bouncing balls in a hexagon', prompt: BALLS, ago: 3, blind: true, runs: [['claude:claude-opus-5-5', 5], ['opencode:opencode-go/deepseek-v4-pro', 3], ['opencode:opencode-go/glm-5.3', 0]], says: ['Twenty balls fall under gravity and bounce off the six walls of a hexagon that turns slowly. Friction slows each bounce a little.', 'Done: index.html with a canvas. The balls are pushed back inside whenever a wall would let them out.', 'The hexagon spins at a steady rate and the balls keep their speed after each bounce.'] },
-  { title: 'Coffee shop landing page', prompt: COFFEE, ago: 6, effort: 'medium', runs: [['claude:claude-sonnet-5-5', 4], ['opencode:opencode-go/qwen3.8-max', 4], ['agy:gemini-3.8-flash', 3], ['opencode:opencode-go/minimax-m3', 2]], says: ['The page has a warm hero, three cards, a menu table with prices and opening hours. It reads well at phone width.', 'Done. A cream and brown theme, a big ORDER AHEAD button and the menu in two columns on wide screens.', 'I used system fonts and CSS grid. The map is a gray box with a pin icon.'] },
+  { title: 'Coffee shop landing page', prompt: COFFEE, ago: 6, effort: 'medium', runs: [['claude:claude-sonnet-5-5', 4], ['opencode:opencode-go/qwen3.8-max', 4], ['agy:gemini-3.8-flash', 3], ['opencode:opencode-go/minimax-m3', 2]], says: ['The page has a warm hero, three cards, a menu table with prices and opening hours. It reads well at phone width.', 'Done. A cream and brown theme, a big ORDER AHEAD button and the menu in two columns on wide screens.', 'I used system fonts and CSS grid. The map is a gray box with a pin icon.', 'Done: a hero with the shop name, three cards and a menu with prices.'] },
   { title: 'Snake game, older models', prompt: SNAKE, ago: 14, runs: [['claude:claude-haiku-5-5', 3], ['codex:gpt-5.6-terra', 4], ['agy:gemini-3.8-flash', 2]], says: ['Here is a snake game in one file with arrow key steering and a score.', 'The game is in index.html. It restarts when you press Enter.', 'A small snake game: the grid is 20 by 20 and the score shows at the top.'] },
   { title: 'Retro snake game', prompt: SNAKE, ago: 27, archived: true, runs: [['claude:claude-sonnet-5-5', 3], ['opencode:opencode-go/glm-5.3', 3]], says: ['A snake game with a score. The snake grows when it eats.', 'Done: index.html with the game loop and a game over screen.'] },
   { title: 'Pixel cat', prompt: 'Draw a pixel art cat with SVG, 11 by 8 squares, in two colors.', ago: 38, archived: true, runs: [['claude:claude-opus-5-5', 4], ['codex:gpt-6-luna', 5]], says: ['The cat is an SVG with 11 by 8 squares: orange body, dark eyes, two ears.', 'Built the cat with rect elements in a single SVG. The page centers it.'] },
@@ -75,6 +76,35 @@ const tests: LabTestFull[] = SEEDS.map((s) => {
   const id = `${stamp(at)}-${slug(s.title)}`;
   const results = s.runs.map(([m, stars, over], i) => result(byId(m), at, i, stars, s.says[i % s.says.length], { effort: s.effort ?? 'default', ...over }));
   return build(id, { title: s.title, prompt: s.prompt, at, archived: !!s.archived, blind: !!s.blind, timeLimitMin: 30, effort: s.effort ?? 'default', results });
+});
+
+// Versions kept before a follow-up or RUN AGAIN, per result (the server keeps them in versions/<n>/).
+const versions = new Map<LabResultFull, LabVersion[]>();
+function keepVersion(r: LabResultFull): number {
+  const list = versions.get(r) ?? [];
+  const { files: _f, build: _b, canBuild: _c, ...was } = structuredClone(r);
+  list.push({ ...was, n: list.length + 1 });
+  versions.set(r, list);
+  return list.length;
+}
+
+// Its output changes: it leaves the ranking and the ones below move up (as the server does).
+function unrank(t: LabTestFull, r: LabResultFull): void {
+  for (const x of t.results) if (r.rank && x.rank > r.rank) x.rank--;
+  Object.assign(r, { stars: 0, rank: 0 });
+}
+
+// The coffee page from MiniMax M3 left things out, so the owner followed it up once: version 1 is its first page.
+const coffee = tests.find((t) => t.title === 'Coffee shop landing page')!;
+const minimax = coffee.results[3];
+const v1 = keepVersion(minimax);
+Object.assign(minimax, {
+  stars: 0,
+  startedAt: coffee.at + 3_600_000,
+  endedAt: coffee.at + 3_668_000,
+  tokens: 18_400,
+  reply: 'Added the opening hours under the menu and a map box with a pin. ORDER AHEAD is full width and easy to tap on a phone. The rest is as it was.',
+  followUps: [{ text: 'You left out the opening hours and the map. Add both, and make the ORDER AHEAD button easy to tap on a phone.', at: coffee.at + 3_590_000, version: v1 }],
 });
 
 // A new result: WAITING, then RUNNING, then DONE with a short reply a few seconds later.
@@ -130,7 +160,24 @@ export function demoLabApi<T>(path: string, method: string, body: unknown = {}):
   }
   if (parts[2] === 'results' && r) {
     if (parts[4] === 'log') return reply({ log: '{"type":"demo","note":"This is demo data: no model ran."}', stderr: '', build: '' });
-    if (parts[4] === 'again') return (Object.assign(r, { state: 'done', error: '', reply: 'Done on the second try.', rank: 0, stars: 0 }), reply({ ok: true }));
+    if (parts[4] === 'versions') return reply({ versions: versions.get(r) ?? [] });
+    if ((parts[4] === 'again' || parts[4] === 'followup') && (r.state === 'queued' || r.state === 'running')) return no('It is still running.');
+    if (parts[4] === 'again') {
+      const version = keepVersion(r);
+      unrank(t, r);
+      Object.assign(r, { state: 'done', error: '', reply: 'Done on the second try.', note: '', followUps: [] });
+      return reply({ version });
+    }
+    if (parts[4] === 'followup') {
+      const text = String(b.text ?? '').trim();
+      if (!text) return no('Write what it should do first.');
+      const version = keepVersion(r);
+      unrank(t, r);
+      Object.assign(r, { state: 'queued', startedAt: 0, endedAt: 0, tokens: 0, value: null, effort: '', error: '', reply: '', followUps: [...r.followUps, { text, at: Date.now(), version }] });
+      setTimeout(() => Object.assign(r, { state: 'running', startedAt: Date.now() }), 1200);
+      setTimeout(() => Object.assign(r, { state: 'done', endedAt: Date.now(), tokens: 12_600, effort: t.effort, reply: 'Done. I changed the page as you asked and kept the rest as it was.' }), 9000);
+      return reply({ version });
+    }
     if (typeof b.stars === 'number') r.stars = b.stars;
     if (typeof b.note === 'string') r.note = b.note;
     return reply({ ok: true });
