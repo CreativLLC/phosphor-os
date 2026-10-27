@@ -56,7 +56,7 @@ Amber (or green, or LCARS) phosphor on black. Powered by [Claude Code](https://c
 **See everything the agent does** (the session HUD)
 - What the agent is doing right now, a plain-words summary, and the step list with a progress bar
 - Context window gauge, model and thinking level, plan usage, files changed
-- Sub-agents as a crew of cards, one per helper, with what each is doing
+- A pixel-art mascot that acts out what the agent is doing (reading, editing, running commands, searching the web), with sub-agents walking in as a crew while they work, plus a compact row per helper
 - Connectors: which ones the chat has, their state, and how often it used each
 
 **Work in chat tabs**

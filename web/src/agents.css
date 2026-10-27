@@ -297,9 +297,15 @@ html:not([data-crt='off']) .scene .sprite {
 }
 
 .agent-type {
-  max-width: 14ch;
+  flex: 0 1 auto;
+  min-width: 4ch;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Counts and model only when the row is opened. */
+.agent:not(.open) .agent-stat {
+  display: none;
 }
 
 .agent-tag {

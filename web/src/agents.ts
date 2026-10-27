@@ -113,7 +113,8 @@ class OperatorCard {
 
 // ---------- Crew card ----------
 
-// One compact row: the job, its time; below, type, status and counts. The scene shows the helper itself.
+// One compact row: the job and its time; below, type and status (tap for counts, model and the last line). The scene
+// shows the helper itself.
 class AgentCard {
   readonly el = el('article', 'agent');
   private name = el('div', 'agent-name');
