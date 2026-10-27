@@ -32,6 +32,8 @@ export class CueMic {
   private roll = 0;
   private retry = 0;
   private stopped = false;
+  state: MicState = 'starting';
+  note = ''; // why it is not on, when there is a reason
 
   constructor(
     private token: () => string, // the session's mic token, '' until the server answered START
@@ -50,7 +52,7 @@ export class CueMic {
     void ctx.resume().catch(() => {});
     const worklet = loadWorklet(ctx);
     worklet.catch(() => {});
-    this.onState('starting');
+    this.set('starting');
     this.cur = this.open();
     openMic()
       .then(async (stream) => {
@@ -88,8 +90,14 @@ export class CueMic {
     await this.feed(true);
   }
 
+  private set(state: MicState, note = ''): void {
+    this.state = state;
+    this.note = note;
+    this.onState(state, note);
+  }
+
   private fail(note: string): void {
-    this.onState('error', note);
+    this.set('error', note);
     void this.stop();
   }
 
@@ -103,7 +111,7 @@ export class CueMic {
       for (const c of s.queue) ws.send(c);
       s.queue = [];
       if (s.ending) ws.send('{"t":"end"}');
-      if (s === this.cur && !s.ready) this.onState('loading');
+      if (s === this.cur && !s.ready) this.set('loading');
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== 'string') return;
@@ -115,7 +123,7 @@ export class CueMic {
       }
       if (ev.t === 'ready') {
         s.ready = true;
-        if (s === this.cur) this.onState('on');
+        if (s === this.cur) this.set('on');
       } else if (ev.t === 'partial') {
         if (s === this.cur) this.partial = ev.text;
       } else if (ev.t === 'final') {
@@ -123,7 +131,7 @@ export class CueMic {
         if (s === this.cur) this.partial = '';
       } else if (ev.t === 'error') {
         if (/not installed/i.test(ev.error)) this.fail(ev.error);
-        else if (s === this.cur) this.onState('loading', ev.error);
+        else if (s === this.cur) this.set('loading', ev.error);
       }
     };
     ws.onclose = () => {
@@ -131,7 +139,7 @@ export class CueMic {
       s.finish();
       if (s !== this.cur || this.stopped) return;
       // Broke (the engine restarted, the network blinked): open a new one; audio waits in its queue meanwhile.
-      this.onState('loading', 'Reconnecting to the speech engine…');
+      this.set('loading', 'Reconnecting to the speech engine…');
       this.cur = null;
       this.retry = window.setTimeout(() => {
         if (!this.stopped) this.cur = this.open();

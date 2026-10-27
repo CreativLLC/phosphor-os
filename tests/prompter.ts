@@ -281,7 +281,8 @@ eq('transcript: VTT header dropped', parseTranscript('WEBVTT\n\n00:00.000 --> 00
     await sleep(900);
     let now = (await call('live')).data.live as PrompterLive;
     eq('route: the loop asked and ticked', [now.points[0].done, now.points[0].by, now.mic, now.calls >= 1], [true, 'model', 'on', true]);
-    eq('route: nothing changed: only the version', Object.keys((await call(`live?v=${now.v}`)).data), ['v']);
+    eq('route: nothing changed: only the version', Object.keys((await call(`live?id=${now.id}&v=${now.v}`)).data), ['v']);
+    eq('route: another session with the same version is sent whole', Object.keys((await call(`live?id=other&v=${now.v}`)).data).includes('live'), true);
     const marked = await call('live/mark', { id: 'p2', done: true });
     eq('route: tick by hand', (marked.data.live as PrompterLive).points[1].by, 'hand');
     const other = await call('live/mic', {});

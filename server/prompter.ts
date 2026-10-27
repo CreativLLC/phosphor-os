@@ -18,7 +18,7 @@ import { prompterDecider, type PrompterDecider } from './prompterdecide.ts';
 //   GET    /api/prompter/lists/<id>        -> PromptList
 //   POST   /api/prompter/lists             { id?, name, text } -> PromptList (saved)
 //   DELETE /api/prompter/lists/<id>
-//   GET    /api/prompter/live[?v=<n>]      -> { live: PrompterLive | null, engine } ({ v } alone when nothing changed)
+//   GET    /api/prompter/live[?id=&v=]     -> { live: PrompterLive | null, engine, now } ({ v } alone when nothing changed)
 //   POST   /api/prompter/live/start        { name, text } -> { live, mic }: a new session (ends a running one)
 //   POST   /api/prompter/live/mic          -> { mic }: this device's mic feeds the session from now on
 //   POST   /api/prompter/live/feed         { mic, partial?, finals?, level? } (409: another device has the mic)
@@ -337,7 +337,7 @@ export async function handlePrompter(req: IncomingMessage, res: ServerResponse, 
   try {
     if (path === '/api/prompter/live' && req.method === 'GET') {
       const v = Number(url.searchParams.get('v') ?? NaN);
-      if (live && v === live.v) return json(res, { v });
+      if (live && v === live.v && url.searchParams.get('id') === live.id) return json(res, { v });
       const d = engine.decider();
       return json(res, { live: liveState(), engine: { ready: d.ready, label: d.label, note: d.note }, now: engine.now() });
     }

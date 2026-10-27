@@ -4,7 +4,7 @@ import { closeDocs, isDocsOpen, onDocsToggle } from './docs.ts';
 import { closeKeywords, isKeywordsOpen, onKeywordsToggle } from './keywords.ts';
 import { closeLab, isLabOpen, onLabToggle } from './lab.ts';
 import { demoPrompterApi } from './prompterdemo.ts';
-import { CueMic, type MicState } from './promptermic.ts';
+import { CueMic } from './promptermic.ts';
 import { showChat } from './programs.ts';
 import { store } from './store.ts';
 import { button, confirmBox, el, toast } from './ui.ts';
@@ -51,9 +51,7 @@ let pollTimer = 0;
 let clockTimer = 0;
 let polling = false;
 let mic: CueMic | null = null;
-let micState: MicState | 'off' = 'off';
-let micNote = '';
-let wake: { release(): Promise<void> } | null = null;
+let wake: { released: boolean; release(): Promise<void> } | null = null;
 let shownV = -1;
 
 // ------------------------------------------------------------ public
@@ -166,7 +164,7 @@ async function poll(): Promise<void> {
   if (polling) return;
   polling = true;
   try {
-    const r = await api<LiveReply>(`live${live ? `?v=${live.v}` : ''}`);
+    const r = await api<LiveReply>(`live${live ? `?id=${encodeURIComponent(live.id)}&v=${live.v}` : ''}`);
     if (r.now) skew = r.now - Date.now();
     if (r.engine) engine = r.engine;
     if (r.live !== undefined) {
@@ -377,13 +375,10 @@ function startMic(): { mic: CueMic; attach(token: string): void } {
   const m = new CueMic(
     () => token,
     (s, note) => {
-      micState = s;
-      micNote = note ?? '';
       if (s === 'error') {
         dead = true;
         if (note) toast(note, 8000);
         if (mic === m) mic = null;
-        micState = 'off';
       }
       shownV = -1;
       render();
@@ -391,7 +386,6 @@ function startMic(): { mic: CueMic; attach(token: string): void } {
     (why) => {
       dead = true;
       if (mic === m) mic = null;
-      micState = 'off';
       if (why === 'taken') toast('Another device has the mic now.', 4000);
       shownV = -1;
       render();
@@ -412,7 +406,6 @@ function startMic(): { mic: CueMic; attach(token: string): void } {
 async function stopMic(quiet = false): Promise<void> {
   const m = mic;
   mic = null;
-  micState = 'off';
   if (m) await m.stop();
   if (!quiet) render();
 }
@@ -430,6 +423,7 @@ async function listenHere(): Promise<void> {
 }
 
 async function stopRun(): Promise<void> {
+  if (!(await confirmBox('STOP', 'End this recording session? The points and the words heard are kept.', 'STOP'))) return;
   await stopMic(true); // the last phrase goes in first
   try {
     live = (await api<{ live: PrompterLive | null }>('live/stop', 'POST', {})).live;
@@ -473,7 +467,7 @@ function renderClock(): void {
 }
 
 function micLabel(): string {
-  if (mic) return micState === 'on' ? 'MIC: THIS DEVICE' : micState === 'starting' ? 'MIC: STARTING…' : 'MIC: ENGINE LOADING…';
+  if (mic) return mic.state === 'on' ? 'MIC: THIS DEVICE' : mic.state === 'starting' ? 'MIC: STARTING…' : 'MIC: ENGINE LOADING…';
   return live?.mic === 'on' ? 'MIC: OTHER DEVICE' : 'MIC: OFF';
 }
 
@@ -509,7 +503,7 @@ function renderRun(): void {
   if (!open.length) list.append(el('li', 'cue-all', 'ALL POINTS COVERED'));
   for (const p of done) list.append(pointRow(p, 'cue-done'));
   const heard = el('div', 'cue-heard');
-  heard.append(el('span', '', l.heard || (l.endedAt ? '' : mic && micState !== 'on' ? micNote || 'Starting the mic…' : 'Listening…')));
+  heard.append(el('span', '', l.heard || (l.endedAt ? '' : mic && mic.state !== 'on' ? mic.note || 'Starting the mic…' : 'Listening…')));
   const extra: HTMLElement[] = [];
   if (!l.endedAt && l.error) extra.push(el('div', 'cue-err', l.error));
   runBox.replaceChildren(top, list, ...extra, heard);
@@ -549,7 +543,8 @@ function setStage(on: boolean): void {
 // Keep the screen on while it shows a running session (a phone on a stand would go dark).
 async function holdScreen(): Promise<void> {
   const want = (isOpen && view === 'run' && running()) || !!mic;
-  const wl = (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock;
+  const wl = (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<NonNullable<typeof wake>> } }).wakeLock;
+  if (wake?.released) wake = null; // the browser lets go when the page is hidden
   if (want && !wake && wl && document.visibilityState === 'visible') {
     wake = await wl.request('screen').catch(() => null);
   } else if (!want && wake) {
