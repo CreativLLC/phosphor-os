@@ -24,7 +24,8 @@
 #   STRATA_MEMORY_MAX  RAM cap for the service, so a full RAM ends Strata instead of the desktop
 #                    (default 24G for the Coder, 40G for qwen)
 # Needs: an AMD card Strata supports (RX 7900 XT/XTX and others, see its docs/AMD_HIP.md), git, a C++ compiler and
-# ROCm 7 (Arch: the llama.cpp ROCm packages bring it; without it Strata installs its own, about 10 GB).
+# ROCm 7 (Arch: the llama.cpp ROCm packages bring it; without it Strata installs its own, about 10 GB). Faster
+# prompts on AMD: hipBLASLt (Arch: sudo pacman -S hipblaslt) and a tuned table, see docs/LOCAL-MODEL.md.
 # The first install compiles the engine (10-20 min) and downloads the model (resumable).
 # Restart the Phosphor-OS server afterwards: systemctl --user restart phosphor-os-server
 

@@ -110,7 +110,7 @@ Measured on one PC (20 GB AMD card, 31 GB RAM unless noted, model files on an NV
 | Size | First prompt (Claude Code's, 16-22K tokens) | Writing | RAM tier that fit |
 |---|---|---|---|
 | Coder | 16.6K tokens in 25 s; later turns 2 s | 52-62 tok/s; a 4-turn bug fix (read, edit, run) took 36 s | 11.2 of 12.8 GB |
-| `IQ3_XXS` (48 GB RAM) | 17K tokens in about 28 s; later turns 1-2 s | 53-65 tok/s (828 tokens of code at 59 tok/s); the same bug fix took 40 s | 31.4 GB, all of it |
+| `IQ3_XXS` (48 GB RAM) | 17K tokens in about 28 s (about 20 s with the hipBLASLt table, below); later turns 1-2 s | 53-65 tok/s (828 tokens of code at 59 tok/s); the same bug fix took 40 s | 31.4 GB, all of it |
 | `IQ2_XS` | 22K tokens in 80 s | 1-3 tok/s; the engine stopped once (`verify: timed out`, #267) and Strata restarted it | 7 of 21.5 GB |
 
 With `IQ2_XS` most experts a code prompt needs are read from the SSD for every token; the Coder's fit in RAM and
@@ -121,6 +121,26 @@ turns read only what is new.
 RAM: a size runs fast when the part of its experts the card does not hold fits in RAM (the start log's
 `FileExpertSource` line says how much did); Strata's own table: 48 GB of RAM for `Q2_0` and `IQ2_XS`, 64 GB for every
 size. Quality, Strata's measurement (same top token as Q8_0): `IQ3_S` 87.7%, `IQ3_XXS` 84.5%, `Q2_0` 80.6%.
+
+**AMD: faster prompts with a hipBLASLt table (optional).** Strata reads a prompt through hipBLASLt when its engine is
+built with it and has a table tuned for the card and the hipBLASLt version; without it, plain hipBLAS. Arch has no
+hipBLASLt by default (`sudo pacman -S hipblaslt`, about 5 GB; Strata's setup then says "hipBLASLt (version unknown)"
+no more). Then, in Strata's folder (a few minutes; the tuner itself took 36 s):
+
+```sh
+cmake -S . -B build-hip -Dhipblaslt_DIR=/opt/rocm/lib/cmake/hipblaslt
+cmake --build build-hip --target strata tune_hipblaslt
+cp build-hip/strata engine/strata
+mkdir -p local && ./build-hip/tune_hipblaslt $(awk 'NR>2 {printf " --case %s,%s,%s,%s,%s", $1, $5, $2, $3, $4}' \
+  tools/hip/gfx1100-hipblaslt-100401.txt) --tuning-out local/gfx1100-hipblaslt-$VERSION.txt
+```
+
+(`tools/hip/gfx1100-hipblaslt-100401.txt` only supplies the 43 matrix shapes; `$VERSION` is the number on the table's
+second line, 100202 for hipBLASLt 1.2.2.) Then `"STRATA_HIPBLASLT_TUNING": "<that file>"` in the `env` of each
+`strata-*.json`; the start log says `hipBLASLt tuning enabled (43 rows, ...)`. Measured (RX 7900 XT, hipBLASLt 1.2.2,
+`IQ3_XXS`, fresh prompts): 3-4K tokens 435-477 -> 694-753 tok/s, 21K tokens 640 -> 1,046-1,051 tok/s; writing and
+answers unchanged. The table lives outside Strata's tracked files, so `git pull` keeps it; a ROCm update that changes
+the hipBLASLt version needs a new one (the engine refuses a table of another version and falls back).
 
 Picker entries from this installer live in `PHOSPHOR_LOCAL_MORE_MODELS` (labels without commas: the lists split on
 them), so re-running `setup-local-model.sh` keeps them. An install from before per-size units
