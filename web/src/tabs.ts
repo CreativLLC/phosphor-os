@@ -1,6 +1,7 @@
 import type { FoldersResponse, TabState } from '../../shared/protocol.ts';
 import { firstMessage, type FirstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
+import { newProjectChat } from './projects.ts';
 import { store, working } from './store.ts';
 import { shellApi } from './shellapi.ts';
 import { button, editInline, el, folderName } from './ui.ts';
@@ -96,7 +97,9 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       head.title = `Project "${p.name}": ${members.length - 1} thread${members.length === 2 ? '' : 's'}${busy ? `, ${busy} working` : ''}. Click to ${fold ? 'show' : 'fold'} the threads.`;
       head.classList.toggle('busy', busy > 0);
       const group = el('div', 'tab-group');
-      group.append(head, ...members.filter((x) => !fold || x.meta.project?.main).map(tabEl));
+      const more = button('+', () => newProjectChat(p), 'tab-add tab-group-add');
+      more.title = `New chat in "${p.name}"`;
+      group.append(head, ...members.filter((x) => !fold || x.meta.project?.main).map(tabEl), more);
       items.push(group);
     }
     const add = button('+', () => openNewTab(dialog), 'tab-add');
@@ -137,7 +140,11 @@ export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
   const cancel = button('CANCEL', () => dialog.close());
   const project = button('NEW PROJECT…', () => newProject(dialog, first), 'folder project-btn');
   project.title = 'A project: one lead chat that starts and steers thread chats, with a shared memory file';
-  dialog.replaceChildren(el('h2', '', 'NEW CHAT: PICK A FOLDER'), first.block, list, el('div', 'buttons', ''));
+  // In a project now: one more chat in it is offered first (projects.ts).
+  const here = store.current()?.meta.project;
+  const inProject = here ? button(`IN THIS PROJECT: ${here.name}…`, () => newProjectChat(here, first), 'folder project-btn in-project') : '';
+  if (inProject) inProject.title = 'A new chat in this project: same folder and shared memory, shown with its chats';
+  dialog.replaceChildren(el('h2', '', 'NEW CHAT: PICK A FOLDER'), first.block, inProject, list, el('div', 'buttons', ''));
   dialog.lastElementChild!.append(project, cancel);
   dialog.showModal();
   dialog.tabIndex = -1;
@@ -166,7 +173,7 @@ export async function openNewTab(dialog: HTMLDialogElement): Promise<void> {
 }
 
 // A new project: its name, then its lead chat opens (in the workspace folder). The first message is optional too.
-function newProject(dialog: HTMLDialogElement, from: FirstMessage): void {
+export function newProject(dialog: HTMLDialogElement, from?: FirstMessage): void {
   const input = el('input', 'project-name');
   input.placeholder = 'Project name, for example "YT: Claude video"';
   input.maxLength = 60;
@@ -186,5 +193,6 @@ function newProject(dialog: HTMLDialogElement, from: FirstMessage): void {
   buttons.append(button('CREATE', () => void create()), button('CANCEL', () => dialog.close()));
   const help = el('p', 'project-help', 'The lead chat splits the work into thread chats (one per job), starts them, and checks on them. Threads show next to it in the tab bar and in THREADS on the left. All of them share one memory file.');
   dialog.replaceChildren(el('h2', '', 'NEW PROJECT'), help, input, first.block, buttons);
+  if (!dialog.open) dialog.showModal(); // from PROJECTS
   input.focus();
 }

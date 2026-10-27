@@ -1,0 +1,84 @@
+/* PROJECTS drawer (projects.ts): rows like HISTORY's, with the project's state and its chats. */
+
+.project-row {
+  position: relative;
+  border-bottom: 1px dashed var(--line);
+}
+
+.project-row .history-row {
+  border-bottom: 0;
+}
+
+.project-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1ch;
+  width: 100%;
+}
+
+.project-top .h-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-state {
+  flex: none;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.project-row.st-working .project-state {
+  color: var(--ph-bright);
+  text-shadow: var(--glow);
+}
+
+.project-row.st-needs-you .project-state {
+  color: var(--ph-bright);
+  animation: crew-blink 1s steps(1) infinite;
+}
+
+.project-row.st-closed .h-title {
+  color: var(--ph);
+}
+
+.project-chats {
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  white-space: normal;
+}
+
+.project-chats .open {
+  color: var(--ph);
+}
+
+.project-tools {
+  display: flex;
+  gap: 6px;
+  margin: 0 8px 8px 22px;
+}
+
+.project-tools button {
+  min-height: 30px;
+  padding: 2px 10px;
+  font-size: var(--fs-sm);
+}
+
+/* + CHAT at the end of a project's group in the tab bar. */
+#top .tab-group-add {
+  min-width: 30px;
+  padding: 0 8px;
+}
+
+/* NEW CHAT dialog: one more chat in the open project, above the folders. */
+dialog .in-project {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 10px 14px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

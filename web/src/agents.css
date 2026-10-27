@@ -506,3 +506,15 @@ html:not([data-crt='off']) .scene .sprite {
   color: var(--ph-dim);
   padding: 2px 0;
 }
+
+.thread-tools {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.thread-tools button {
+  flex: 1;
+  min-height: 30px;
+  padding: 2px 8px;
+}

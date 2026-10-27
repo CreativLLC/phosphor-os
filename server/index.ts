@@ -65,6 +65,8 @@ wss.on('connection', (ws) => {
     }
     if (ev.t === 'new_tab') return tabs.create(ev.cwd, ev.req);
     if (ev.t === 'new_project') return typeof ev.name === 'string' && ev.name.trim() ? tabs.createProject(ev.name.trim().slice(0, 60), ev.req) : undefined;
+    if (ev.t === 'new_project_chat') return typeof ev.project === 'string' ? tabs.createInProject(ev.project, typeof ev.title === 'string' ? ev.title : undefined, ev.req) : undefined;
+    if (ev.t === 'open_project') return typeof ev.project === 'string' ? void tabs.openProject(ev.project, ev.req) : undefined;
     if (ev.t === 'open_session') return void tabs.open(String(ev.sessionId), String(ev.cwd), String(ev.title ?? ''), ev.req);
     if (ev.t === 'close_tab') return tabs.close(ev.tab);
     if (ev.t === 'presence') return notePresence(ws, ev);
@@ -154,6 +156,7 @@ const server = createServer(async (req, res) => {
   }
 
   try {
+    if (url.pathname === '/api/projects') return sendJson(res, tabs.projectList());
     if (url.pathname === '/api/history') return sendJson(res, await tabs.history(url.searchParams.has('all')));
     if (url.pathname === '/api/history/search') return sendJson(res, await tabs.searchHistory(url.searchParams.get('q') ?? '', url.searchParams.has('all')));
     if (url.pathname === '/api/folders') return sendJson(res, tabs.folders());

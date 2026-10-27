@@ -124,7 +124,8 @@ export type TabMeta = {
 // A project (owner's ask 2026-10-25): a named group of tabs with one shared memory file (data/projects/<id>/PROJECT.md).
 // Its main chat (the lead) starts thread chats and steers them with tools (server/tab.ts); each thread is a full
 // chat with its own helper agents, and reports back to the lead. parent: the lead's tab id (threads only).
-export type ProjectRef = { id: string; name: string; main: boolean; parent?: string };
+// own: a thread the user opened with + CHAT (not started by the lead).
+export type ProjectRef = { id: string; name: string; main: boolean; parent?: string; own?: boolean };
 // How the messages between a lead and its threads start (the chat labels them by this).
 export const LEAD_PREFIX = '[From the project lead] ';
 export const REPORT_PREFIX = '[Thread report] ';
@@ -181,6 +182,8 @@ export type ClientEvent =
   | { t: 'effort'; tab: string; effort: Effort }
   | { t: 'new_tab'; cwd?: string; req?: string }
   | { t: 'new_project'; name: string; req?: string }
+  | { t: 'new_project_chat'; project: string; title?: string; req?: string } // + CHAT: one more chat in a project
+  | { t: 'open_project'; project: string; req?: string } // PROJECTS: reopen its closed chats (none: a new lead)
   | { t: 'open_session'; sessionId: string; cwd: string; title: string; req?: string }
   | { t: 'close_tab'; tab: string }
   | { t: 'rename_tab'; tab: string; title: string }
@@ -197,6 +200,11 @@ export type ClientEvent =
 // GET /api/history. A Gemini chat (agent 'gemini') has sessionId "gemini:<its agy conversation>".
 export type HistoryEntry = { sessionId: string; title: string; cwd: string; lastModified: number; openTab?: string; agent?: 'gemini' };
 export type HistoryResponse = { sessions: HistoryEntry[] };
+
+// GET /api/projects: every project, open or not, newest activity first (server/projects.ts). Its open chats are the
+// tabs with its ProjectRef; closed: its chats closed since, which open_project reopens (a chat never used is not kept).
+export type ProjectSummary = { id: string; name: string; createdAt: number; lastActive: number; closed: { sessionId: string; title: string; main: boolean }[] };
+export type ProjectsResponse = { projects: ProjectSummary[] };
 // GET /api/history/search?q=words[&all=1]: chats whose own text (yours and Claude's) has every word.
 export type HistorySearchResponse = { hits: { sessionId: string; snippet: string }[] };
 

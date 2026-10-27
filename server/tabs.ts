@@ -1,11 +1,12 @@
 import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import type { ThreadModel } from './delegate.ts';
 import { chatText, geminiModels, savedGeminiChats } from './geminitab.ts';
+import { joinRef, ProjectBook } from './projects.ts';
 import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
@@ -19,11 +20,12 @@ export class Tabs {
   private saveTimer?: ReturnType<typeof setTimeout>;
   private modelList?: Promise<ModelsResponse>;
   private modelsLoaded?: ModelsResponse;
+  readonly book = new ProjectBook(); // projects and their closed chats (server/projects.ts)
 
   constructor(private emit: (ev: ServerEvent) => void) {
     Tab.models = () => this.models();
     Tab.knownModels = () => this.modelsLoaded;
-    Tab.projects = { thread: (lead, title, brief, run) => this.thread(lead, title, brief, run), members: (id) => [...this.tabs.values()].filter((t) => t.project?.id === id) };
+    Tab.projects = { thread: (lead, title, brief, run) => this.thread(lead, title, brief, run), members: (id) => this.members(id) };
     // AUTO-CONTINUE: a chat stopped by the usage limit goes on once the limit resets (Tab.resumeIfDue).
     // A short interval, not one long timer: survives sleep, and the time can move.
     setInterval(() => {
@@ -77,6 +79,7 @@ export class Tabs {
     const id = randomUUID().slice(0, 8);
     mkdirSync(projectDir(id), { recursive: true });
     writeFileSync(projectMemory(id), `# ${name}\n\nShared memory of this Phosphor-OS project: the lead chat and every thread read it and keep it current.\n\n## Goal\n\n## Decisions\n\n## Threads\n\n## Open questions\n`);
+    this.book.create(id, name);
     const tab = this.make({ cwd: config.cwd, title: name, auto: true, project: { id, name, main: true } });
     this.save();
     this.emit({ t: 'tab', tab: tab.state, req });
@@ -95,6 +98,54 @@ export class Tabs {
     return tab;
   }
 
+  // + CHAT: one more chat in a project, made by the user. It joins like a thread (the lead's folder, the shared
+  // memory, list_threads and send_to_thread see it), so the lead can keep it in the plan.
+  createInProject(id: string, title: string | undefined, req?: string): void {
+    const members = this.members(id);
+    const name = members[0]?.project?.name ?? this.book.read(id)?.name;
+    if (!name) return;
+    const lead = members.find((t) => t.project?.main);
+    const tab = this.make({ cwd: lead?.state.info.cwd ?? config.cwd, title: title?.trim().slice(0, 60) || `Chat ${members.length + 1}`, auto: true, project: joinRef(id, name, lead, { main: false, own: true }) });
+    this.save();
+    this.emit({ t: 'tab', tab: tab.state, req });
+    void tab.prefillInfo();
+  }
+
+  // PROJECTS: bring a project back. Its closed chats reopen (the lead first; `req` goes with the lead, else the chat
+  // closed last); with none kept (a project from before PROJECTS), a new lead starts on the same memory file.
+  async openProject(id: string, req?: string): Promise<void> {
+    const f = this.book.read(id);
+    if (!f) return;
+    const open = this.members(id);
+    if (!f.closed.length) {
+      if (open.length) return this.emit({ t: 'tab', tab: (open.find((t) => t.project?.main) ?? open[0]).state, req });
+      const tab = this.make({ cwd: config.cwd, title: f.name, auto: true, project: { id, name: f.name, main: true } });
+      this.save();
+      this.emit({ t: 'tab', tab: tab.state, req });
+      void tab.prefillInfo();
+      return;
+    }
+    const focus = f.closed.find((c) => c.main) ?? f.closed.reduce((a, b) => (b.closedAt > a.closedAt ? b : a));
+    for (const c of ProjectBook.reopenOrder(f.closed)) await this.open(c.sessionId, config.cwd, c.title, c === focus ? req : undefined);
+  }
+
+  projectList(): ProjectsResponse {
+    const paths = transcriptPaths();
+    const changed = (sid: string) => {
+      const p = paths.get(sid);
+      try {
+        return p ? statSync(p).mtimeMs : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    return { projects: this.book.list(this.list(), changed) };
+  }
+
+  private members(id: string): Tab[] {
+    return [...this.tabs.values()].filter((t) => t.project?.id === id);
+  }
+
   async open(sessionId: string, cwd: string, title: string, req?: string): Promise<void> {
     const gemini = sessionId.startsWith('gemini:') ? sessionId.slice('gemini:'.length) : undefined; // a Gemini chat
     const existing = [...this.tabs.values()].find((t) => (gemini ? t.geminiId === gemini : t.state.meta.sessionId === sessionId));
@@ -105,7 +156,10 @@ export class Tabs {
     // Always the workspace folder (PHOSPHOR_CWD), so Claude keeps the workspace's CLAUDE.md and memory.
     // `cwd` is where the chat last ran a command, often a project subfolder; resuming by id works from here.
     void cwd;
-    const tab = this.make({ cwd: config.cwd, title: title.slice(0, 60) || 'Old chat', ...(gemini ? { gemini } : { sessionId, auto: true }) });
+    // A closed project chat goes back into its project (from PROJECTS or HISTORY).
+    const back = this.book.take(sessionId);
+    const project = back && joinRef(back.id, back.name, this.members(back.id).find((t) => t.project?.main), back.chat);
+    const tab = this.make({ cwd: config.cwd, title: title.slice(0, 60) || 'Old chat', ...(gemini ? { gemini } : { sessionId, auto: true }), ...(project ? { project } : {}) });
     try {
       await tab.loadHistory();
     } catch (e) {
@@ -120,6 +174,9 @@ export class Tabs {
   close(id: string): void {
     const tab = this.tabs.get(id);
     if (!tab) return;
+    const p = tab.project;
+    const sessionId = tab.geminiId ? `gemini:${tab.geminiId}` : tab.state.meta.sessionId;
+    if (p && sessionId) this.book.noteClosed(p, { sessionId, title: tab.state.meta.title, main: p.main, ...(p.own ? { own: true } : {}), createdAt: tab.state.meta.createdAt });
     tab.close();
     this.tabs.delete(id);
     this.save();

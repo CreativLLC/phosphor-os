@@ -89,11 +89,11 @@ export const projectDir = (id: string) => join(DATA_DIR, 'projects', id);
 export const projectMemory = (id: string) => join(projectDir(id), 'PROJECT.md');
 
 // What a project's chats are told (added to the system prompt): the lead steers threads, a thread reports back.
-function projectHelp(p: ProjectRef): string {
+export function projectHelp(p: ProjectRef): string {
   const memory = projectMemory(p.id);
   return p.main
     ? `\n\nThis chat is the LEAD of the project "${p.name}" in Phosphor-OS. Its shared memory is ${memory}: read it at the start, and keep it current (goal, decisions, what each thread is doing, open questions). Split big work into threads, one per job (for example thumbnails, outline, editing): start_thread starts one with a brief. Each thread is a full chat with its own helper agents, and the user can open it and talk to it too. send_to_thread steers one, read_thread checks its work, list_threads shows all. Threads report back here in messages that start with "${REPORT_PREFIX.trim()}". Keep this chat's own context light: let the threads do the heavy work.`
-    : `\n\nThis chat is a THREAD of the project "${p.name}" in Phosphor-OS, started by the project's lead chat. The shared memory is ${memory}: read it first, and add your decisions and results to it. Messages that start with "${LEAD_PREFIX.trim()}" come from the lead. When your job is done, or you need a decision you cannot make, call report_to_project with a short summary.`;
+    : `\n\nThis chat is a THREAD of the project "${p.name}" in Phosphor-OS, ${p.own ? 'opened by the user (the lead chat can see and steer it)' : "started by the project's lead chat"}. The shared memory is ${memory}: read it first, and add your decisions and results to it. Messages that start with "${LEAD_PREFIX.trim()}" come from the lead. ${p.own ? 'Call report_to_project (a short summary to the lead) only when the user asks you to tell the lead.' : 'When your job is done, or you need a decision you cannot make, call report_to_project with a short summary.'}`;
 }
 
 // One word for how a chat is doing, for the project tools and the THREADS list.

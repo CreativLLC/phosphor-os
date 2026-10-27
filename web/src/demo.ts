@@ -1,4 +1,4 @@
-import { IMAGE_MODEL, type Agent, type CalendarEvent, type CalendarRangeResponse, type ClientEvent, type ImageItem, type Item, type Mission, type RouterResponse, type ServerEvent, type TabState, type TodayResponse } from '../../shared/protocol.ts';
+import { IMAGE_MODEL, type Agent, type CalendarEvent, type CalendarRangeResponse, type ClientEvent, type ImageItem, type Item, type Mission, type ProjectSummary, type RouterResponse, type ServerEvent, type TabState, type TodayResponse } from '../../shared/protocol.ts';
 import { TTL_1H } from '../../shared/cache.ts';
 import { parseIdeas, type IdeasResponse } from '../../shared/ideas.ts';
 import { apply, useDemo } from './net.ts';
@@ -85,6 +85,26 @@ function projectTabs(): TabState[] {
     make('demo-p2', 'Thumbnails', false, true, 800000, ''),
     make('demo-p3', 'Outline', false, false, 700000, 'Outline done: 7 beats, 12 minutes.'),
   ];
+}
+
+// PROJECTS (projects.ts): the open project above with one chat closed, a closed project, and one from before
+// PROJECTS kept closed chats (it reopens as a new lead).
+const DAY = 86_400_000;
+const CLOSED_PROJECTS: Record<string, ProjectSummary['closed']> = {
+  'demo-p': [{ sessionId: 'sp4', title: 'Script', main: false }],
+  'demo-q': [{ sessionId: 'sq1', title: 'Kitchen remodel', main: true }, { sessionId: 'sq2', title: 'Quotes', main: false }, { sessionId: 'sq3', title: 'Tile picks', main: false }],
+  'demo-r': [],
+};
+export const demoProjects = (): ProjectSummary[] => [
+  { id: 'demo-p', name: 'YT: Claude video', createdAt: now - 900000, lastActive: now - 120000, closed: CLOSED_PROJECTS['demo-p'] },
+  { id: 'demo-q', name: 'Kitchen remodel', createdAt: now - 9 * DAY, lastActive: now - 2 * DAY, closed: CLOSED_PROJECTS['demo-q'] },
+  { id: 'demo-r', name: 'Piano app v2', createdAt: now - 20 * DAY, lastActive: now - 20 * DAY, closed: [] },
+];
+const PROJECT_NAMES: Record<string, string> = { 'demo-p': 'YT: Claude video', 'demo-q': 'Kitchen remodel', 'demo-r': 'Piano app v2' };
+function demoProjectTab(project: string, title: string, main: boolean, own = false): TabState {
+  const lead = [...store.tabs.values()].find((t) => t.meta.project?.id === project && t.meta.project.main);
+  const isLead = main && !lead;
+  return { ...structuredClone(tab2), meta: { id: Math.random().toString(36).slice(2), title, busy: false, attention: false, createdAt: Date.now(), project: { id: project, name: PROJECT_NAMES[project] ?? project, main: isLead, ...(isLead ? {} : { ...(lead ? { parent: lead.meta.id } : {}), ...(own ? { own } : {}) }) } }, items: [], mission: null, agents: [] };
 }
 
 const tab3: TabState = {
@@ -257,6 +277,14 @@ function onClientEvent(ev: ClientEvent): void {
   } else if (ev.t === 'new_tab') {
     const tab: TabState = { ...structuredClone(tab2), meta: { ...tab2.meta, id: id(), title: 'New chat' }, items: [], mission: null };
     emit({ t: 'tab', tab, req: ev.req });
+  } else if (ev.t === 'new_project_chat') {
+    const n = [...store.tabs.values()].filter((t) => t.meta.project?.id === ev.project).length;
+    emit({ t: 'tab', tab: demoProjectTab(ev.project, ev.title || `Chat ${n + 1}`, false, true), req: ev.req });
+  } else if (ev.t === 'open_project') {
+    const closed = CLOSED_PROJECTS[ev.project] ?? [];
+    const back = closed.length ? [...closed].sort((a, b) => Number(b.main) - Number(a.main)) : [{ title: PROJECT_NAMES[ev.project], main: true }];
+    back.forEach((c, i) => emit({ t: 'tab', tab: demoProjectTab(ev.project, c.title, c.main), req: i === 0 ? ev.req : undefined }));
+    closed.length = 0;
   } else if (ev.t === 'model') {
     emit({ t: 'patch', tab: ev.tab, key: 'info', value: ev.model === 'auto' ? { ...cur(ev.tab).info, auto: true } : { ...cur(ev.tab).info, model: ev.model, auto: false } });
   } else if (ev.t === 'effort') {

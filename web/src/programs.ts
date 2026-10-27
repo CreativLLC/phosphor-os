@@ -73,13 +73,15 @@ export function mountPrograms(navEl: HTMLElement, pane: HTMLElement): void {
   store.on((c) => (c.kind === 'tabs' || (c.kind === 'patch' && c.key === 'agents')) && badge());
   badge();
 
-  // Picking a chat (tab bar, + or HISTORY) goes back to CHAT.
+  // Picking a chat (tab bar, + , HISTORY or PROJECTS) goes back to CHAT.
   document.getElementById('tabs')?.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('.tab-label, .tab-add')) void open('chat');
   });
-  document.getElementById('history')?.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('.history-row')) void open('chat');
-  });
+  for (const id of ['history', 'projects']) {
+    document.getElementById(id)?.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.history-row, .project-reopen')) void open('chat');
+    });
+  }
 
   document.addEventListener('keydown', (e) => {
     if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.isComposing || document.querySelector('dialog[open]')) return;
@@ -209,7 +211,7 @@ async function editSite(site: Site | null, start?: { name: string; url: string }
 // Sites are drawn above the page, so they would hide any page overlay. While one is open, the site hides.
 // Watches only these targets: the chat streams into the page, so a whole-page observer would fire constantly.
 function watchOverlays(): void {
-  const drawers = ['history', 'mcp', 'usage', 'station'].map((id) => document.getElementById(id)).filter((d) => d !== null);
+  const drawers = ['history', 'projects', 'mcp', 'usage', 'station'].map((id) => document.getElementById(id)).filter((d) => d !== null);
   const settings = document.getElementById('settings');
   const isOpen = () =>
     document.body.classList.contains('menu-open') ||

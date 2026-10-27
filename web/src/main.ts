@@ -15,6 +15,7 @@ import './usage.css';
 import './browser.css';
 import './system.css';
 import './sdkupdate.css';
+import './projects.css';
 import { initAlerts } from './alerts.ts';
 import { mountAgents } from './agents.ts';
 import { mountAttach } from './attach.ts';
@@ -27,6 +28,7 @@ import { mountFocus, showRight } from './focus.ts';
 import { funCommands, startFun } from './fun.ts';
 import { mountFiles } from './files.ts';
 import { mountHistory } from './history.ts';
+import { mountProjects, showProjects } from './projects.ts';
 import { mountLauncher } from './launcher.ts';
 import { addLauncherCommands, removeLauncherCommands } from './launcher.ts';
 import { mountDocs } from './docs.ts';
@@ -61,6 +63,7 @@ initSound();
 startFun(); // screensaver, ship voice, game mode (fun.ts)
 mountTabs($('tabs'), $<HTMLDialogElement>('newtab'));
 mountHistory($('history'), $('btn-history'));
+mountProjects($('projects'), $('btn-projects'), $<HTMLDialogElement>('newtab'));
 mountMcp($('mcp'), $('btn-mcp'));
 mountUsage($('usage'));
 mountUpdate($<HTMLButtonElement>('btn-update'));
@@ -133,6 +136,7 @@ const showPanel = (view: string) => {
 addLauncherCommands([
   { id: 'sys', label: 'SYSTEM', hint: 'CPU, MEMORY, GPU, DRIVES, NETWORK, VOLUME', keywords: ['sys', 'cpu', 'ram', 'gpu', 'disk', 'volume', 'pc'], run: () => showPanel('system') },
   { id: 'mission', label: 'MISSION', hint: 'WHAT CLAUDE IS DOING', keywords: ['progress', 'steps', 'task'], run: () => showPanel('mission') },
+  { id: 'projects', label: 'PROJECTS', hint: 'EVERY PROJECT, OPEN OR CLOSED', keywords: ['project', 'threads', 'lead'], run: showProjects },
   { id: 'files', label: 'FILES', hint: "THIS CHAT'S FOLDER", keywords: ['explorer', 'folder'], run: () => showPanel('files') },
   ...funCommands(),
 ]);
