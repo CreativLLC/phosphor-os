@@ -4,7 +4,7 @@
 export type LabApp = 'claude' | 'codex' | 'opencode' | 'agy' | 'local';
 export type LabState = 'queued' | 'running' | 'done' | 'failed' | 'limit' | 'stopped';
 
-export const LAB_TIME_LIMITS = [5, 10, 30, 60];
+export const LAB_TIME_LIMITS = [5, 10, 30, 60, 120];
 
 // How hard the models think, one setting for the whole test. Each app takes it in its own words, and a model that
 // lacks the asked level gets the nearest one it has (server/labrun.ts nearestEffort). 'default' = the app decides.

@@ -52,7 +52,7 @@ Every result:
 - runs inside bubblewrap (`bwrap`, installed): a box where HOME is a fake empty folder. The app sees only its result folder, its own sign-in file and the programs it needs. It cannot see SSH keys, cloud logins, synced folders or other projects;
 - runs in its own systemd scope with a memory limit (`systemd-run --user --scope -p MemoryMax=...`), so a big build cannot take the server down with it;
 - gets no skills, no memory, no MCP servers, no CLAUDE.md or AGENTS.md: each app starts with a fresh config folder that holds only its sign-in;
-- has a time limit (set per test, default 30 min). The runner stops it by PID after that;
+- has a time limit (set per test: 5, 10 or 30 min, 1 or 2 hours; default 1 hour since 2026-10-26, when 30 min was too short for big jobs). The runner stops it by PID after that;
 - has network access, because the app must reach its model.
 
 Sign-in for each app (check all of this in phase 0):

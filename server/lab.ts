@@ -120,7 +120,7 @@ async function create(input: LabNewTest): Promise<string> {
   if (prompt.length > 100_000) throw new Error('The prompt is too long (100,000 characters at most).');
   const ids = [...new Set(Array.isArray(input.models) ? input.models.map(String) : [])];
   if (!ids.length || ids.length > LAB_MAX_MODELS) throw new Error(`Pick 1 to ${LAB_MAX_MODELS} models.`);
-  const limit = LAB_TIME_LIMITS.includes(Number(input.timeLimitMin)) ? Number(input.timeLimitMin) : 30;
+  const limit = LAB_TIME_LIMITS.includes(Number(input.timeLimitMin)) ? Number(input.timeLimitMin) : 60;
   const effort: LabEffort = LAB_EFFORTS.includes(input.effort as LabEffort) ? (input.effort as LabEffort) : 'default';
   const picked = pick(ids, (await runner.models()).models);
   const title = String(input.title ?? '').trim().slice(0, 120) || titleFrom(prompt);

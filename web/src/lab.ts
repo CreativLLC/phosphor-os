@@ -37,7 +37,7 @@ const draft = {
   title: '',
   prompt: '',
   picked: new Set<string>(JSON.parse(localStorage.getItem(PICKED_KEY) ?? '[]') as string[]),
-  limit: 30,
+  limit: 60,
   blind: false,
   effort: (LAB_EFFORTS.find((e) => e === localStorage.getItem(EFFORT_KEY)) ?? 'default') as LabEffort,
   filter: '',
@@ -285,7 +285,7 @@ function select(label: string, options: [string, string][], value: string, chang
 
 // ------------------------------------------------------------ NEW TEST
 
-const limitText = (n: number) => (n < 60 ? `${n} MIN` : `${n / 60} HOUR`);
+const limitText = (n: number) => (n < 60 ? `${n} MIN` : `${n / 60} HOUR${n > 60 ? 'S' : ''}`);
 
 // The model list with ticks, one group per app and account. NEW TEST and + MODELS both use it. `picked` is changed in
 // place and `changed` runs after each tick. Gives the heading row (count, filter, NONE) and the groups; `text.filter`
