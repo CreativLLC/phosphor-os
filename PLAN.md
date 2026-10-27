@@ -342,6 +342,16 @@ This file is the build record: what exists and how it works. Install and use: `R
   `prompt`; reads `{ text }`; lists `/models`.
 - **Tests:** `npx tsx tests/dictate-anywhere.ts` (83 checks, headless), `bash tests/pack.sh` (the take with stand-in mic, server, clipboard and keys; the key logic in Lua with a stand-in `hl`; an upgrade from the pack that had the floating mic, from the real `desktop.sh` of that time in `tests/fixtures/floating-mic-pack/`, then undo). Also run on a copy of the owner's real pack notes and `shell.json` in a fake home: the re-run took the mic plugin, its entry and its notes out and a second run changed nothing. The first build was also tried on 2026-10-26 in a nested Hyprland on a hidden workspace: real takes (real speech from a recording through the real engine) were pasted into a foot terminal (`Ctrl + Shift + V`) and a Chromium text box (`Ctrl + V`) with the keyboard focus never moving, the old clipboard came back, CLEAN UP fell back on a 404. Not tested after the change: the real `Ctrl + Space` press on the owner's PC, which needs `hyprctl reload` first.
 
+## FOCUS (hide the side panels), built 2026-10-26
+
+- **Why:** the owner shares the screen in videos on an ultra-wide monitor: a clean chat in the middle, no panels.
+- **Buttons:** LEFT / FOCUS / RIGHT in the top bar (a quiet small group before FULL). LIT = that panel is showing; FOCUS is lit when both are hidden. Hidden by `only-wide` on phones and the folded layout.
+- **Keys:** `Ctrl+[` left, `Ctrl+]` right, `Ctrl+\` both (hide both; again shows both). Read by `e.code`, so any keyboard layout works; never with Alt, Shift or Meta. None of these is bound by the app (Ctrl+K launcher, Ctrl+1..9 programs, Ctrl+L address, Ctrl+Space dictate), Hyprland (only Super binds) or Electron.
+- **Remembered:** `localStorage` `phosphor.view` = `{ left, right }` (true = hidden). A line in the `index.html` head script puts `hide-left` / `hide-right` on `<html>` before first paint, so a reload shows no flash.
+- **Layout** (`web/src/focus.css`, inside "not narrow" so the phone is untouched even if the classes stay): the hidden panel is `display: none`, the grid keeps the other columns, and `#center` gets `max-width: var(--focus-width, 1200px)` and sits in the middle of its column. The message box and the bar above it are inside `#center`, so they follow. Both shown: the old layout, unchanged. 1200 px was picked from screenshots at 3440 px (about 120 characters a line, no side to side reading).
+- **Nothing lost:** permission prompts and questions are chat items (they show in the chat); the tab bar still lights NEEDS YOU, and the sound and push alerts do not care about the panels. A small dot on the LEFT / RIGHT button of a hidden panel when a chat starts needing you or finishes (`focus.ts`, same edges as the alert and done chimes in `sound.ts`); showing the panel clears it. Launcher commands MISSION / FILES / SYSTEM show the right panel if it was hidden (`showRight`).
+- **Tests:** `npx tsx tests/focus.ts` (fake page: buttons, keys, the saved view, the dot). Screenshots in a browser at 3440x1440, 1600x1000, 412x915 with `/?demo=1`.
+
 ## Alerts (push), built 2026-10-12
 
 - **Use:** SETTINGS > ALERTS ON THIS DEVICE: ON (the browser asks once), TEST, ALERT WHEN (DONE, NEEDS YOU),
@@ -446,6 +456,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | Files API | `server/files.ts` |
 | Shared types | `shared/protocol.ts` (WebSocket events and REST shapes) |
 | Page core | `web/src/main.ts`, `store.ts`, `net.ts`, `chat.ts`, `tabs.ts`, `history.ts`, `md.ts` (+ `mdlists.ts`: numbered lists after a text line, `tests/mdlists.ts`), `demo.ts`, `layout.css` |
+| FOCUS (hide side panels) | `web/src/focus.ts`, `focus.css` (the three top-bar buttons are in `index.html`, the saved view is read in its head script), `tests/focus.ts` |
 | Look | `theme.css` (token contract at top), `chat.css`, `settings.ts`, `sound.ts`, `boot.ts`, login page |
 | HUD | `mission.ts`, `mission.css` |
 | IDEAS panel | `shared/ideas.ts` (file format, parse, drop, the DO message), `server/ideas.ts` (`GET /api/ideas`, `POST /api/ideas/drop`, `PHOSPHOR_IDEAS_FILE`), `web/src/ideas.ts`, `ideas.css` (under TODAY, mounted by `agents.ts`), `newReq(then)` in `net.ts` (DO: new tab, then send), `tests/ideas.ts`; weekly suggestions `server/ideasweekly.ts` (Friday 07:00+, catch-up after 8 days, `PHOSPHOR_IDEAS_NOTES`, `POST /api/ideas/suggest`, log `data/ideas-weekly.log`), `tests/ideasweekly.ts` |
