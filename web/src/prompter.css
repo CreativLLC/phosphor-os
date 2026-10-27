@@ -1,0 +1,449 @@
+/* PROMPTER (prompter.ts): punch list for recording a video. Same frame as KEYWORDS and LAB. */
+
+.cue {
+  grid-row: 2;
+  grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* The chat, the web pane, DOCS, LAB and KEYWORDS are not drawn while PROMPTER is open. */
+body.prompter-open #app,
+body.prompter-open #webapp,
+body.prompter-open .docs,
+body.prompter-open .lab,
+body.prompter-open .keys {
+  display: none !important;
+}
+
+.cue button {
+  min-height: 34px;
+  padding: 2px 10px;
+}
+
+.cue h3 {
+  margin: 0;
+  font-weight: normal;
+  letter-spacing: 2px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.cue-dim {
+  color: var(--ph-dim);
+}
+
+.cue-strong {
+  color: var(--ph-bright);
+}
+
+.cue-warn {
+  color: var(--accent);
+  text-shadow: none;
+}
+
+.cue-note {
+  margin: 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.cue-empty {
+  color: var(--ph-dim);
+  text-align: center;
+  padding: 40px 0;
+}
+
+.cue-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+/* ---------- Top bar ---------- */
+
+.cue-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ph-dim);
+  background: rgb(var(--ph-rgb) / 0.03);
+}
+
+.cue-tag {
+  padding: 2px 10px 1px;
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+  letter-spacing: 3px;
+}
+
+.cue-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.cue-running {
+  color: var(--ph-bright);
+  letter-spacing: 1px;
+}
+
+.cue-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 40px;
+}
+
+.cue-list[hidden],
+.cue-run[hidden],
+.cue-after[hidden] {
+  display: none;
+}
+
+/* ---------- LIST ---------- */
+
+.cue-list {
+  display: flex;
+  gap: 16px;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+
+.cue-side {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cue-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.cue .cue-saved-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+
+.cue-saved-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cue-edit {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cue-name {
+  min-height: 36px;
+  padding: 2px 8px;
+}
+
+.cue-text {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 140px;
+  resize: vertical;
+  line-height: 1.3;
+}
+
+.cue-edit .cue-text {
+  min-height: 300px;
+}
+
+.cue .cue-go {
+  min-height: 44px;
+  padding: 4px 26px;
+  letter-spacing: 2px;
+}
+
+/* ---------- RUN: the prompter ---------- */
+
+.cue-run {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+.cue-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.cue-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.cue-clock {
+  font-size: calc(var(--fs) * 1.6);
+  color: var(--ph-bright);
+  font-variant-numeric: tabular-nums;
+}
+
+.cue-count {
+  font-size: calc(var(--fs) * 1.3);
+}
+
+.cue-meter {
+  width: 60px;
+  height: 8px;
+  border: 1px solid var(--ph-dim);
+  background: linear-gradient(to right, var(--ph) calc(var(--lvl, 0) * 100%), transparent 0);
+}
+
+.cue-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cue .cue-stop {
+  border-color: var(--accent);
+  color: var(--accent);
+  text-shadow: none;
+}
+
+.cue-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cue-point {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: clamp(24px, 3vw, 46px);
+  line-height: 1.15;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cue-point:hover,
+.cue-point:focus-visible {
+  border-color: var(--line);
+  outline: none;
+}
+
+.cue-mark {
+  flex: 0 0 auto;
+  color: var(--ph-dim);
+}
+
+.cue-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cue-pnote {
+  font-size: 0.55em;
+  color: var(--ph-dim);
+}
+
+.cue-next {
+  font-size: clamp(30px, 4.4vw, 72px);
+  color: var(--ph-bright);
+  text-shadow: var(--glow-strong);
+  border-color: var(--ph-dim);
+  background: var(--ph-faint);
+}
+
+.cue-next .cue-mark {
+  color: var(--ph-bright);
+}
+
+.cue-done {
+  font-size: clamp(16px, 1.6vw, 24px);
+  color: var(--ph-dim);
+  text-shadow: none;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.cue-done .cue-ptext {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.cue-by {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.cue-all {
+  padding: 10px 12px;
+  font-size: clamp(24px, 3vw, 46px);
+  color: var(--ph-bright);
+  letter-spacing: 3px;
+}
+
+.cue-heard {
+  min-height: 1.4em;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ph-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* long lines keep their newest words in view */
+  text-align: left;
+}
+
+.cue-err {
+  color: var(--accent);
+  text-shadow: none;
+  font-size: var(--fs-sm);
+}
+
+/* FULL: only the prompter, over everything (the browser's own full screen too, where it can). */
+body.cue-stage .cue {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+}
+
+body.cue-stage .cue-bar {
+  display: none;
+}
+
+body.cue-stage .cue-main {
+  padding: 18px 28px;
+}
+
+body.cue-stage .cue-run {
+  max-width: none;
+  min-height: 100%;
+}
+
+body.cue-stage .cue-points {
+  flex: 1 1 auto;
+}
+
+body.cue-stage .cue-tools button {
+  opacity: 0.55;
+}
+
+body.cue-stage .cue-tools button:hover {
+  opacity: 1;
+}
+
+/* ---------- AFTER ---------- */
+
+.cue-after {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+
+.cue-select {
+  min-height: 34px;
+  max-width: 100%;
+}
+
+.cue-after-result {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cue-after-part {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-raise);
+}
+
+.cue-missed h3 {
+  color: var(--accent);
+  text-shadow: none;
+}
+
+.cue-after-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.cue-quote {
+  margin: 2px 0 0 2.4em;
+  padding-left: 10px;
+  border-left: 2px solid var(--ph-dim);
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 700px) {
+  .cue-main {
+    padding: 10px 10px 30px;
+  }
+
+  .cue-list {
+    flex-direction: column;
+  }
+
+  .cue-side {
+    flex: 0 0 auto;
+  }
+
+  .cue-saved {
+    max-height: 30vh;
+  }
+
+  .cue-edit .cue-text {
+    min-height: 220px;
+  }
+
+  .cue-point {
+    padding: 6px 8px;
+  }
+
+  body.cue-stage .cue-main {
+    padding: 10px 12px;
+  }
+}

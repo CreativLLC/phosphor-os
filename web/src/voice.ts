@@ -662,7 +662,7 @@ function serverError(status: number, msg?: string): string {
 
 // A USB mic that dropped off and came back (a USB switch, 2026-10-22) can read as "no microphone" while the
 // browser still lists the old device. Asking for the device list again and retrying once picks up the new one.
-async function openMic(): Promise<MediaStream> {
+export async function openMic(): Promise<MediaStream> {
   const want = { audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
   try {
     return await navigator.mediaDevices.getUserMedia(want);
@@ -675,7 +675,7 @@ async function openMic(): Promise<MediaStream> {
   }
 }
 
-function micError(e: unknown): string {
+export function micError(e: unknown): string {
   const name = e instanceof DOMException ? e.name : '';
   if (name === 'NotAllowedError' || name === 'SecurityError')
     return 'Microphone blocked. Allow it for this site (lock icon next to the address), then try again.';
@@ -774,13 +774,13 @@ registerProcessor('phosphor-dictate', PhosphorDictate);
 let workletUrl = '';
 
 // Load the recorder code into this audio context. Started at the tap, so it loads while the mic starts.
-function loadWorklet(ctx: AudioContext): Promise<void> {
+export function loadWorklet(ctx: AudioContext): Promise<void> {
   if (!ctx.audioWorklet) return Promise.reject(new Error('this browser has no AudioWorklet'));
   workletUrl ||= URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }));
   return ctx.audioWorklet.addModule(workletUrl);
 }
 
-class Recorder {
+export class Recorder {
   private flushed: (() => void) | null = null;
   private node: AudioWorkletNode | null = null;
   private source: MediaStreamAudioSourceNode;

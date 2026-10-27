@@ -21,6 +21,7 @@ import { handlePasskeys } from './passkeys.ts';
 import { handleStation, startStation } from './station.ts';
 import { handleUpdate, startUpdates, updateState } from './sdkupdate.ts';
 import { handleSystem } from './system.ts';
+import { handlePrompter } from './prompter.ts';
 import { handlePush, notePresence, watchForPush } from './push.ts';
 import { Tabs } from './tabs.ts';
 import { startUnraid } from './unraid.ts';
@@ -197,6 +198,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/ideas' || url.pathname.startsWith('/api/ideas/')) return await handleIdeas(req, res, url);
     if (url.pathname.startsWith('/api/lab/')) return await handleLab(req, res, url);
     if (url.pathname.startsWith('/api/keywords/')) return await handleKeywords(req, res, url);
+    if (url.pathname.startsWith('/api/prompter/')) return await handlePrompter(req, res, url);
     if (url.pathname === '/api/calendar') return sendJson(res, calendarRange(Number(url.searchParams.get('from') ?? NaN), Number(url.searchParams.get('to') ?? NaN)));
     if (url.pathname.startsWith('/api/')) return sendJson(res, { error: 'not found' }, 404);
   } catch (e) {
