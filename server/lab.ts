@@ -243,9 +243,11 @@ async function followUp(f: Found, dir: string, words: unknown): Promise<number> 
   const r = readJson<LabResult>(file);
   if (!t || !r) throw new Error('No such result.');
   const before = r.followUps ?? [];
+  const prompt = followUpPrompt(t.prompt, { ...r, followUps: before }, reply, text);
+  writeFileSync(join(rd, 'prompt.md'), prompt + '\n'); // what the model gets, for the record (LOG shows it)
   writeJson(file, { ...r, ...FRESH, followUps: [...before, { text, at: Date.now(), version }] });
   unrank(f, t, dir, r.rank);
-  runner.queue({ testDir: f.dir, dir, prompt: followUpPrompt(t.prompt, { ...r, followUps: before }, reply, text), timeLimitMin: t.timeLimitMin, effort: t.effort ?? 'default' });
+  runner.queue({ testDir: f.dir, dir, prompt, timeLimitMin: t.timeLimitMin, effort: t.effort ?? 'default' });
   return version;
 }
 
@@ -439,7 +441,13 @@ export async function handleLab(req: IncomingMessage, res: ServerResponse, url: 
         } catch {
           /* never built */
         }
-        return json(res, { log: log.length > 400_000 ? `…\n${log.slice(-400_000)}` : log, stderr: err.slice(-20_000), build: build.slice(-40_000) });
+        let prompt = '';
+        try {
+          prompt = readFileSync(join(f.dir, parts[3], 'prompt.md'), 'utf8');
+        } catch {
+          /* not a follow-up: it got the test's prompt */
+        }
+        return json(res, { log: log.length > 400_000 ? `…\n${log.slice(-400_000)}` : log, stderr: err.slice(-20_000), build: build.slice(-40_000), prompt: prompt.slice(0, 200_000) });
       }
     }
     return json(res, { error: 'not found' }, 404);

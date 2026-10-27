@@ -53,8 +53,8 @@ export function versionNumbers(resultDir: string): number[] {
   }
 }
 
-// Keeps the result as it is now as versions/<n>/ and gives n. Its reply, log and build notes move there and its
-// result.json is copied. files/ is copied when the model works on in it (a follow-up), or moves there when the next run
+// Keeps the result as it is now as versions/<n>/ and gives n. Its reply, log, build notes and follow-up prompt move
+// there and its result.json is copied. files/ is copied when the model works on in it (a follow-up), or moves there when the next run
 // starts empty (RUN AGAIN). The version fills a hidden folder first, so a half-made one is never listed.
 export async function saveVersion(resultDir: string, copyFiles: boolean): Promise<number> {
   const root = join(resultDir, 'versions');
@@ -71,7 +71,7 @@ export async function saveVersion(resultDir: string, copyFiles: boolean): Promis
     rmSync(tmp, { recursive: true, force: true });
     throw new Error(`Its earlier version could not be kept, so nothing changed: ${e instanceof Error ? e.message : String(e)}`);
   }
-  for (const name of ['reply.md', 'log.jsonl', 'stderr.txt', 'build.json', 'build.log']) if (existsSync(join(resultDir, name))) renameSync(join(resultDir, name), join(tmp, name));
+  for (const name of ['reply.md', 'log.jsonl', 'stderr.txt', 'build.json', 'build.log', 'prompt.md']) if (existsSync(join(resultDir, name))) renameSync(join(resultDir, name), join(tmp, name));
   copyFileSync(join(resultDir, 'result.json'), join(tmp, 'result.json'));
   renameSync(tmp, join(root, String(n)));
   return n;

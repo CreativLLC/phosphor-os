@@ -1212,8 +1212,9 @@ async function openLog(t: LabTestFull, i: number): Promise<void> {
   const { body } = box(`LOG · ${nameOf(t, i)}`, true);
   body.append(el('p', 'lab-dim', 'LOADING…'));
   try {
-    const { log, stderr, build } = await api<{ log: string; stderr: string; build: string }>(`tests/${t.id}/results/${r.dir}/log`);
+    const { log, stderr, build, prompt } = await api<{ log: string; stderr: string; build: string; prompt?: string }>(`tests/${t.id}/results/${r.dir}/log`);
     body.replaceChildren();
+    if (prompt?.trim()) body.append(el('h3', '', 'THE PROMPT IT GOT (FOLLOW-UP)'), el('pre', 'lab-log', prompt));
     if (build.trim()) body.append(el('h3', '', 'BUILD (npm install, npm run build)'), el('pre', 'lab-log', build));
     body.append(el('h3', '', "THE APP'S OUTPUT (log.jsonl, one event per line)"), el('pre', 'lab-log', log || '(empty)'));
     if (stderr.trim()) body.append(el('h3', '', 'ERRORS AND NOTES (stderr)'), el('pre', 'lab-log', stderr));
@@ -1388,10 +1389,12 @@ function resultsTable(results: { t: LabTest; r: LabResult }[]): HTMLElement {
     const tr = el('tr');
     tr.onclick = () => go({ kind: 'test', id: t.id });
     const blind = isBlind(t);
+    const who = el('td', 'lab-nowrap', blind ? '(blind)' : r.modelName);
+    who.append(' ', upsBadge(r));
     tr.append(
       el('td', 'lab-nowrap', fmtDate(t.at)),
       el('td', 'lab-strong', t.title),
-      el('td', 'lab-nowrap', blind ? '(blind)' : r.modelName),
+      who,
       el('td', 'lab-dim lab-nowrap', blind ? '' : r.appName),
       el('td', 'lab-nowrap', r.rank ? `#${r.rank}` : '-'),
       el('td', 'lab-nowrap lab-starcell', ratable(r) ? (r.stars ? starText(r.stars) : 'NOT RATED') : r.state.toUpperCase()),

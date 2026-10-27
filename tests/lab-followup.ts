@@ -181,6 +181,7 @@ check(j1.testDir === t.folder && j1.dir === A, '  for the same result, in the sa
 check(j1.timeLimitMin === 10 && j1.effort === 'high', "  with the test's time limit and effort");
 check(j1.prompt.includes(PROMPT) && j1.prompt.includes('Made index.html with a snake game.') && j1.prompt.endsWith('<follow_up>\nSlow the snake down and add P to pause.\n</follow_up>'), '  with the follow-up prompt (task, last reply, the new words last)');
 check(!/Alpha|alpha|opencode/.test(j1.prompt), '  which names no model or app (blind tests stay blind)');
+check(readFileSync(join(rd(A), 'prompt.md'), 'utf8') === `${j1.prompt}\n` && (await api(`tests/${id}/results/${A}/log`)).data.prompt === `${j1.prompt}\n`, '  the exact prompt is kept in prompt.md, and LOG shows it');
 t = await get(id);
 check(t.blind && !t.revealed && t.results[0].followUps.length === 1 && t.results[0].state === 'queued', 'GET: still blind; the result shows its follow-up and waits');
 check(t.results[0].files.some((f) => f.path === 'index.html'), '  its files are still listed');
@@ -206,6 +207,7 @@ const r2 = await api(`tests/${id}/results/${A}/followup`, 'POST', { text: 'Add a
 check(r2.status === 200 && r2.data.version === 2, 'second follow-up: version 2 kept');
 check(queued[0].prompt.includes('<earlier_follow_ups>\nYou already did these; keep their changes.\n1. Slow the snake down and add P to pause.\n</earlier_follow_ups>') && queued[0].prompt.includes('Slowed it down; P pauses.'), '  its prompt has the first follow-up and the newest reply');
 check(res(A).followUps.map((u) => u.version).join() === '1,2', '  result.json: two follow-ups, after versions 1 and 2');
+check(readFileSync(join(rd(A), 'versions', '2', 'prompt.md'), 'utf8').includes('Slow the snake down') && readFileSync(join(rd(A), 'prompt.md'), 'utf8').includes('Add a high score.'), "  the first follow-up's prompt moved into version 2, the new one is in prompt.md");
 const vs = (await api(`tests/${id}/results/${A}/versions`)).data.versions as LabVersion[];
 check(vs.map((v) => v.n).join() === '1,2', 'GET versions: both, oldest first');
 check(vs[0].reply === 'Made index.html with a snake game.' && vs[0].stars === 4 && vs[0].followUps.length === 0 && vs[0].page === 'index.html', '  version 1: the first reply, its 4 stars, its page');
@@ -249,6 +251,7 @@ const ra = await api(`tests/${id}/results/${A}/again`, 'POST', { timeLimitMin: 6
 check(ra.status === 200 && ra.data.version === 3, 'RUN AGAIN on a done result: version 3 kept');
 check(readFileSync(join(rd(A), 'versions', '3', 'files', 'index.html'), 'utf8') === '<h1>v2</h1>' && readFileSync(join(rd(A), 'versions', '3', 'reply.md'), 'utf8') === 'Added a high score.', '  it holds the files and reply it had');
 check(existsSync(join(rd(A), 'files')) && readdirSync(join(rd(A), 'files')).length === 0, '  the run starts in an empty files folder');
+check(!existsSync(join(rd(A), 'prompt.md')) && (await api(`tests/${id}/results/${A}/log`)).data.prompt === '', "  with no follow-up prompt left (it gets the test's own prompt)");
 const a3 = res(A);
 check(a3.state === 'queued' && a3.stars === 0 && a3.rank === 0 && a3.note === '' && a3.followUps.length === 0, '  stars, rank, note and follow-ups cleared: a fresh run');
 check(queued.length === 1 && queued[0].prompt === PROMPT && queued[0].timeLimitMin === 60 && queued[0].effort === 'high' && queued[0].dir === A, '  queued with the plain prompt, the asked time limit and the effort');
