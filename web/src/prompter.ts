@@ -1,5 +1,5 @@
 import './prompter.css';
-import { parsePoints, type AfterJob, type CuePoint, type PromptList, type PromptListSummary, type PrompterLive } from '../../shared/prompter.ts';
+import { cutPieces, parsePoints, type AfterJob, type CuePoint, type PromptList, type PromptListSummary, type PrompterLive } from '../../shared/prompter.ts';
 import { closeDocs, isDocsOpen, onDocsToggle } from './docs.ts';
 import { closeKeywords, isKeywordsOpen, onKeywordsToggle } from './keywords.ts';
 import { closeLab, isLabOpen, onLabToggle } from './lab.ts';
@@ -23,7 +23,6 @@ type LiveReply = { live?: PrompterLive | null; engine?: PrompterLive['engine']; 
 const POLL_RUN_MS = 700;
 const POLL_IDLE_MS = 4000;
 const AFTER_POLL_MS = 1000;
-const PIECE_S = 270; // AFTER audio: pieces under the 5-minute limit of POST /api/transcribe
 const DRAFT_KEY = 'phosphor.prompter.draft';
 
 let rootEl: HTMLElement | null = null;
@@ -732,33 +731,6 @@ async function transcribeFile(f: File): Promise<void> {
   } finally {
     if (mine === afterToken) afterGo.disabled = false;
   }
-}
-
-// Pieces of at most PIECE_S seconds, each cut at the quietest 100 ms in its last 20 seconds (not mid-word).
-export function cutPieces(ch: Float32Array, rate = 16000): [number, number][] {
-  const out: [number, number][] = [];
-  const max = PIECE_S * rate;
-  const block = rate / 10;
-  let a = 0;
-  while (a < ch.length) {
-    let b = Math.min(ch.length, a + max);
-    if (b < ch.length) {
-      let best = b;
-      let low = Infinity;
-      for (let s = b - 20 * rate; s + block <= b; s += block) {
-        let e = 0;
-        for (let i = s; i < s + block; i++) e += ch[i] * ch[i];
-        if (e < low) {
-          low = e;
-          best = s + block / 2;
-        }
-      }
-      b = best;
-    }
-    out.push([a, b]);
-    a = b;
-  }
-  return out;
 }
 
 function wav(x: Float32Array): Blob {

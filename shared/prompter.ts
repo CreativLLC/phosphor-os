@@ -253,6 +253,8 @@ const STAMP = /^\[?((?:\d{1,2}:)?\d{1,2}:\d{2})(?:[.,]\d+)?\]?\s*/;
 
 export type Spoken = { words: string[]; times: (string | null)[] };
 
+const short = (t: string) => t.replace(/^0{1,2}:(?=\d{2}:)/, ''); // 00:01:10 -> 01:10
+
 export function parseTranscript(text: string): Spoken {
   const words: string[] = [];
   const times: (string | null)[] = [];
@@ -262,12 +264,12 @@ export function parseTranscript(text: string): Spoken {
     if (!line || /^WEBVTT/.test(line) || /^\d+$/.test(line)) continue;
     if (/-->/.test(line)) {
       const m = STAMP.exec(line);
-      if (m) time = m[1];
+      if (m) time = short(m[1]);
       continue;
     }
     const m = STAMP.exec(line);
     if (m) {
-      time = m[1].replace(/^00:/, '');
+      time = short(m[1]);
       line = line.slice(m[0].length);
     }
     for (const w of line.replace(/<[^>]+>/g, ' ').split(/\s+/)) {
@@ -296,10 +298,41 @@ export async function checkAfter(text: string, points: Point[], decide: CueDecid
     progress(s + 1, total);
     if (cue.points.every((p) => p.done)) break;
   }
-  // A point's time is the step its streak started at: the transcript's own time stamp there, or how far in.
+  // A point's time is the middle of the step its streak started at: the transcript's own time there, or how far in.
   const at = (ms: number) => {
-    const i = Math.min(words.length - 1, Math.round(ms / STEP_MS) * STEP_WORDS);
+    const i = Math.min(words.length - 1, Math.round(ms / STEP_MS) * STEP_WORDS + (STEP_WORDS >> 1));
     return times[i] ?? `${Math.round((i / Math.max(1, words.length)) * 100)}% IN`;
   };
   return cue.points.map(({ id, text: t, note, done, quote, at: ms }) => ({ id, text: t, note, covered: done, quote: done ? quote : '', at: done && ms !== null ? at(ms) : '' }));
+}
+
+// AFTER, an audio file: the page decodes it at 16 kHz and sends it in pieces under the 5-minute limit of POST
+// /api/transcribe.
+const PIECE_S = 270;
+
+// Pieces of at most PIECE_S seconds, each cut at the quietest 100 ms in its last 20 seconds (not mid-word).
+export function cutPieces(ch: Float32Array, rate = 16000): [number, number][] {
+  const out: [number, number][] = [];
+  const max = PIECE_S * rate;
+  const block = rate / 10;
+  let a = 0;
+  while (a < ch.length) {
+    let b = Math.min(ch.length, a + max);
+    if (b < ch.length) {
+      let best = b;
+      let low = Infinity;
+      for (let s = b - 20 * rate; s + block <= b; s += block) {
+        let e = 0;
+        for (let i = s; i < s + block; i++) e += ch[i] * ch[i];
+        if (e < low) {
+          low = e;
+          best = s + block / 2;
+        }
+      }
+      b = best;
+    }
+    out.push([a, b]);
+    a = b;
+  }
+  return out;
 }
