@@ -254,11 +254,11 @@ html:not([data-crt='off']) .scene .sprite {
 
 .agent {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    'name time'
-    'meta meta'
-    'line line';
+    'face name time'
+    'face meta meta'
+    'face line line';
   gap: 0 1ch;
   padding: 2px 6px 3px;
   border: 1px solid var(--line, var(--ph-dim));
@@ -269,6 +269,15 @@ html:not([data-crt='off']) .scene .sprite {
 
 .agent.fresh {
   animation: crew-in 0.36s steps(6) both;
+}
+
+.agent .agent-face {
+  grid-area: face;
+  align-self: center;
+  width: 32px; /* 2x the 16 x 24 sprite: crisp pixels, about the row's height */
+  height: 48px;
+  margin: -5px 4px -5px 0;
+  image-rendering: pixelated;
 }
 
 .agent-name {

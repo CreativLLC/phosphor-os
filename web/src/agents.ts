@@ -5,6 +5,9 @@ import { store, watchActive, working } from './store.ts';
 import { mountIdeas } from './ideas.ts';
 import { mountToday } from './today.ts';
 import { el, fmtDuration } from './ui.ts';
+import { crewKind, nameHash } from './sprites/crew.ts';
+import { Sprite } from './sprites/engine.ts';
+import { TROUPE_LOOKS, troupeAnim } from './sprites/troupe.ts';
 
 // Left sidebar (owner: art team): the operator card on top (a pixel scene, scene.ts, where the mascot acts out
 // what Claude does and running helpers work beside it), then one compact row per subagent. Running crew first
@@ -125,13 +128,14 @@ class AgentCard {
   private tokens = el('span', 'agent-stat');
   private model = el('span', 'agent-stat');
   private line = el('div', 'agent-line');
+  private face = new Sprite('sprite agent-face'); // the same character the scene shows for this helper
   private agent: Agent;
 
   constructor(a: Agent) {
     this.agent = a;
     const meta = el('div', 'agent-meta');
     meta.append(this.type, this.tag, this.tools, this.tokens, this.model);
-    this.el.append(this.name, this.time, meta, this.line);
+    this.el.append(this.face.canvas, this.name, this.time, meta, this.line);
     // Tap (or Enter) to show the full job and status line.
     this.el.tabIndex = 0;
     this.el.onclick = () => this.el.classList.toggle('open');
@@ -158,6 +162,7 @@ class AgentCard {
       this.el.classList.add('flash');
     }
     for (const s of Object.keys(TAG)) this.el.classList.toggle(`st-${s}`, s === a.status);
+    if (first || prev !== a.status) this.face.play(troupeAnim(crewKind(a.name), nameHash(a.name) % TROUPE_LOOKS, a.status === 'running' ? 'work' : a.status));
     // Heading = the job Claude gave it ("Plan usage meter"); the agent type (mostly "general-purpose") goes below.
     setText(this.name, (a.description || a.name).toUpperCase());
     setText(this.type, a.name);
@@ -183,6 +188,7 @@ class AgentCard {
   }
 
   dispose(): void {
+    this.face.dispose();
     this.el.remove();
   }
 }
