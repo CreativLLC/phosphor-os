@@ -318,16 +318,17 @@ body.prompter-open .keys {
   letter-spacing: 3px;
 }
 
+/* Two lines, the newest words at the bottom: older lines go out at the top. */
 .cue-heard {
-  min-height: 1.4em;
-  padding: 6px 12px;
+  height: 2.7em;
+  padding: 6px 12px 0;
   border-top: 1px solid var(--line);
   color: var(--ph-dim);
-  white-space: nowrap;
+  line-height: 1.35;
   overflow: hidden;
-  text-overflow: ellipsis;
-  direction: rtl; /* long lines keep their newest words in view */
-  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
 .cue-err {

@@ -508,7 +508,8 @@ function renderRun(): void {
   for (const [i, p] of open.entries()) list.append(pointRow(p, i === 0 ? 'cue-next' : ''));
   if (!open.length) list.append(el('li', 'cue-all', 'ALL POINTS COVERED'));
   for (const p of done) list.append(pointRow(p, 'cue-done'));
-  const heard = el('div', 'cue-heard', l.heard || (l.endedAt ? '' : mic && micState !== 'on' ? micNote || 'Starting the mic…' : 'Listening…'));
+  const heard = el('div', 'cue-heard');
+  heard.append(el('span', '', l.heard || (l.endedAt ? '' : mic && micState !== 'on' ? micNote || 'Starting the mic…' : 'Listening…')));
   const extra: HTMLElement[] = [];
   if (!l.endedAt && l.error) extra.push(el('div', 'cue-err', l.error));
   runBox.replaceChildren(top, list, ...extra, heard);

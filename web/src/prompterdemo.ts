@@ -64,6 +64,7 @@ let lastTick = Date.now();
 let lastLine = Date.now();
 let line = 2;
 let afterPolls = 0;
+let afterText = '';
 
 // Move the fake recording on: new words, now and then a point ticks.
 function advance(): void {
@@ -134,15 +135,16 @@ export async function demoPrompterApi<T>(path: string, method: string, body: unk
   }
   if (path === 'after') {
     afterPolls = 0;
+    afterText = String(b.points ?? '');
     return out({ id: 'demo' });
   }
   if (path.startsWith('after/')) {
     afterPolls++;
-    const points = parsePoints(String(LISTS[0].text)).map((p, i) => ({
+    const points = parsePoints(afterText).map((p, i) => ({
       ...p,
-      covered: i !== 4 && i !== 8,
-      quote: i !== 4 && i !== 8 ? WORDS[i % WORDS.length] : '',
-      at: i !== 4 && i !== 8 ? `${i * 2}:${String((i * 17) % 60).padStart(2, '0')}` : '',
+      covered: i % 3 !== 2,
+      quote: i % 3 !== 2 ? WORDS[i % WORDS.length] : '',
+      at: i % 3 !== 2 ? `${i * 2}:${String((i * 17) % 60).padStart(2, '0')}` : '',
     }));
     const job: AfterJob = { id: 'demo', state: afterPolls < 3 ? 'running' : 'done', done: Math.min(afterPolls * 9, 24), total: 24, points, error: '', by: 'LOCAL DECISION MODEL' };
     return out(job);
