@@ -3,8 +3,9 @@ import { send } from './net.ts';
 import { Scene } from './scene.ts';
 import { store, watchActive, working } from './store.ts';
 import { mountIdeas } from './ideas.ts';
+import { newProjectChat, showProjects } from './projects.ts';
 import { mountToday } from './today.ts';
-import { el, fmtDuration } from './ui.ts';
+import { button, el, fmtDuration } from './ui.ts';
 import { crewKind, nameHash } from './sprites/crew.ts';
 import { Sprite } from './sprites/engine.ts';
 import { TROUPE_LOOKS, troupeAnim } from './sprites/troupe.ts';
@@ -218,7 +219,17 @@ export function mountAgents(root: HTMLElement): void {
   const threadsHead = heading('THREADS');
   const threadList = el('div', 'thread-list');
   const threadsBox = el('section', 'threads');
-  threadsBox.append(threadsHead.el, threadList);
+  // + CHAT: one more chat in this project; ALL PROJECTS: the PROJECTS list (projects.ts).
+  const threadTools = el('div', 'thread-tools');
+  const addChat = button('+ CHAT', () => {
+    const p = store.current()?.meta.project;
+    if (p) newProjectChat(p);
+  });
+  addChat.title = 'A new chat in this project: same folder and shared memory';
+  const allProjects = button('ALL PROJECTS', () => showProjects());
+  allProjects.title = 'Every project, open or closed';
+  threadTools.append(addChat, allProjects);
+  threadsBox.append(threadsHead.el, threadList, threadTools);
   const renderThreads = () => {
     const p = store.current()?.meta.project;
     threadsBox.hidden = !p;
@@ -238,7 +249,7 @@ export function mountAgents(root: HTMLElement): void {
         row.onclick = () => store.setActive(t.meta.id);
         return row;
       }),
-      ...(members.length < 2 ? [el('div', 'thread-empty', 'No threads yet. Ask the lead to split the work.')] : []),
+      ...(members.length < 2 ? [el('div', 'thread-empty', 'No threads yet. Ask the lead to split the work, or start one with + CHAT.')] : []),
     );
   };
   store.on((c) => {
