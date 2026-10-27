@@ -3,7 +3,7 @@
 //   npx tsx tests/decide.ts
 
 import { decideConfig, DOWN_RETRY_MS, endpoint, makeDecider, type DecideConfig } from '../server/decide.ts';
-import { parseAnswers, type Questions } from '../shared/decide.ts';
+import { choiceConfidence, parseAnswers, scoreConfidence, type Questions } from '../shared/decide.ts';
 
 let fail = 0;
 const check = (what: string, cond: boolean, detail = '') => {
@@ -140,13 +140,18 @@ const hang = ({ init }: Call) => new Promise<Response>((_, reject) => init.signa
 {
   const choice = { t: { type: 'choice', instructions: 'q', criteria: { a: null, b: null } } } as const satisfies Questions;
   const noChoice = parseAnswers({ t: { type: 'choice', probabilities: { a: 0.3, b: 0.7 } } }, choice);
-  check('choice without a choice field: the most likely option', noChoice?.t.choice === 'b' && noChoice.t.confidence === 0.7);
+  check('choice without a choice field: the most likely option', noChoice?.t.choice === 'b');
+  check('no confidence sent: TypeSafe\'s formula ((0.7 - 0.5) / 0.5)', Math.abs((noChoice?.t.confidence ?? 0) - 0.4) < 1e-9, String(noChoice?.t.confidence));
   check('choice naming an unknown option: the most likely known one', parseAnswers({ t: { choice: 'zzz', probabilities: { a: 0.6, b: 0.4 } } }, choice)?.t.choice === 'a');
   check('choice with nothing usable: null', parseAnswers({ t: { probabilities: {} } }, choice) === null);
   const noul = { n: { type: 'noul', instructions: 'q' } } as const satisfies Questions;
   check('noul out of range is held to 0..1', parseAnswers({ n: { noul: 1.3 } }, noul)?.n.p === 1);
   check('noul at 0.5 counts as yes, confidence 0', parseAnswers({ n: { noul: 0.5 } }, noul)?.n.yes === true && parseAnswers({ n: { noul: 0.5 } }, noul)?.n.confidence === 0);
   check('noul without a number: null', parseAnswers({ n: { noul: 'yes' } }, noul) === null);
+  check('choice confidence: all equal 0, one sure 1', choiceConfidence([1 / 3, 1 / 3, 1 / 3]) === 0 && choiceConfidence([0, 1, 0]) === 1);
+  check('score confidence: one level 1, all equal 0', scoreConfidence([0, 0, 1, 0]) === 1 && Math.abs(scoreConfidence([0.25, 0.25, 0.25, 0.25])) < 1e-9);
+  // llama.cpp's own answer for these probabilities (the server README example): 0.673.
+  check('score confidence matches llama.cpp', Math.abs(scoreConfidence([0.0023, 0.116, 0.6753, 0.2064]) - 0.673) < 0.01, String(scoreConfidence([0.0023, 0.116, 0.6753, 0.2064])));
   check('no answers object: null', parseAnswers(undefined, noul) === null && parseAnswers('x', noul) === null);
 }
 

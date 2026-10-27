@@ -1,5 +1,5 @@
-// AUTO router check: runs ONLY the router (one small Haiku call each) on the first message of your recent chats,
-// and prints what it would pick. No prompt is sent to a model that works on it; nothing is written.
+// AUTO router check: runs ONLY the router (the decision model, else one small Haiku call) on the first message of
+// your recent chats, and prints what it would pick and who picked it. No prompt is sent to a model that works on it; nothing is written.
 //   npx tsx scripts/auto-eval.ts [N=30]
 import { getSessionMessages, listSessions } from '@anthropic-ai/claude-agent-sdk';
 import { routeMessage } from '../server/router.ts';
@@ -29,7 +29,7 @@ for (const s of await listSessions({ limit: N * 3 })) {
   const r = await routeMessage({ text: first.text, attachments: first.files, title: first.text.split('\n')[0].slice(0, 32), turns: 0, current: null, lastReply: '' });
   const date = new Date(s.lastModified).toISOString().slice(0, 10);
   const head = first.text.replace(/\s+/g, ' ').slice(0, 70);
-  rows.push([date, head, r.pick?.model ?? '?', r.pick?.effort ?? '?', r.pick?.reason ?? `FAILED: ${r.error}`]);
+  rows.push([date, head, r.pick?.model ?? '?', r.pick?.effort ?? '?', r.pick ? `${r.engine}: ${r.pick.reason}` : `FAILED: ${r.error}`]);
 }
 
 const head = ['DATE', 'FIRST MESSAGE', 'MODEL', 'EFFORT', 'REASON'];

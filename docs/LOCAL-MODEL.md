@@ -166,17 +166,9 @@ are unloaded; the next local chat message loads its model again.
 
 ## Decision model (CPU, always on, optional)
 
-A decision model ("system one") does not write text: it answers typed questions about a text in one pass. `noul` is
-yes/no (a probability), `choice` picks one of named options (a probability each), `score` a level. All engines share
-one API, `POST /v1/systemone` (TypeSafe's format): llama.cpp's `llama-server` 0.6.0 and newer serves decision models
-with it, and TypeSafe's Jev is the same API in the cloud. `server/decide.ts` is the one client (settings below);
-AUTO asks it before Haiku, and other parts (the talk prompter) can ask it about once a second.
+A decision model ("system one") does not write text: it answers typed questions about a text in one pass. `noul` is yes/no (a probability), `choice` picks one of named options (a probability each), `score` a level. All engines share one API, `POST /v1/systemone` (TypeSafe's format): llama.cpp's `llama-server` 0.6.0 and newer serves decision models with it, and TypeSafe's Jev is the same API in the cloud. `server/decide.ts` is the one client (settings below); AUTO asks it before Haiku, and other parts (the talk prompter) can ask it about once a second.
 
-Set up: `bash scripts/setup-decide-model.sh` (`--dry-run` first, `--undo` to remove; the model file stays). It downloads
-Kev-0.8B (ggml-org GGUF, Q8_0, 0.8 GB, Apache-2.0) to `~/models` and installs `phosphor-decide.service` (user):
-`llama-server` on 127.0.0.1:8090, CPU only (the unit hides every GPU, so it never takes VRAM from the big models),
-12 threads, 16 slots (up to 16 questions of one call run side by side and share the reading of the state), at most
-3 GB of RAM, asleep after 15 minutes idle. Then restart the Phosphor-OS server when idle.
+Set up: `bash scripts/setup-decide-model.sh` (`--dry-run` first, `--undo` to remove; the model file stays). It downloads Kev-0.8B (ggml-org GGUF, Q8_0, 0.8 GB, Apache-2.0) to `~/models` and installs `phosphor-decide.service` (user): `llama-server` on 127.0.0.1:8090, CPU only (the unit hides every GPU, so it never takes VRAM from the big models), 12 threads, 16 slots (up to 16 questions of one call run side by side and share the reading of the state), at most 3 GB of RAM, asleep after 15 minutes idle. Then restart the Phosphor-OS server when idle.
 
 | Setting (`.env`) | Default | What |
 |---|---|---|
@@ -185,10 +177,7 @@ Kev-0.8B (ggml-org GGUF, Q8_0, 0.8 GB, Apache-2.0) to `~/models` and installs `p
 | `PHOSPHOR_DECIDE_MODEL` | none | the request's `model` (the cloud needs one: `jev-latest`) |
 | `PHOSPHOR_DECIDE` | on | `off`: never asked (AUTO uses Haiku only) |
 
-Measured on one PC (12-core desktop CPU, 16 threads unless noted, the GPU hidden), warm, with
-`npx tsx scripts/decide-bench.ts` on a hand-made set (`tests/fixtures/decide-cases.ts`): 24 AUTO messages with the
-model and thinking level a person would pick, and 20 talk chunks of about 20 seconds with an 8-point list each (which
-points has the speaker started on, by idea, not words; 30 of the 160 are started).
+Measured on one PC (12-core desktop CPU, 16 threads unless noted, the GPU hidden), warm, with `npx tsx scripts/decide-bench.ts` on a hand-made set (`tests/fixtures/decide-cases.ts`): 24 AUTO messages with the model and thinking level a person would pick, and 20 talk chunks of about 20 seconds with an 8-point list each (which points has the speaker started on, by idea, not words; 30 of the 160 are started).
 
 | Model (GGUF) | File | RAM awake | 1 choice, ~330-token state | 10 noul, same state | AUTO: model / level right (of 24) | Talk points right (of 160), started found (of 30), false alarms |
 |---|---|---|---|---|---|---|
@@ -200,16 +189,11 @@ points has the speaker started on, by idea, not words; 30 of the 160 are started
 | Clef-Flash 9B, Q3_K_S (bartowski) | 4.8 GB | 6.5 GB | 6.3 s | 17.5 s | 19 / 18 | 154, 26, 2 |
 | Claude Haiku (AUTO before this) | cloud | | 3.0 s (median) | | 19 / 18 | |
 
-The real calls: AUTO's three questions (about 490 tokens in all) take 0.87 to 0.93 s on Kev-0.8B with 12 to 20
-threads (1.3 s with 8); 15 noul questions on one 20-second chunk 1.1 to 1.2 s (1.5 s with 8). Waking from sleep
-adds about 0.7 s. So on this CPU nothing small answers "well under a second": Kev-0.8B is the one that comes close,
-in 2 GB. Faster CPU quants cost accuracy (the Q4_0 row). Clef-Flash and Kev-4B judge better but are many seconds on a
-CPU; on a GPU they would answer in a fraction of a second, but there they compete with the chat models for VRAM.
-TypeSafe's Jev in the cloud (about $0.042 per million input tokens: an AUTO pick is about 500 tokens, the prompter at
-one 1,600-token call a second about $0.25 an hour) is the other way; not measured here (no key).
+The real calls: AUTO's three questions (about 490 tokens in all) take 0.87 to 0.93 s on Kev-0.8B with 12 to 20 threads (1.3 s with 8); 15 noul questions on one 20-second chunk 1.1 to 1.2 s (1.5 s with 8). Waking from sleep adds about 0.7 s. So on this CPU nothing small answers "well under a second": Kev-0.8B is the one that comes close, in 2 GB. Faster CPU quants cost accuracy (the Q4_0 row). Clef-Flash and Kev-4B judge better but are many seconds on a CPU; on a GPU they should answer in a fraction of a second (untested), but there they compete with the chat models for VRAM. TypeSafe's Jev in the cloud (about $0.042 per million input tokens: an AUTO pick is about 500 tokens, the prompter at one 1,600-token call a second about $0.25 an hour) is the other way; not measured here (no key).
 
-Not usable here: Tev1 (Together AI) GGUFs either need their own engine (`dohnuts.cpp`) or are the plain text model
-without a decision head; Bespoke-Nimble-9B is non-commercial (CC BY-NC) and 9B (as slow as Clef-Flash on a CPU).
+AUTO with Kev-0.8B: it trusts the decision model only when its model pick is at least 25% sure (`ROUTE_MIN_CONFIDENCE`, `shared/router.ts`), else Haiku decides as before (also when the engine is off, down, or slower than 2 s). On the set: 8 of 24 messages decided locally, together 20 / 18 right (Haiku alone 19 / 18). With Clef-Flash the same rule decides 23 of 24 locally at Haiku's accuracy. Live: a pick the decision model makes takes 0.8 to 0.9 s (1.6 s waking from sleep); one it leaves to Haiku costs both (about 0.9 + 3 s); a stopped engine costs nothing (refused at once).
+
+Not usable here: Tev1 (Together AI) GGUFs either need their own engine (`dohnuts.cpp`) or are the plain text model without a decision head; Bespoke-Nimble-9B is non-commercial (CC BY-NC) and 9B (as slow as Clef-Flash on a CPU).
 
 ## Traps
 

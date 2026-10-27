@@ -104,3 +104,18 @@ export const ROUTE_QUESTIONS = {
   },
 } as const satisfies Questions;
 export type RouteQuestions = typeof ROUTE_QUESTIONS;
+
+// A decision model's pick is trusted only when it is this sure of the model (TypeSafe's choice confidence: 0 = all
+// options equally likely). Below it, Haiku decides. 0.25 on the hand-made set (docs/LOCAL-MODEL.md): Kev-0.8B is
+// right above it about as often as Haiku, wrong more often below it; Clef-Flash is above it for almost every message.
+export const ROUTE_MIN_CONFIDENCE = 0.25;
+
+// The decision model's answers as a pick, or null when it is unsure (ask Haiku instead).
+// Lean high, as the rubric says: Opus is for real work, so it gets at least high.
+export function pickFromAnswers(a: Answers<RouteQuestions>): RoutePick | null {
+  if (a.model.confidence < ROUTE_MIN_CONFIDENCE) return null;
+  const model = a.model.choice as RouteModel;
+  const chosen = a.effort.choice as RouteEffort;
+  const effort = model === 'opus' && EFFORT_RANK.indexOf(chosen) < EFFORT_RANK.indexOf('high') ? 'high' : chosen;
+  return { model, effort, newTopic: a.newTopic.yes, reason: `${Math.round(a.model.confidence * 100)}% sure` };
+}

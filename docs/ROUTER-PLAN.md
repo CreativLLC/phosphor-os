@@ -41,6 +41,10 @@ A chat runs one Claude Code process. Claude and a local model are different serv
 
 A simple message on Haiku costs few tokens anyway. So AUTO keeps its three cloud picks; the saving comes from jobs handed off inside the chat (`ask_local`) and from local threads, where the chat that runs locally stays local. A tab the owner sets to a local model by hand keeps working as before.
 
+## AUTO's own pick on a decision model (2026-10-27)
+
+The pick itself (which model, which level, new topic or not) no longer needs a Haiku call when a decision model is set up: `server/router.ts` asks it first (`server/decide.ts`, `POST /v1/systemone`, about 0.9 s on the CPU with Kev-0.8B) and asks Haiku only when it is off, down, slower than 2 s or less than 25% sure. What AUTO picks and how it is applied did not change. With Kev-0.8B about a third of the messages on the hand-made set were decided locally, at Haiku's accuracy overall; a stronger decision model (Clef-Flash, on a GPU or in the cloud as Jev) would decide almost all. Numbers and setup: `docs/LOCAL-MODEL.md` "Decision model".
+
 ## Measured (2026-10-25, Qwen3.6 35B MoE on a 20 GB AMD card, through the relay)
 
 | Job | File | Local tokens in / out | Time | Result |

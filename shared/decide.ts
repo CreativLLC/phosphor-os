@@ -32,6 +32,22 @@ export type DecideResult<Q extends Questions> =
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
+// TypeSafe's confidence formulas (llama.cpp uses the same), for an engine that sends none.
+// choice: how far the top option stands above all-equal. score: how close the levels sit around the most likely one.
+export function choiceConfidence(probs: number[]): number {
+  if (probs.length < 2) return 1;
+  const uniform = 1 / probs.length;
+  return Math.max(0, (Math.max(...probs) - uniform) / (1 - uniform));
+}
+export function scoreConfidence(probs: number[]): number {
+  const n = probs.length;
+  if (n < 2) return 1;
+  const mode = probs.indexOf(Math.max(...probs));
+  const dist = probs.reduce((s, p, i) => s + p * Math.abs(i - mode), 0);
+  const uniform = probs.reduce((s, _, i) => s + Math.abs(i - (n - 1) / 2) / n, 0);
+  return Math.max(0, 1 - dist / uniform);
+}
+
 // An engine's `answers` object read against the questions asked: every question must have a well-formed answer of
 // its type, else null (the caller treats the whole call as failed; half an answer is not worth trusting).
 export function parseAnswers<Q extends Questions>(raw: unknown, questions: Q): Answers<Q> | null {
@@ -50,14 +66,14 @@ export function parseAnswers<Q extends Questions>(raw: unknown, questions: Q): A
       const best = Object.entries(probabilities).sort((x, y) => y[1] - x[1])[0];
       const choice = typeof a.choice === 'string' && a.choice in q.criteria ? a.choice : best && best[1] > 0 ? best[0] : '';
       if (!choice) return null;
-      out[id] = { type: 'choice', choice, probabilities, confidence: clamp01(num(a.confidence) ?? probabilities[choice]) };
+      out[id] = { type: 'choice', choice, probabilities, confidence: clamp01(num(a.confidence) ?? choiceConfidence(Object.values(probabilities))) };
     } else {
       const probs = a.probabilities && typeof a.probabilities === 'object' ? (a.probabilities as Record<string, unknown>) : {};
       const probabilities = q.criteria.map((_, i) => num(probs[String(i)]) ?? 0);
       const score = num(a.score);
       if (score === null) return null;
       const level = probabilities.some((p) => p > 0) ? probabilities.indexOf(Math.max(...probabilities)) : Math.round(score);
-      out[id] = { type: 'score', score, level, probabilities, confidence: clamp01(num(a.confidence) ?? probabilities[level] ?? 0) };
+      out[id] = { type: 'score', score, level, probabilities, confidence: clamp01(num(a.confidence) ?? scoreConfidence(probabilities)) };
     }
   }
   return out as Answers<Q>;
