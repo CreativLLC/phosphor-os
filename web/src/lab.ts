@@ -1016,7 +1016,7 @@ function drawChat(): void {
   if (older.length) items.push(olderRuns(t, i, older));
   for (let k = 0; k <= ups.length; k++) {
     if (k) items.push(chatYou(ups[k - 1]));
-    items.push(chatReply(t, i, k, k < ups.length ? c.versions?.find((v) => v.n === ups[k].version) : r));
+    items.push(chatReply(t, i, k, k === ups.length ? r : c.versions && c.versions.find((v) => v.n === ups[k].version)));
   }
   const atEnd = c.log.scrollHeight - c.log.scrollTop - c.log.clientHeight < 60;
   c.log.replaceChildren(...items);
@@ -1031,12 +1031,13 @@ function chatYou(u: LabFollowUp): HTMLElement {
   return m;
 }
 
-// One reply. out: the result as that turn left it (a kept version, or the result now); undefined while versions load.
-function chatReply(t: LabTestFull, i: number, k: number, out: LabResultFull | LabVersion | undefined): HTMLElement {
+// One reply. out: the result as that turn left it (a kept version, or the result now); null while versions load, or
+// undefined when its version folder was deleted by hand.
+function chatReply(t: LabTestFull, i: number, k: number, out: LabResultFull | LabVersion | null | undefined): HTMLElement {
   const m = el('div', 'lab-msg lab-msg-model');
   const head = el('div', 'lab-row lab-msg-head');
   head.append(el('span', 'lab-strong', `${nameOf(t, i)} · ${k ? `FOLLOW-UP ${k}` : 'FIRST RUN'}`));
-  if (!out) return (m.append(head, el('p', 'lab-dim', 'LOADING…')), m);
+  if (!out) return (m.append(head, el('p', 'lab-dim', out === null ? 'LOADING…' : 'Its kept version is not in the folder any more.')), m);
   const v = 'n' in out ? out : undefined;
   const state = el('span', 'lab-dim', stateLabel(out));
   if (!v && busy(out)) state.dataset.clock = String(i);
