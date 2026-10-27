@@ -1,0 +1,83 @@
+/* Sprite shading ramps per theme (sprites/engine.ts reads --sprite-<name>). Owner: art team.
+   Dark to light per material, with a dark outline. Each theme keeps its own lead color: amber art is warm and
+   amber-led, green art is green-led, LCARS uses its panel colors. A theme without these falls back to its
+   phosphor tones (one-color art). The base tones stay --ph-dim / --ph / --ph-bright (or --sprite-dim ...). */
+
+:root,
+html[data-phosphor='amber'] {
+  --sprite-outline: #1d0f02;
+  --sprite-wall: #140c02;
+  --sprite-wall-lit: #24170a;
+  --sprite-deep: #5a3a06;
+  --sprite-white: #fff3d6;
+  --sprite-face-dim: #145a6a;
+  --sprite-skin-1: #a3582c;
+  --sprite-skin-2: #e09a62;
+  --sprite-skin-3: #ffd2a0;
+  --sprite-cloth-1: #6e2a0c;
+  --sprite-cloth-2: #b8521a;
+  --sprite-cloth-3: #f08a2c;
+  --sprite-metal-1: #3c3024;
+  --sprite-metal-2: #7c6a52;
+  --sprite-metal-3: #c8b490;
+  --sprite-fire-1: #e8481a;
+  --sprite-fire-2: #ffe066;
+  --sprite-sky-1: #2c5a6a;
+  --sprite-sky-2: #6fb2bc;
+  --sprite-wood-1: #4e2c12;
+  --sprite-wood-2: #8e5a2c;
+  --sprite-leaf-1: #4c6a16;
+  --sprite-leaf-2: #9cb83a;
+}
+
+html[data-phosphor='green'] {
+  --sprite-outline: #01160a;
+  --sprite-wall: #021208;
+  --sprite-wall-lit: #072414;
+  --sprite-deep: #0b4a1e;
+  --sprite-white: #e8ffee;
+  --sprite-face-dim: #145a6a;
+  --sprite-skin-1: #7e7a3e;
+  --sprite-skin-2: #c4c07a;
+  --sprite-skin-3: #eef0b8;
+  --sprite-cloth-1: #0c4a3a;
+  --sprite-cloth-2: #1c8a62;
+  --sprite-cloth-3: #4cd29a;
+  --sprite-metal-1: #22342c;
+  --sprite-metal-2: #4e6a5e;
+  --sprite-metal-3: #9ebcae;
+  --sprite-fire-1: #e09a1c;
+  --sprite-fire-2: #f6f27a;
+  --sprite-sky-1: #145a6a;
+  --sprite-sky-2: #4cc8c8;
+  --sprite-wood-1: #3a3416;
+  --sprite-wood-2: #6e6630;
+  --sprite-leaf-1: #2a7a1a;
+  --sprite-leaf-2: #8ad040;
+}
+
+:root[data-theme='lcars'] {
+  --sprite-outline: #0c0a1c;
+  --sprite-wall: #0a0916;
+  --sprite-wall-lit: #17142a;
+  --sprite-deep: #2e2a68;
+  --sprite-white: #fff6ec;
+  --sprite-face-dim: #7a4a10;
+  --sprite-skin-1: #b07050;
+  --sprite-skin-2: #f0b48a;
+  --sprite-skin-3: #ffdcbc;
+  --sprite-cloth-1: #9a4a00;
+  --sprite-cloth-2: #ff9900;
+  --sprite-cloth-3: #ffcc66;
+  --sprite-metal-1: #34325a;
+  --sprite-metal-2: #6a6898;
+  --sprite-metal-3: #b4b2dc;
+  --sprite-fire-1: #ff5544;
+  --sprite-fire-2: #ffcc66;
+  --sprite-sky-1: #3a6a9a;
+  --sprite-sky-2: #99ccff;
+  --sprite-wood-1: #6a4428;
+  --sprite-wood-2: #d59f6a;
+  --sprite-leaf-1: #4a7a5a;
+  --sprite-leaf-2: #9cd0a0;
+}

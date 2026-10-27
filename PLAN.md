@@ -51,9 +51,8 @@ This file is the build record: what exists and how it works. Install and use: `R
 - **History:** lists Claude Code's saved chats (from this app and the terminal); tap to reopen.
 - **Mission + progress bar:** the server gives Claude an `update_mission` tool (title, summary,
   steps). Percent = steps done / steps. TodoWrite lists map to the same panel.
-- **Agents sidebar:** pixel-art operator for the main Claude plus one animated crew card per
-  subagent (Explore, Plan, general-purpose, guide, others). Finished cards stay 2 minutes, then fold
-  into one "▸ N DONE" line (tap to show them; nothing is deleted).
+- **Agents sidebar:** the OPERATOR scene on top (see "OPERATOR scene" below), then one compact row per
+  subagent (job, time, type, status; tap for counts, model and its last line). Finished rows stay 2 minutes.
 - **File explorer:** read-only, rooted at the tab folder, "changed by Claude" list, viewer, @ insert.
 - **Look:** amber/green phosphor, CRT effects (off/low/high), text size, sounds, boot screen.
 - **Permissions:** approve/deny cards, question cards, permission mode picker per tab.
@@ -64,7 +63,7 @@ This file is the build record: what exists and how it works. Install and use: `R
 - **Gemini chat:** a tab can talk to Gemini instead of Claude (Google AI Pro sign-in, through `agy`). See "Gemini chat" below.
 - **Attachments:** paste a screenshot, drop files on the chat, or ATTACH. Files land in `data/uploads/<id>/`;
   images go to Claude inline (scaled down in the browser if big), and every path is listed in the message.
-- **Wide screens:** side panels grow and sprites get bigger; chat capped at a reading width.
+- **Wide screens:** side panels grow (the scene doubles its pixels once the panel is 420 px wide); chat capped at a reading width.
 - **Undo:** "UNDO FROM HERE" on each of your messages puts back every file Claude changed after it
   (SDK file checkpoints, preview first). Only works for messages sent after 2026-10-11.
 - **Chat look:** Claude's replies bright and larger; runs of tool steps fold into one dim line.
@@ -381,6 +380,39 @@ This file is the build record: what exists and how it works. Install and use: `R
 - **Page:** `Info.agent = 'gemini'` hides what only Claude has: UNDO, the "/" list, CONTEXT and COMPRESS; the CTX gauge stays off (no token count), the crew stays empty, the operator card says GEMINI, the box says "Message Gemini…", the mode picker's tooltip explains the mapping. The MCP screen says agy has its own (`agy mcp list`).
 - **Test:** `npx tsx tests/geminichat.ts` (a fake agy plays recorded real runs from `tests/fixtures/gemini/`). Real check 2026-10-25 on a test server: two messages (the second used the first answer), STOP, a restart, then a message that needed the first answer, and HISTORY close, search and reopen.
 
+## OPERATOR scene, built 2026-10-26
+
+Owner's ask: the big operator avatar took space and did nothing; a mascot should break up the text by acting out
+what Claude is doing, helpers should walk into the same scene, the card should be about half as tall, the crew
+cards smaller, and the art more detailed (16-bit style, FF6 / FF Tactics / Octopath) with a wider palette.
+
+- **The card:** the chat name, CLAUDE/GEMINI and the state tag on one line; the scene (36 pixel rows, 2 screen px
+  each, 3 when the panel is 420 px or wider); the activity line with the turn timer. TURN and TOOLS counts sit in
+  the OPERATOR heading, the crew count in the CREW heading. About 150 px tall instead of about 275 px.
+- **What the mascot does** (`web/src/sceneplan.ts`, from the activity line `server/tab.ts` already sends):
+  idle (mug, blinks), thinking (thought bubble), writing a reply (speech bubble fills), reading (open book, page
+  turns; Read, Grep, Glob, LS), editing (fast typing, code glyphs; Edit, Write, MultiEdit, NotebookEdit), shell
+  (hammer at an anvil, sparks; Bash, Run, Monitor), web (brass telescope; WebSearch, WebFetch, browser connectors),
+  waiting for you (waves, "!" bubble, screen flashes), done (a cheer, 6 s after a turn ends), error (smoke, X eyes:
+  a failed tool while Claude looks at it, or a turn that ended with an error note). Other tools: typing.
+  The table is `TOOL_ACTIVITY`; add a tool there.
+- **Crew in the scene:** a running helper walks in from the right to the next free slot, works with its own prop
+  (scout: magnifier, architect: blueprint, engineer robot: wrench, librarian: book, others: tablet), and when it
+  ends cheers (done) or slumps (failed: smoke; stopped: dozes), then walks out. Up to 4 on stage (fewer on a
+  narrow panel), then "+N". A tab switch or first paint shows working crew in place, no walking.
+- **Palette:** `sprites/engine.ts` has shading ramps beyond the four phosphor tones: outline, backdrop, deep,
+  white, skin, cloth, metal, fire, sky, wood, leaf (legend at the top of the file). Each theme maps them with
+  `--sprite-<name>` tokens in `sprites/palette.css` (amber stays warm, green stays green, LCARS uses its panel
+  colors); a theme without them falls back to its phosphor tones. Old sprites (`operator.ts`, `crew.ts`, the
+  screensaver) are untouched.
+- **Speed:** room, mascot and each helper are their own small canvas on the shared 8 fps clock (a frame is
+  drawn only when it changes); walking is a stepped CSS transform. Reduced motion: still frames, no walking.
+- **Demo:** `/?demo=1&scene=<idle|think|write|read|edit|work|shell|web|wait|done|error>&crew=N` pins the first chat's
+  scene; plain `/?demo=1` cycles activities and helpers. The sprite review page (`/sprites.html?only=scene`,
+  `npm run dev:web`) shows every scene animation in all three themes.
+- **Test:** `npx tsx tests/scene.ts` (tool table, activity, crew walk in/out, slots, and that every sprite part has
+  even rows and known colors).
+
 ## Ideas
 
 - SYS as a small panel in the lower left (a few key readings, always visible) that expands to the full SYS view.
@@ -463,6 +495,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | IDEAS panel | `shared/ideas.ts` (file format, parse, drop, the DO message), `server/ideas.ts` (`GET /api/ideas`, `POST /api/ideas/drop`, `PHOSPHOR_IDEAS_FILE`), `web/src/ideas.ts`, `ideas.css` (under TODAY, mounted by `agents.ts`), `newReq(then)` in `net.ts` (DO: new tab, then send), `tests/ideas.ts`; weekly suggestions `server/ideasweekly.ts` (Friday 07:00+, catch-up after 8 days, `PHOSPHOR_IDEAS_NOTES`, `POST /api/ideas/suggest`, log `data/ideas-weekly.log`), `tests/ideasweekly.ts` |
 | Cache clock | `shared/cache.ts` (TTL from usage, time left), `noteCache` in `server/tab.ts` (live replies + reopened chats), `cacheOf`/`watchCache` in `web/src/context.ts` (CTX gauge suffix), CACHE row in `mission.ts`, `tests/cache.ts` |
 | Agents | `agents.ts`, `agents.css`, `sprites/` |
+| OPERATOR scene | `web/src/scene.ts` (DOM, walking), `web/src/sceneplan.ts` (tool table, activity, crew roster; `tests/scene.ts`), `sprites/mascot.ts`, `sprites/troupe.ts`, `sprites/room.ts`, ramps in `sprites/engine.ts` + `sprites/palette.css`, demo pins in `demo.ts` |
 | TODAY panel (calendar + reminders) | `server/calendar.ts` (`GET /api/today`, 10-min fetch, cache file), `server/icsexpand.ts` (pure ICS expansion), `web/src/today.ts`, `today.css`, `docs/CALENDAR.md`, `tests/calendar.ts` |
 | Month view (opened from the TODAY heading) | `GET /api/calendar` (`calendarRange` in `server/calendar.ts`), `web/src/calendar.ts`, `calendar.css`, `calfmt.ts` (shared text helpers, EDIT / + NEW links), `demoMonth` in `demo.ts`; Google Calendar links (EDIT, + NEW): `server/gcal.ts` (pure, tested) |
 | Files UI | `files.ts`, `files.css` |

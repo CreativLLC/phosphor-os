@@ -5,6 +5,12 @@
 //   'x' erase (makes lower layers transparent again)
 //   'c' accent color (--accent): the one splash of color, used for the operator's face
 // A theme may set --sprite-dim / --sprite / --sprite-bright / --sprite-face instead (themes.ts).
+// The richer scene art (sprites/mascot.ts, troupe.ts, room.ts) also uses shading ramps, dark to light:
+//   'k' outline   'z' 'Z' backdrop   '-' deep   'w' white-hot   'C' accent shade
+//   '1' '2' '3' skin   '4' '5' '6' cloth   '7' '8' '9' metal
+//   'r' 'y' fire   'b' 'B' sky   'n' 'N' wood   'g' 'G' leaf
+// Each theme maps them with --sprite-<name> tokens (sprites/palette.css). Unset ones fall back to the
+// phosphor tones above, so old sprites and a theme without the tokens still draw.
 // Frames are drawn at 1 canvas pixel per grid cell and scaled up by CSS (image-rendering: pixelated).
 // One shared clock drives every sprite at 8 frames a second. It sleeps when the page is hidden,
 // skips sprites that are off screen, and shows a still frame when the user asks for reduced motion.
@@ -21,7 +27,44 @@ export type Anim = {
 
 export const TICK_MS = 125;
 
-const CODE: Record<string, number> = { '+': 1, '#': 2, '@': 3, o: 4, x: 5, c: 6 };
+// Ramp slots after the six base codes: [char, token name, fallback from the base tones].
+type Rgba = number[];
+type Base = { deep: Rgba; dim: Rgba; main: Rgba; bright: Rgba; bg: Rgba; face: Rgba };
+const mix = (a: Rgba, b: Rgba, t: number): Rgba => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t)).concat(255);
+export const RAMPS: readonly (readonly [string, string, (b: Base) => Rgba])[] = [
+  ['k', 'outline', (b) => mix(b.bg, b.deep, 0.35)],
+  ['z', 'wall', (b) => mix(b.bg, b.dim, 0.12)],
+  ['Z', 'wall-lit', (b) => mix(b.bg, b.dim, 0.24)],
+  ['-', 'deep', (b) => b.deep],
+  ['w', 'white', (b) => mix(b.bright, [255, 255, 255, 255], 0.5)],
+  ['C', 'face-dim', (b) => mix(b.face, b.bg, 0.55)],
+  ['1', 'skin-1', (b) => b.dim],
+  ['2', 'skin-2', (b) => b.main],
+  ['3', 'skin-3', (b) => b.bright],
+  ['4', 'cloth-1', (b) => b.deep],
+  ['5', 'cloth-2', (b) => b.dim],
+  ['6', 'cloth-3', (b) => b.main],
+  ['7', 'metal-1', (b) => b.deep],
+  ['8', 'metal-2', (b) => b.dim],
+  ['9', 'metal-3', (b) => b.main],
+  ['r', 'fire-1', (b) => b.main],
+  ['y', 'fire-2', (b) => b.bright],
+  ['b', 'sky-1', (b) => b.dim],
+  ['B', 'sky-2', (b) => b.main],
+  ['n', 'wood-1', (b) => b.deep],
+  ['N', 'wood-2', (b) => b.dim],
+  ['g', 'leaf-1', (b) => b.dim],
+  ['G', 'leaf-2', (b) => b.main],
+];
+
+const CODE: Record<string, number> = { '+': 1, '#': 2, '@': 3, o: 4, x: 5, c: 6, ...Object.fromEntries(RAMPS.map(([ch], i) => [ch, 7 + i])) };
+
+// The whole palette by code: base tones as given (rgba arrays), ramps from `token(name)` or their fallback.
+export function buildPalette(base: Omit<Base, 'deep'>, token: (name: string) => Rgba | null): Rgba[] {
+  const b: Base = { ...base, deep: mix(base.dim, base.bg, 0.5) };
+  const bg = [...b.bg.slice(0, 3), 255]; // knock-outs are always solid
+  return [[0, 0, 0, 0], b.dim, b.main, b.bright, bg, [0, 0, 0, 0], b.face, ...RAMPS.map(([, name, fall]) => token(name) ?? fall(b))];
+}
 
 // part`...` or part('...'): one row per line, surrounding spaces ignored.
 export function part(src: string | TemplateStringsArray): Part {
@@ -94,12 +137,15 @@ function readPalette(): boolean {
   const tok = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
   // A theme can give the crew its own colors (--sprite-*); the phosphor themes use the screen colors.
   const list = [tok('--sprite-dim', tok('--ph-dim', '#a87400')), tok('--sprite', tok('--ph', '#ffb000')), tok('--sprite-bright', tok('--ph-bright', '#ffd27a')), tok('--bg', '#0b0700'), tok('--sprite-face', tok('--accent', '#3fe0ff'))];
-  const key = list.join('|');
+  const ramps = RAMPS.map(([, name]) => cs.getPropertyValue(`--sprite-${name}`).trim());
+  const key = [...list, ...ramps].join('|');
   if (key === paletteKey) return false;
   paletteKey = key;
-  // Index 5 is 'x' (erase), never stored in a grid; 6 is the accent.
-  palette = [[0, 0, 0, 0], ...list.slice(0, 4).map(rgba), [0, 0, 0, 0], rgba(list[4])];
-  palette[4][3] = 255; // knock-outs are always solid
+  const [dim, main, bright, bg, face] = list.map(rgba);
+  palette = buildPalette({ dim, main, bright, bg, face }, (name) => {
+    const v = ramps[RAMPS.findIndex((r) => r[1] === name)];
+    return v ? rgba(v) : null;
+  });
   images = new WeakMap();
   return true;
 }

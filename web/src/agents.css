@@ -1,6 +1,8 @@
-/* Left sidebar: operator card and crew cards with pixel sprites. Owner: art team.
+/* Left sidebar: operator card (the pixel scene) and compact crew rows. Owner: art team.
    Theme tokens only (see theme.css). Sprite canvases get --sw/--sh (grid size) from the
-   engine; --px is the pixel scale, set per card here. */
+   engine; --px is the pixel scale (scene.ts sets it from the panel width). */
+
+@import './sprites/palette.css';
 
 .crew {
   padding: 8px 10px 16px;
@@ -25,10 +27,7 @@ html[data-crt='off'] .crew .sprite {
 .crew-ell,
 .op-line,
 .agent-name,
-.agent-desc,
-.agent-line,
-.op-stat,
-.agent-stat {
+.agent-line {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -90,43 +89,39 @@ html[data-crt='off'] .crew .sprite {
 /* ---------- Operator card ---------- */
 
 .op {
-  --px: 3;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas:
-    'head head'
-    'title title'
-    'sprite info'
-    'line line';
-  gap: 4px 8px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   margin: 0 0 14px;
-  padding: 4px 6px 6px;
+  padding: 3px 6px 4px;
   border: 3px double var(--ph-dim);
   background: var(--bg-raise);
   box-shadow: inset 0 0 14px rgb(var(--ph-rgb, 255 176 0) / 0.06);
 }
 
 .op-head {
-  grid-area: head;
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-  padding-bottom: 2px;
-  border-bottom: 1px solid var(--line, var(--ph-dim));
+  gap: 1ch;
   min-width: 0;
 }
 
+.op-name {
+  flex: none;
+  font-size: var(--fs);
+  letter-spacing: 2px;
+  color: var(--ph-bright);
+}
+
 .op-title {
-  grid-area: title;
-  width: 100%;
+  flex: 1 1 auto;
+  width: 0;
   min-width: 0;
-  padding: 2px 0;
+  padding: 0;
   border: 0;
   border-bottom: 1px dashed transparent;
   background: transparent;
-  color: var(--ph-bright);
+  color: var(--ph);
   font: inherit;
   text-overflow: ellipsis;
 }
@@ -137,39 +132,80 @@ html[data-crt='off'] .crew .sprite {
   outline: none;
 }
 
-.op .sprite {
-  grid-area: sprite;
+.op-tag {
+  flex: none;
+  color: var(--ph-bright);
+  letter-spacing: 1px;
 }
 
-.op-info {
-  grid-area: info;
+/* The scene: a room the panel's width, 36 grid rows tall (scene.ts sets --px and the height). */
+.scene {
+  --px: 2;
+  position: relative;
+  box-sizing: content-box;
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid var(--line, var(--ph-dim));
+  background: var(--bg-deep, #000);
+}
+
+.scene .sprite {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(calc(var(--x, 0) * var(--px) * 1px), calc(var(--y, 0) * var(--px) * 1px));
+  filter: none;
+}
+
+.scene-op {
+  z-index: 1;
+}
+
+.scene-crew {
+  z-index: 2;
+  cursor: default;
+}
+
+.scene-more {
+  position: absolute;
+  z-index: 3;
+  top: 2px;
+  right: 4px;
+  padding: 0 4px;
+  background: var(--bg);
+  color: var(--ph-bright);
+  font-size: var(--fs-sm, 0.88em);
+  letter-spacing: 1px;
+}
+
+.scene-more:empty {
+  display: none;
+}
+
+/* A soft phosphor bloom over the art on the CRT themes. */
+html:not([data-crt='off']) .scene {
+  box-shadow: inset 0 0 10px rgb(var(--ph-rgb, 255 176 0) / 0.12);
+}
+
+html:not([data-crt='off']) .scene .sprite {
+  filter: drop-shadow(0 0 1px rgb(var(--ph-rgb, 255 176 0) / 0.35));
+}
+
+.op-foot {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 1ch;
   min-width: 0;
 }
 
-.op-name {
-  font-size: var(--fs);
-  letter-spacing: 2px;
-  color: var(--ph-bright);
-  white-space: nowrap;
-}
-
-.op-tag {
-  color: var(--ph-bright);
-  letter-spacing: 1px;
-  white-space: nowrap;
-}
-
-.op-stat {
-  color: var(--ph-dim);
-}
-
 .op-line {
-  grid-area: line;
-  padding-top: 4px;
-  border-top: 1px solid var(--line, var(--ph-dim));
+  flex: 1 1 auto;
+  color: var(--ph);
+}
+
+.op-time {
+  flex: none;
+  color: var(--ph-dim);
 }
 
 .op-line::before,
@@ -208,27 +244,25 @@ html[data-crt='off'] .crew .sprite {
   }
 }
 
-/* ---------- Crew cards ---------- */
+/* ---------- Crew rows ---------- */
 
 .crew-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .agent {
-  --px: 3;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    'name name'
-    'sprite info'
-    'desc desc'
+    'name time'
+    'meta meta'
     'line line';
-  gap: 2px 8px;
-  align-items: center;
-  padding: 5px 6px 6px;
+  gap: 0 1ch;
+  padding: 2px 6px 3px;
   border: 1px solid var(--line, var(--ph-dim));
+  border-left-width: 3px;
   background: var(--bg-raise);
   cursor: pointer;
 }
@@ -239,53 +273,65 @@ html[data-crt='off'] .crew .sprite {
 
 .agent-name {
   grid-area: name;
-  padding-bottom: 2px;
-  border-bottom: 1px solid var(--line, var(--ph-dim));
-  font-size: var(--fs);
   letter-spacing: 1px;
   color: var(--ph-bright);
 }
 
-.agent .sprite {
-  grid-area: sprite;
-}
-
-.agent-info {
-  grid-area: info;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.agent-tag {
-  align-self: flex-start;
-  margin-bottom: 2px;
-  letter-spacing: 1px;
-  white-space: nowrap;
-}
-
-.agent-stat {
+.agent-time {
+  grid-area: time;
   color: var(--ph-dim);
 }
 
-.agent-desc {
-  grid-area: desc;
+.agent-meta {
+  grid-area: meta;
+  display: flex;
+  gap: 0 1ch;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--ph-dim);
+}
+
+.agent-meta > * {
+  flex: none;
+}
+
+.agent-type {
+  flex: 0 1 auto;
+  min-width: 4ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Counts and model only when the row is opened. */
+.agent:not(.open) .agent-stat {
+  display: none;
+}
+
+.agent-tag {
+  letter-spacing: 1px;
 }
 
 .agent-line {
   grid-area: line;
+  display: none;
   color: var(--ph-dim);
 }
 
-.agent.open .agent-desc,
+.agent.open .agent-name,
 .agent.open .agent-line {
+  display: block;
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
+.agent.open .agent-meta {
+  flex-wrap: wrap;
+}
+
 .agent.st-running {
   border-color: var(--ph-dim);
+  border-left-color: var(--ph-bright);
 }
 
 .agent.st-running .agent-tag {
@@ -301,36 +347,6 @@ html[data-crt='off'] .crew .sprite {
   color: var(--ph);
 }
 
-/* Finished crew: compact. Smaller sprite with the name beside it, quieter colors. */
-.agent:not(.st-running) {
-  --px: 2;
-  grid-template-areas:
-    'sprite name'
-    'sprite info'
-    'desc desc'
-    'line line';
-  grid-template-rows: auto 1fr;
-  align-items: start;
-}
-
-.agent:not(.st-running) .agent-name {
-  border-bottom: 0;
-  padding: 0;
-}
-
-.agent:not(.st-running) .agent-info {
-  flex-flow: row wrap;
-  gap: 1px 1ch;
-}
-
-.agent:not(.st-running) .agent-tag {
-  margin: 0;
-}
-
-.agent:not(.st-running) .agent-stat {
-  flex: none;
-}
-
 .agent.st-completed .agent-name,
 .agent.st-stopped .agent-name {
   color: var(--ph);
@@ -340,13 +356,8 @@ html[data-crt='off'] .crew .sprite {
   border-style: dashed;
 }
 
-.agent.st-stopped .agent-desc,
-.agent.st-stopped .agent-tag {
-  color: var(--ph-dim);
-}
-
 .agent.st-failed {
-  border-color: var(--ph-dim);
+  border-left-color: var(--ph-bright);
 }
 
 .agent.st-failed .agent-tag {
@@ -357,6 +368,7 @@ html[data-crt='off'] .crew .sprite {
 }
 
 .agent.st-failed .agent-line {
+  display: block;
   color: var(--ph-bright);
 }
 
@@ -420,21 +432,7 @@ html[data-crt='off'] .crew .sprite {
   }
 }
 
-/* ---------- Big screens: bigger sprites; crew in two columns once the panel is wide ---------- */
-
-@media (min-width: 1500px) {
-  .op {
-    --px: 5;
-  }
-
-  .agent {
-    --px: 4;
-  }
-
-  .agent:not(.st-running) {
-    --px: 3;
-  }
-}
+/* ---------- Big screens: crew in two columns once the panel is wide ---------- */
 
 @media (min-width: 2200px) {
   .crew-list {

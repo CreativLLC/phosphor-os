@@ -8,7 +8,8 @@
 //   1. One CSS file: themes/<id>.css. Every rule scoped under html[data-theme='<id>'] (tokens on
 //      :root[data-theme='<id>'] so they beat the accent palettes). It loads by itself (the glob below), also on the
 //      login page. Set the TOKEN CONTRACT tokens from theme.css (--ph, --bg, --font, ...) and most screens follow;
-//      --sprite-dim / --sprite / --sprite-bright / --sprite-face recolor the pixel crew (sprites/engine.ts).
+//      --sprite-dim / --sprite / --sprite-bright / --sprite-face recolor the pixel crew (sprites/engine.ts); the
+//      scene's shading ramps (--sprite-skin-1 ...) go in sprites/palette.css.
 //   2. One entry in THEMES below.
 // A flat theme (crt: false) should also switch off the CRT look in its CSS (see the top of themes/lcars.css),
 // because the saved CRT level still applies for a moment before settings.ts runs.
