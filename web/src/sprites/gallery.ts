@@ -1,35 +1,44 @@
 // Dev-only sprite review page: http://localhost:5173/sprites.html  (not part of the build)
 // Shows every animation live, every frame side by side, and the agent cards at the three
-// sidebar widths with fake agents in every state.
+// sidebar widths with fake agents in every state. ?only=scene: the OPERATOR scene's mascot, crew and room.
 
 import '@fontsource/vt323';
 import '../theme.css';
 import '../agents.css';
+import '../themes.ts';
 import type { Agent, AgentStatus, TabState } from '../../../shared/protocol.ts';
 import { mountAgents } from '../agents.ts';
 import { store } from '../store.ts';
 import { el } from '../ui.ts';
+import type { Activity } from '../sceneplan.ts';
 import { crewAnim, CREW_LOOKS, type CrewKind } from './crew.ts';
 import { anim, Sprite, type Anim } from './engine.ts';
+import { mascotAnim } from './mascot.ts';
 import { operatorAnim, type OperatorState } from './operator.ts';
+import { roomAnim } from './room.ts';
+import { TROUPE_LOOKS, troupeAnim } from './troupe.ts';
 
 const root = document.getElementById('gallery')!;
 const params = new URLSearchParams(location.search);
-const only = params.get('only'); // ?only=crew | crew:scout | operator | cards
+const only = params.get('only'); // ?only=crew | crew:scout | operator | cards | scene
 const PX = Number(params.get('px') ?? 3); // frame scale
 if (params.has('crt')) document.documentElement.dataset.crt = params.get('crt')!;
 
-function setPhosphor(p: string) {
-  document.documentElement.dataset.phosphor = p;
+function setTheme(t: string) {
+  const d = document.documentElement;
+  d.dataset.theme = t;
+  if (t === 'lcars') delete d.dataset.phosphor;
+  else d.dataset.phosphor = t;
   window.dispatchEvent(new Event('themechange'));
 }
 
 const bar = el('div', 'g-bar');
-for (const p of ['amber', 'green']) {
-  const b = el('button', '', p.toUpperCase());
-  b.onclick = () => setPhosphor(p);
+for (const t of ['amber', 'green', 'lcars']) {
+  const b = el('button', '', t.toUpperCase());
+  b.onclick = () => setTheme(t);
   bar.append(b);
 }
+if (params.has('theme')) setTheme(params.get('theme')!);
 root.append(el('h1', '', 'SPRITE REVIEW'), bar);
 
 function strip(label: string, a: Anim, scale: number): HTMLElement {
@@ -54,6 +63,29 @@ if (!only || only === 'operator') {
   const sec = el('section', 'g-sec');
   sec.append(el('h2', '', 'OPERATOR'));
   for (const s of ['idle', 'working', 'alert'] as OperatorState[]) sec.append(strip(s.toUpperCase(), operatorAnim(s), PX));
+  root.append(sec);
+}
+
+if (!only || only === 'scene') {
+  const acts: Activity[] = ['idle', 'think', 'write', 'read', 'edit', 'work', 'shell', 'web', 'wait', 'done', 'error'];
+  const sec = el('section', 'g-sec');
+  sec.append(el('h2', '', 'SCENE: MASCOT'));
+  for (const a of acts) sec.append(strip(a.toUpperCase(), mascotAnim(a), PX));
+  sec.append(el('h2', '', 'SCENE: CREW (WALK, WORK, DONE, FAILED, STOPPED)'));
+  const kinds: [CrewKind, number][] = [['scout', 0], ['architect', 0], ['engineer', 0], ['librarian', 0], ...Array.from({ length: TROUPE_LOOKS }, (_, i) => ['crew', i] as [CrewKind, number])];
+  for (const [kind, look] of kinds) {
+    const row = el('div', 'g-row');
+    row.append(el('div', 'g-label', kind === 'crew' ? `CREW ${look}` : kind.toUpperCase()));
+    for (const m of ['walk', 'work', 'completed', 'failed', 'stopped'] as const) {
+      const s = new Sprite('g-live');
+      s.canvas.style.setProperty('--px', String(PX + 1));
+      s.play(troupeAnim(kind, look, m));
+      row.append(s.canvas);
+    }
+    sec.append(row);
+  }
+  sec.append(el('h2', '', 'SCENE: ROOM'));
+  sec.append(strip('ROOM 131', roomAnim(131), PX));
   root.append(sec);
 }
 

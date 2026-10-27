@@ -81,13 +81,13 @@ const FACE: Record<Face, Part> = {
 ....11....`,
 };
 
-// Body with arms down, 12 x 9. A light cloth, B shade, P trousers: swapped per crew member.
+// Body with arms down, 12 x 9. A light cloth, D shade, P trousers: swapped per crew member.
 const BODY = part`
 ...kkkkkk...
-..kAAAAABk..
-.kAkAAAABkBk
-.kAkAAABBkBk
-.k2kAABBBk1k
+..kAAAAADk..
+.kAkAAAADkDk
+.kAkAAADDkDk
+.k2kAADDDk1k
 ..kkPPPPPkk.
 ...kPPkPPk..
 ...kPPkPPk..
@@ -109,30 +109,30 @@ k32k
 k22k
 kAAk
 kAAk
-kABk
+kADk
 .kk.`;
 const RAISE_R = part`
 .kk.
 k21k
 k11k
-kABk
-kBBk
-kBBk
+kADk
+kDDk
+kDDk
 .kk.`;
 const FRONT = part`
 ...kkkkkk...
-..kAAAAABk..
-.kAAAAAABBk.
-.kAkAABBkBk.
-..k2kBBk1k..
+..kAAAAADk..
+.kAAAAAADDk.
+.kAkAADDkDk.
+..k2kDDk1k..
 ..kkPPPPPkk.`;
 
 const SHADOW = part`
 ..kkkkkkkk..
 .kkkkkkkkkk.`;
 
-type Look = { A: string; B: string; P: string; hair: Layer[]; robot?: boolean };
-const paint = (p: Part, l: Look): Part => p.map((r) => r.replaceAll('A', l.A).replaceAll('B', l.B).replaceAll('P', l.P));
+type Look = { A: string; D: string; P: string; hair: Layer[]; robot?: boolean };
+const paint = (p: Part, l: Look): Part => p.map((r) => r.replaceAll('A', l.A).replaceAll('D', l.D).replaceAll('P', l.P));
 
 // Hair and hats, drawn over the head (x from the sprite's left edge).
 const RANGER = part`
@@ -309,14 +309,14 @@ function robotFace(p: Pose): Part {
 }
 
 const LOOKS: Record<Exclude<CrewKind, 'crew'>, Look> = {
-  scout: { A: 'G', B: 'g', P: 'n', hair: [[RANGER, 1, 1]] },
-  architect: { A: 'B', B: 'b', P: '7', hair: [[SIDE_PART, HX, 3], [GLASSES, HX, HY + 3]] },
-  engineer: { A: '9', B: '8', P: '7', hair: [[ANTENNA, HX + 3, 2]], robot: true },
-  librarian: { A: 'N', B: 'n', P: 'n', hair: [[BUN, HX, 1]] },
+  scout: { A: 'G', D: 'g', P: 'n', hair: [[RANGER, 1, 1]] },
+  architect: { A: 'B', D: 'b', P: '7', hair: [[SIDE_PART, HX, 3], [GLASSES, HX, HY + 3]] },
+  engineer: { A: '9', D: '8', P: '7', hair: [[ANTENNA, HX + 3, 2]], robot: true },
+  librarian: { A: 'N', D: 'n', P: 'n', hair: [[BUN, HX, 1]] },
 };
 const CREW_HAIR: Layer[][] = [[[CAP, HX, 3]], [[BUZZ, HX, 4], [HEADSET, HX, 5]], [[MOHAWK, HX, 1], [BUZZ, HX, 4]]];
 export const TROUPE_LOOKS = CREW_HAIR.length;
-const crewLook = (i: number): Look => ({ A: '6', B: '5', P: '7', hair: CREW_HAIR[i % CREW_HAIR.length] });
+const crewLook = (i: number): Look => ({ A: '6', D: '5', P: '7', hair: CREW_HAIR[i % CREW_HAIR.length] });
 
 function working(kind: CrewKind, l: Look): Anim {
   const hold = (face: Face, front: Layer[], dy = 0): Grid => draw(l, { face, dy, body: FRONT, legs: STRIDE[1], front });
