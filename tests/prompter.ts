@@ -9,7 +9,7 @@ import {
   checkAfter, Cue, cutPieces, Heard, parsePoints, parseTranscript, TICK_LIKELY, TICK_SURE, WINDOW_MS,
   type CueAsk, type CueDecide, type CueVerdict, type PrompterLive,
 } from '../shared/prompter.ts';
-import { askQuestion, askState } from '../server/prompterdecide.ts';
+import { askQuestion, askState, makePrompterDecider, prompterDecider } from '../server/prompterdecide.ts';
 import { engine, handlePrompter, resetPrompter } from '../server/prompter.ts';
 
 let pass = 0;
@@ -238,12 +238,36 @@ eq('transcript: VTT header dropped', parseTranscript('WEBVTT\n\n00:00.000 --> 00
   eq('pieces: all under the limit, joined end to end', pieces.every(([a, b], i) => b - a <= 270 * rate && (i === 0 || pieces[i - 1][1] === a)) && pieces.at(-1)![1] === ch.length, true);
 }
 
-// ---------- the decision model's question
+// ---------- the decision model's question (server/decide.ts faked)
 
 {
   const q = askQuestion({ id: 'p1', text: 'Hardware', note: 'the card I use' });
-  eq('question: yes/no, names the point and its note', [q.type, q.instructions.includes('"Hardware"'), q.instructions.includes('the card I use')], ['noul', true, true]);
-  eq('state: recent speech and covered points', askState({ heard: 'abc', covered: ['Intro'], points: [] }), { recent_speech: 'abc', points_already_covered: ['Intro'] });
+  eq('question: the measured wording, with the note', q, { type: 'noul', instructions: 'Has the speaker started talking about this point, in any words: "Hardware" (the card I use)?' });
+  eq('state: the words alone when nothing is covered', askState({ heard: 'abc', covered: [], points: [] }), 'abc');
+  eq('state: a short line names the covered points', askState({ heard: 'abc', covered: ['Intro', 'Why'] , points: [] }), '(Points already covered: Intro; Why.)\n\nabc');
+  const sent: { state: unknown; questions: Record<string, unknown>; timeoutMs?: number }[] = [];
+  let reply: unknown = null;
+  const ask = (async (state: unknown, questions: Record<string, unknown>, o: { timeoutMs?: number }) => {
+    sent.push({ state, questions, timeoutMs: o.timeoutMs });
+    return reply;
+  }) as unknown as Parameters<typeof makePrompterDecider>[0];
+  const d = makePrompterDecider(ask);
+  const askOf = { heard: 'so the card I use', covered: [], points: [{ id: 'p1', text: 'Intro', note: '' }, { id: 'p3', text: 'Hardware', note: '' }] };
+  reply = { ok: true, answers: { p1: { type: 'noul', p: 0.1, yes: false, confidence: 0.8 }, p3: { type: 'noul', p: 0.9, yes: true, confidence: 0.8 } }, model: 'm', inputTokens: 1, ms: 900 };
+  eq('decider: one call, every open point, p as the answer', [await d(askOf, new AbortController().signal), Object.keys(sent[0].questions), sent[0].timeoutMs], [[{ id: 'p1', yes: 0.1 }, { id: 'p3', yes: 0.9 }], ['p1', 'p3'], 2500]);
+  reply = { ok: false, reason: 'down', error: 'refused', ms: 1 };
+  let msg = '';
+  await d(askOf, new AbortController().signal).catch((e: Error) => (msg = e.message));
+  eq('decider: engine down says how to set it up', msg, 'The decision engine is not running. On the PC: bash scripts/setup-decide-model.sh');
+  eq('decider: the screens learn it is down', prompterDecider().ready, false);
+  reply = { ok: false, reason: 'timeout', error: '', ms: 2500 };
+  await d(askOf, new AbortController().signal).catch((e: Error) => (msg = e.message));
+  eq('decider: a slow answer is an error', msg, 'The decision model took too long.');
+  const prev = process.env.PHOSPHOR_DECIDE;
+  process.env.PHOSPHOR_DECIDE = 'off';
+  eq('decider: PHOSPHOR_DECIDE=off means tick by hand', [prompterDecider().ready, prompterDecider().decide], [false, null]);
+  if (prev === undefined) delete process.env.PHOSPHOR_DECIDE;
+  else process.env.PHOSPHOR_DECIDE = prev;
 }
 
 // ---------- the routes (loopback port, fake decider)
