@@ -144,15 +144,17 @@ const SCENE_PINS: Record<string, [boolean, boolean, string]> = {
   error: [true, false, 'Bash: npm run typecheck'], // and that command failed
 };
 
-function pinScene(pin: string, crew: number): void {
-  const t = cur('demo-1');
+function pinScene(t: TabState, pin: string, crew: number): void {
   const [busy, attention, activity] = SCENE_PINS[pin] ?? SCENE_PINS.idle;
-  const helpers = Array.from({ length: crew }, (_, i) => agent(`s${i}`, NAMES[i % NAMES.length], `Scene helper ${i + 1}`, 'running', 30 + i * 9, { toolUses: 1 }));
-  emit({ t: 'patch', tab: t.meta.id, key: 'agents', value: helpers });
-  emit({ t: 'patch', tab: t.meta.id, key: 'meta', value: { ...t.meta, busy, attention } });
-  emit({ t: 'patch', tab: t.meta.id, key: 'activity', value: activity });
-  if (pin === 'error') emit({ t: 'item', tab: t.meta.id, item: { id: 'scene-err', kind: 'tool', name: 'Bash', detail: 'npm run typecheck', error: true } });
-  if (pin === 'done') setTimeout(() => emit({ t: 'patch', tab: t.meta.id, key: 'meta', value: { ...cur(t.meta.id).meta, busy: false } }), 600);
+  Object.assign(t.meta, { busy, attention });
+  t.activity = activity;
+  t.agents = Array.from({ length: crew }, (_, i) => agent(`s${i}`, NAMES[i % NAMES.length], `Scene helper ${i + 1}`, 'running', 30 + i * 9, { toolUses: 1 }));
+  if (pin === 'error') t.items.push({ id: 'scene-err', kind: 'tool', name: 'Bash', detail: 'npm run typecheck', error: true });
+  if (pin === 'done')
+    setTimeout(() => {
+      apply({ t: 'patch', tab: t.meta.id, key: 'meta', value: { ...cur(t.meta.id).meta, busy: false } });
+      apply({ t: 'patch', tab: t.meta.id, key: 'activity', value: '' });
+    }, 600);
 }
 const TOOLS = ['Read server/tab.ts', 'Grep getSessionMessages', 'Glob **/*.jsonl', 'Read sdk.d.ts'];
 const NAMES = ['Explore', 'general-purpose', 'Plan', 'claude-code-guide', 'scout'];
@@ -167,12 +169,13 @@ export function startDemo(): void {
     { value: IMAGE_MODEL, label: 'Qwen-Image 2.1 (local)', description: "Makes pictures on this PC. Your message is the picture's description.", efforts: [] },
   ]);
   useDemo(onClientEvent);
-  apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2), structuredClone(tab3), structuredClone(tab4), ...projectTabs()] });
-  apply({ t: 'sdk_update', state: { installed: '0.3.296', pending: '0.3.301', claude: '2.1.301', bigger: null, running: false, failed: false } });
-  demoRouterTabs();
   const q = new URLSearchParams(location.search);
   const pin = q.get('scene');
-  if (pin) pinScene(pin, Math.min(9, Number(q.get('crew')) || 0));
+  const first = structuredClone(tab1);
+  if (pin) pinScene(first, pin, Math.min(9, Number(q.get('crew')) || 0));
+  apply({ t: 'hello', tabs: [first, structuredClone(tab2), structuredClone(tab3), structuredClone(tab4), ...projectTabs()] });
+  apply({ t: 'sdk_update', state: { installed: '0.3.296', pending: '0.3.301', claude: '2.1.301', bigger: null, running: false, failed: false } });
+  demoRouterTabs();
 
   let tick = 0;
   let done = 2;

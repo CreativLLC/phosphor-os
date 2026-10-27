@@ -31,7 +31,7 @@ k87777777y7r777k
 .kkkkkkkkkkkkkk.`;
 
 // Faces: 10 x 5 on the screen at (3, 3) of the monitor. 'c' glows in the accent color.
-type Face = 'open' | 'blink' | 'down' | 'up' | 'happy' | 'alert' | 'x' | 'focus' | 'squint';
+type Face = 'open' | 'blink' | 'down' | 'up' | 'right' | 'happy' | 'alert' | 'x' | 'focus' | 'squint';
 const FACE: Record<Face, Part> = {
   open: part`
 C.........
@@ -57,6 +57,12 @@ C..wc..wc.
 ..........
 ......cc..
 ..........`,
+  right: part`
+C.........
+....wc.wc.
+....cc.cc.
+..........
+......cc..`,
   happy: part`
 C.........
 ..c....c..
@@ -248,6 +254,11 @@ k9w9w9w9w9w9w9w98k
 k8787878787878787k
 .kkkkkkkkkkkkkkkk.`;
 const KEY_FLASH = [part`y`, part`..y`, part`.....y`, part`...y`];
+// Code glyphs rising off the keyboard while editing: < / >
+const GLYPHS = part`
+.G...G.G.
+G...G...G
+.G.G...G.`;
 
 const MUG = part`
 kkkkk..
@@ -373,23 +384,44 @@ y.....w
 ...r...`,
 ];
 
-const BINOCULARS = part`
-.kkkkk..kkkkk.
-k99999kk99999k
-k9bBw9kk9bBw9k
-k9bbB9kk9bbB9k
-k79997kk79997k
-.kkkkk..kkkkk.`;
-const GLINT = part`w`;
-// Arms bent up to hold the binoculars, 4 x 7.
-const HOLD_L = part`
-kwwk
-kw9k
-k66k
-k65k
-k65k
-k65k
-.kk.`;
+// A brass telescope on a tripod, aimed up and out (web search), and the arm that steadies it, 4 x 7.
+const SCOPE_TUBE = part`
+..............kkk.
+............kkyBk.
+..........kkyyyBBk
+........kkyyyyrkk.
+......kkyyyyrrk...
+....kkyyyyrrk.....
+..kkyyyyrrk.......
+.kyyyyrrk.........
+k7yyrrkk..........
+k77kk.............
+.kk...............`;
+const TRIPOD = part`
+....kkkkk....
+....knNnk....
+....kknkk....
+.....nNn.....
+.....nNn.....
+....n.N.n....
+....n.N.n....
+....n.N.n....
+....n.N.n....
+...n..N..n...
+...n..N..n...
+...n..N..n...
+...n..N..n...
+..n...N...n..
+..n...N...n..
+..n...N...n..
+..n...N...n..
+.n....N....n.
+.n....N....n.
+.n....N....n.
+.n....N....n.
+n.....N.....n
+n.....n.....n`;
+const LENS_GLINT = part`w`;
 const HOLD_R = part`
 k99k
 k98k
@@ -482,9 +514,9 @@ function seated(face: Face, d: Desk = {}, hands: [number, number] = [0, 0], flas
 const STAND_X = 6;
 const STAND_Y = 4;
 
-function standing(face: Face | Part, arms: Arms = {}, extra: Layer[] = [], dy = 0, flash = false, under: Layer[] = []): Grid {
+function standing(face: Face | Part, arms: Arms = {}, extra: Layer[] = [], dy = 0, flash = false, under: Layer[] = [], x = STAND_X): Grid {
   const f = typeof face === 'string' ? FACE[face] : face;
-  return frame(MASCOT_W, MASCOT_H, [[SHADOW, STAND_X + 1, STAND_Y + 28], ...under, ...figure(STAND_X, STAND_Y - dy, f, arms, flash), ...extra]);
+  return frame(MASCOT_W, MASCOT_H, [[SHADOW, x + 1, STAND_Y + 28], ...under, ...figure(x, STAND_Y - dy, f, arms, flash), ...extra]);
 }
 
 function build(): Record<Activity, Anim> {
@@ -502,10 +534,8 @@ function build(): Record<Activity, Anim> {
       false,
       [[ANVIL, 27, 26], [HOT[up ? 0 : 1], 33, 25]],
     );
-  const spy = (dx: number, glint: boolean) => {
-    const bx = STAND_X + 3 + dx;
-    return standing('open', { l: [HOLD_L, 2 + dx, 11], r: [HOLD_R, 14 + dx, 11] }, [[BINOCULARS, bx, STAND_Y + 8], glint && [GLINT, bx + 10, STAND_Y + 9]]);
-  };
+  const spy = (face: Face, glint: boolean, dy = 0) =>
+    standing(face, { r: [HOLD_R, 16, 11 - dy] }, [[SCOPE_TUBE, 22, 5], glint && [LENS_GLINT, 37, 6]], dy, false, [[TRIPOD, 25, 10], [SHADOW, 22, 31]], 4);
 
   return {
     idle: anim([seated('open', { extra: mug(0) }), seated('open', { extra: mug(1), lights: LIGHTS[3] }), seated('blink', { extra: mug(1), lights: LIGHTS[3] }), seated('open', { extra: mug(0) })], [6, 6, 1, 5]),
@@ -527,10 +557,10 @@ function build(): Record<Activity, Anim> {
       ),
       [8, 2, 2, 8],
     ),
-    edit: anim(typing('focus', 8, true), 1),
+    edit: anim(typing('focus', 8, true, (i) => ({ top: [[GLYPHS, 35, 15 - (i % 4) * 2]] })), 1),
     work: anim(typing('down', 8, false), 1),
     shell: anim([forge(true, 0), forge(true, 0), forge(false, 0), forge(false, 1)], [3, 1, 1, 2]),
-    web: anim([spy(0, true), spy(0, false), spy(1, false), spy(1, false), spy(0, false), spy(-1, false), spy(-1, true)], [3, 3, 2, 3, 2, 2, 3]),
+    web: anim([spy('right', true), spy('right', false), spy('right', false, 1), spy('right', false), spy('squint', false), spy('right', true)], [3, 3, 2, 3, 1, 3]),
     wait: anim(
       [
         standing('alert', { l: [UP_L, 0, 9] }, [[BANG, 27, 1]]),

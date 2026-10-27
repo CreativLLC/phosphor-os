@@ -79,6 +79,7 @@ class OperatorCard {
       else this.title.value = this.tab?.meta.title ?? '';
     };
     this.el.append(head, this.scene.el, foot);
+    this.scene.onTimer = () => this.update(this.tab);
   }
 
   update(tab: TabState | undefined): void {
@@ -92,11 +93,12 @@ class OperatorCard {
     if (document.activeElement !== this.title) this.title.value = meta?.title ?? '';
     setText(this.tag, !tab ? '[NO TAB]' : state === 'alert' ? '[NEEDS YOU]' : state === 'working' ? '[WORKING]' : '[STANDBY]');
     setText(this.stats, tab ? `TURN ${tab.stats.turns} · ${tab.stats.toolCalls} TOOLS` : '');
+    const act = this.scene.activity;
     const line = !tab
       ? 'Open a tab to begin'
       : state === 'alert'
         ? 'Waiting for your answer'
-        : tab.activity || (state === 'working' ? 'Thinking' : 'Awaiting orders');
+        : tab.activity || (state === 'working' ? 'Thinking' : act === 'done' ? 'Done' : act === 'error' ? 'Stopped on an error' : 'Awaiting orders');
     setText(this.line, line);
     setTitle(this.line, line);
     this.tick();

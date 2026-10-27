@@ -33,6 +33,8 @@ export class Scene {
   private px = 2;
   private timer = 0;
   activity: Activity = 'idle';
+  // Runs when the scene moves on by itself (a walk ends, the cheer is over); agents.ts redraws the card with it.
+  onTimer = (): void => this.update(this.tab);
 
   constructor() {
     this.el.setAttribute('aria-hidden', 'true');
@@ -81,7 +83,7 @@ export class Scene {
     clearTimeout(this.timer);
     const end = id && this.ended.get(id);
     const next = Math.min(nextCrewChange(this.walkers), ...this.walkers.filter((w) => w.phase === 'leave').map((w) => w.since + POSE_MS).filter((t) => t > now), end && now - end.at < DONE_MS ? end.at + DONE_MS : Infinity);
-    if (next < Infinity) this.timer = window.setTimeout(() => this.update(this.tab), Math.max(16, next - now + 5));
+    if (next < Infinity) this.timer = window.setTimeout(() => this.onTimer(), Math.max(16, next - now + 5));
   }
 
   private sync(now: number): void {

@@ -46,10 +46,6 @@ kkk
 krk
 kkk`];
 
-const PIPE = part`
-k9k
-k8k
-k7k`;
 
 function rows(w: number): Part {
   const out: string[] = [];
@@ -94,7 +90,7 @@ export function roomAnim(w: number): Anim {
           [STARS[i], wx + 3, 9],
         ];
   const frames = [0, 1].map((i) =>
-    frame(w, ROOM_H, [[base, 0, 0], ...win(i), [PIPE, w - 4, 1], [PIPE, w - 4, 4], [LAMP[i], wx > 0 ? wx + 8 : w - 12, 1]]),
+    frame(w, ROOM_H, [[base, 0, 0], ...win(i), [LAMP[i], wx > 0 ? wx + 8 : w - 12, 1]]),
   );
   a = anim(frames, [16, 16]);
   cache.set(w, a);

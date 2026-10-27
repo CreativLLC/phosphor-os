@@ -142,6 +142,7 @@ html[data-crt='off'] .crew .sprite {
 .scene {
   --px: 2;
   position: relative;
+  box-sizing: content-box;
   height: 72px;
   overflow: hidden;
   border: 1px solid var(--line, var(--ph-dim));
