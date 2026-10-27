@@ -164,6 +164,53 @@ FAILED: the answer was cancelled or broke. Tests: `npx tsx tests/localmeter.ts`.
 A local image model can share the card with these: [IMAGE-MODEL.md](IMAGE-MODEL.md). While it paints, the chat models
 are unloaded; the next local chat message loads its model again.
 
+## Decision model (CPU, always on, optional)
+
+A decision model ("system one") does not write text: it answers typed questions about a text in one pass. `noul` is
+yes/no (a probability), `choice` picks one of named options (a probability each), `score` a level. All engines share
+one API, `POST /v1/systemone` (TypeSafe's format): llama.cpp's `llama-server` 0.6.0 and newer serves decision models
+with it, and TypeSafe's Jev is the same API in the cloud. `server/decide.ts` is the one client (settings below);
+AUTO asks it before Haiku, and other parts (the talk prompter) can ask it about once a second.
+
+Set up: `bash scripts/setup-decide-model.sh` (`--dry-run` first, `--undo` to remove; the model file stays). It downloads
+Kev-0.8B (ggml-org GGUF, Q8_0, 0.8 GB, Apache-2.0) to `~/models` and installs `phosphor-decide.service` (user):
+`llama-server` on 127.0.0.1:8090, CPU only (the unit hides every GPU, so it never takes VRAM from the big models),
+12 threads, 16 slots (up to 16 questions of one call run side by side and share the reading of the state), at most
+3 GB of RAM, asleep after 15 minutes idle. Then restart the Phosphor-OS server when idle.
+
+| Setting (`.env`) | Default | What |
+|---|---|---|
+| `PHOSPHOR_DECIDE_URL` | `http://127.0.0.1:8090` | the engine (a base URL or the full `/v1/systemone` URL) |
+| `PHOSPHOR_DECIDE_KEY` | none | Bearer key, for a cloud engine |
+| `PHOSPHOR_DECIDE_MODEL` | none | the request's `model` (the cloud needs one: `jev-latest`) |
+| `PHOSPHOR_DECIDE` | on | `off`: never asked (AUTO uses Haiku only) |
+
+Measured on one PC (12-core desktop CPU, 16 threads unless noted, the GPU hidden), warm, with
+`npx tsx scripts/decide-bench.ts` on a hand-made set (`tests/fixtures/decide-cases.ts`): 24 AUTO messages with the
+model and thinking level a person would pick, and 20 talk chunks of about 20 seconds with an 8-point list each (which
+points has the speaker started on, by idea, not words; 30 of the 160 are started).
+
+| Model (GGUF) | File | RAM awake | 1 choice, ~330-token state | 10 noul, same state | AUTO: model / level right (of 24) | Talk points right (of 160), started found (of 30), false alarms |
+|---|---|---|---|---|---|---|
+| Julia-1, Q8_0 (8 threads) | 0.17 GB | 1.3 GB | 0.09 s | 0.6 s | 9 / 7 | 78, 16, 68 |
+| Laya, Q8_0 (8 threads) | 0.45 GB | 0.8 GB | 0.58 s | 4.0 s | 15 / 12 | 139, 15, 6 |
+| **Kev-0.8B, Q8_0** | 0.81 GB | 2.1 GB (0.2 asleep) | 0.95 s | 1.2 s | 16 / 14 | 148, 27, 9 |
+| Kev-0.8B, Q4_0 (made here from Q8_0) | 0.50 GB | 1.9 GB | 0.62 s | 0.81 s | 12 / 11 | 136, 26, 20 |
+| Kev-4B, Q4_K_M | 3.0 GB | 8.2 GB | 3.2 s | 4.1 s | 14 / 13 | 156, 26, 0 |
+| Clef-Flash 9B, Q3_K_S (bartowski) | 4.8 GB | 6.5 GB | 6.3 s | 17.5 s | 19 / 18 | 154, 26, 2 |
+| Claude Haiku (AUTO before this) | cloud | | 3.0 s (median) | | 19 / 18 | |
+
+The real calls: AUTO's three questions (about 490 tokens in all) take 0.87 to 0.93 s on Kev-0.8B with 12 to 20
+threads (1.3 s with 8); 15 noul questions on one 20-second chunk 1.1 to 1.2 s (1.5 s with 8). Waking from sleep
+adds about 0.7 s. So on this CPU nothing small answers "well under a second": Kev-0.8B is the one that comes close,
+in 2 GB. Faster CPU quants cost accuracy (the Q4_0 row). Clef-Flash and Kev-4B judge better but are many seconds on a
+CPU; on a GPU they would answer in a fraction of a second, but there they compete with the chat models for VRAM.
+TypeSafe's Jev in the cloud (about $0.042 per million input tokens: an AUTO pick is about 500 tokens, the prompter at
+one 1,600-token call a second about $0.25 an hour) is the other way; not measured here (no key).
+
+Not usable here: Tev1 (Together AI) GGUFs either need their own engine (`dohnuts.cpp`) or are the plain text model
+without a decision head; Bespoke-Nimble-9B is non-commercial (CC BY-NC) and 9B (as slow as Clef-Flash on a CPU).
+
 ## Traps
 
 - Claude Code assumes a 200k window; `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set to the local context so it compacts in time.
