@@ -74,7 +74,8 @@ export function mountPrompter(btn: HTMLElement | null): void {
       pendingBack--;
       return;
     }
-    if (document.body.classList.contains('cue-stage')) setStage(false);
+    const st = window.history.state as { phosphorCue?: boolean; cueStage?: boolean } | null;
+    if (st?.cueStage !== true) setStage(false, true); // back leaves FULL first
     if (isOpen && (window.history.state as { phosphorCue?: boolean } | null)?.phosphorCue !== true) closePrompter(true);
   });
   document.addEventListener('fullscreenchange', () => {
@@ -87,8 +88,6 @@ export function mountPrompter(btn: HTMLElement | null): void {
     if (start === 'stage') setStage(true);
   }
 }
-
-export const isPrompterOpen = (): boolean => isOpen;
 
 export function openPrompter(v?: View): void {
   build();
@@ -119,7 +118,7 @@ export function openPrompter(v?: View): void {
 // Leaving the screen does not stop a recording: the mic keeps feeding and the session goes on.
 export function closePrompter(fromPop = false): void {
   if (!isOpen || !rootEl) return;
-  setStage(false);
+  setStage(false, fromPop);
   isOpen = false;
   rootEl.hidden = true;
   document.body.classList.remove('prompter-open');
@@ -160,7 +159,7 @@ const running = () => !!live && !live.endedAt;
 
 async function poll(): Promise<void> {
   clearTimeout(pollTimer);
-  if (!isOpen && !mic) return;
+  if (!isOpen) return;
   if (polling) return;
   polling = true;
   try {
@@ -179,7 +178,7 @@ async function poll(): Promise<void> {
     polling = false;
   }
   render();
-  if (isOpen || mic) pollTimer = window.setTimeout(() => void poll(), running() || view === 'run' ? POLL_RUN_MS : POLL_IDLE_MS);
+  if (isOpen) pollTimer = window.setTimeout(() => void poll(), running() || view === 'run' ? POLL_RUN_MS : POLL_IDLE_MS);
 }
 
 // ------------------------------------------------------------ frame
@@ -530,10 +529,20 @@ function pointRow(p: CuePoint, cls: string): HTMLElement {
   return li;
 }
 
-// FULL: only the points on screen (the whole browser screen when it can; on phones the page itself).
-function setStage(on: boolean): void {
+// FULL: only the points on screen (the whole browser screen when it can; on phones the page itself). It has its own
+// back-button entry, so a phone's back leaves FULL, not PROMPTER.
+function setStage(on: boolean, fromPop = false): void {
   if (document.body.classList.contains('cue-stage') === on) return;
   document.body.classList.toggle('cue-stage', on);
+  try {
+    if (on) window.history.pushState({ phosphorCue: true, cueStage: true }, '');
+    else if (!fromPop && (window.history.state as { cueStage?: boolean } | null)?.cueStage) {
+      pendingBack++;
+      window.history.back();
+    }
+  } catch {
+    /* fine without the back button */
+  }
   if (on && document.fullscreenEnabled && !document.fullscreenElement) document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
   if (!on && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
   shownV = -1;
