@@ -35,10 +35,18 @@ export const APPS: Record<LabApp, { name: string; account: string; bin: string }
   local: { name: 'Claude Code', account: 'This PC', bin: 'claude' },
 };
 
-const CLAUDE_MODELS: [string, string][] = [
-  ['claude-opus-5-5', 'Claude Opus 5.5'],
-  ['claude-sonnet-5-5', 'Claude Sonnet 5.5'],
-  ['claude-haiku-5-5', 'Claude Haiku 5.5'],
+// The current three, then older ones to test against (the owner, 2026-10-26: older models against local hardware).
+// Their effort levels: Opus 4.5 has only low to high, Sonnet 4.5 none (the API refuses effort there). Sonnet 4.5
+// retires on 2026-11-30: then take it out.
+const ALL_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const CLAUDE_MODELS: [string, string, string[]][] = [
+  ['claude-opus-5-5', 'Claude Opus 5.5', ALL_EFFORTS],
+  ['claude-sonnet-5-5', 'Claude Sonnet 5.5', ALL_EFFORTS],
+  ['claude-haiku-5-5', 'Claude Haiku 5.5', ALL_EFFORTS],
+  ['claude-opus-5', 'Claude Opus 5', ALL_EFFORTS],
+  ['claude-sonnet-5', 'Claude Sonnet 5', ALL_EFFORTS],
+  ['claude-opus-4-5', 'Claude Opus 4.5', ['low', 'medium', 'high']],
+  ['claude-sonnet-4-5', 'Claude Sonnet 4.5', []],
 ];
 
 // ------------------------------------------------------------ small file helpers (shared with lab.ts)
@@ -124,7 +132,7 @@ async function catalog(): Promise<Record<string, { name?: string; models?: Recor
 // The effort scale, lowest first ('none' = no thinking at all is never picked). A model that lacks the asked level
 // gets the nearest one it has, the higher one on a tie; the result says which level it really ran at.
 const SCALE = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']; // claude --effort; the local relay turns them into a local model's own
+const CLAUDE_EFFORTS = ALL_EFFORTS; // claude --effort; the local relay turns them into a local model's own
 const onScale = (xs: unknown[]) => [...new Set(xs.map(String).filter((x) => SCALE.includes(x)))].sort((a, b) => SCALE.indexOf(a) - SCALE.indexOf(b));
 
 export function nearestEffort(asked: string, has: string[]): string {
@@ -162,7 +170,7 @@ export async function labModels(): Promise<LabModelsResponse> {
   const claude = await findBin('claude');
   if (!claude) notes.push('Claude Code is not installed.');
   else if (!claudeToken) notes.push('Claude: run `claude setup-token`, put the token in .env as PHOSPHOR_LAB_CLAUDE_TOKEN, restart.');
-  else for (const [id, name] of CLAUDE_MODELS) add('claude', id, name, CLAUDE_EFFORTS);
+  else for (const [id, name, efforts] of CLAUDE_MODELS) add('claude', id, name, efforts);
 
   const codexAuth = join(process.env.CODEX_HOME || join(HOME, '.codex'), 'auth.json');
   if (!(await findBin('codex'))) notes.push('Codex is not installed.');
