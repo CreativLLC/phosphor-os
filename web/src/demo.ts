@@ -126,7 +126,34 @@ const tab4: TabState = {
   activity: '',
 };
 
-const ACTIVITIES = ['Read: server/index.ts', 'Grep: listSessions', 'Edit: server/tabs.ts', 'Bash: npm run typecheck', 'Writing a reply', 'Thinking'];
+const ACTIVITIES = ['Read: server/index.ts', 'Grep: listSessions', 'Edit: server/tabs.ts', 'Bash: npm run typecheck', 'WebSearch: pixel art palettes', 'Writing a reply', 'Thinking'];
+
+// ?demo=1&scene=<activity> pins the first chat's OPERATOR scene (sceneplan.ts) to one activity, for a look or a
+// screenshot; &crew=N puts N helpers to work in it. [busy, needs you, activity line]
+const SCENE_PINS: Record<string, [boolean, boolean, string]> = {
+  idle: [false, false, ''],
+  think: [true, false, 'Thinking'],
+  write: [true, false, 'Writing a reply'],
+  read: [true, false, 'Read: server/index.ts'],
+  edit: [true, false, 'Edit: server/tabs.ts'],
+  work: [true, false, 'mcp__phosphor__ask_local: Summarize the notes'],
+  shell: [true, false, 'Bash: npm run build'],
+  web: [true, false, 'WebSearch: pixel art palettes'],
+  wait: [true, true, 'Waiting for your answer'],
+  done: [true, false, 'Writing a reply'], // the turn ends a moment later
+  error: [true, false, 'Bash: npm run typecheck'], // and that command failed
+};
+
+function pinScene(pin: string, crew: number): void {
+  const t = cur('demo-1');
+  const [busy, attention, activity] = SCENE_PINS[pin] ?? SCENE_PINS.idle;
+  const helpers = Array.from({ length: crew }, (_, i) => agent(`s${i}`, NAMES[i % NAMES.length], `Scene helper ${i + 1}`, 'running', 30 + i * 9, { toolUses: 1 }));
+  emit({ t: 'patch', tab: t.meta.id, key: 'agents', value: helpers });
+  emit({ t: 'patch', tab: t.meta.id, key: 'meta', value: { ...t.meta, busy, attention } });
+  emit({ t: 'patch', tab: t.meta.id, key: 'activity', value: activity });
+  if (pin === 'error') emit({ t: 'item', tab: t.meta.id, item: { id: 'scene-err', kind: 'tool', name: 'Bash', detail: 'npm run typecheck', error: true } });
+  if (pin === 'done') setTimeout(() => emit({ t: 'patch', tab: t.meta.id, key: 'meta', value: { ...cur(t.meta.id).meta, busy: false } }), 600);
+}
 const TOOLS = ['Read server/tab.ts', 'Grep getSessionMessages', 'Glob **/*.jsonl', 'Read sdk.d.ts'];
 const NAMES = ['Explore', 'general-purpose', 'Plan', 'claude-code-guide', 'scout'];
 
@@ -143,6 +170,9 @@ export function startDemo(): void {
   apply({ t: 'hello', tabs: [structuredClone(tab1), structuredClone(tab2), structuredClone(tab3), structuredClone(tab4), ...projectTabs()] });
   apply({ t: 'sdk_update', state: { installed: '0.3.296', pending: '0.3.301', claude: '2.1.301', bigger: null, running: false, failed: false } });
   demoRouterTabs();
+  const q = new URLSearchParams(location.search);
+  const pin = q.get('scene');
+  if (pin) pinScene(pin, Math.min(9, Number(q.get('crew')) || 0));
 
   let tick = 0;
   let done = 2;
@@ -155,7 +185,7 @@ export function startDemo(): void {
       emit({ t: 'patch', tab: 'demo-3', key: 'activity', value: `Painting ${step}/8` });
     }
     const t = 'demo-1';
-    if (!store.tabs.has(t)) return;
+    if (!store.tabs.has(t) || pin) return;
     emit({ t: 'patch', tab: t, key: 'activity', value: ACTIVITIES[tick % ACTIVITIES.length] });
     // Every 8 ticks: waiting for you (4 ticks), working (3 ticks), idle (1 tick).
     const phase = tick % 8;

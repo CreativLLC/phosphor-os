@@ -1,18 +1,16 @@
 import type { Agent, AgentStatus, TabState } from '../../shared/protocol.ts';
-import { CREW_LOOKS, crewAnim, crewKind, nameHash } from './sprites/crew.ts';
-import { Sprite } from './sprites/engine.ts';
-import { operatorAnim, type OperatorState } from './sprites/operator.ts';
 import { send } from './net.ts';
+import { Scene } from './scene.ts';
 import { store, watchActive, working } from './store.ts';
 import { mountIdeas } from './ideas.ts';
 import { mountToday } from './today.ts';
 import { el, fmtDuration } from './ui.ts';
 
-// Left sidebar (owner: art team): the main operator card on top, then one animated card per
-// subagent. Running crew first (oldest first, so cards don't jump), then crew that finished in the
-// last RECENT_MS, newest first. Older finished crew leave the panel (owner's ask 2026-10-21: the chat
-// already shows each helper's work), except a failed or stopped one: it stays until the next turn starts.
-// Cards are keyed by tab + agent id and updated in place; canvases are never rebuilt.
+// Left sidebar (owner: art team): the operator card on top (a pixel scene, scene.ts, where the mascot acts out
+// what Claude does and running helpers work beside it), then one compact row per subagent. Running crew first
+// (oldest first, so rows don't jump), then crew that finished in the last RECENT_MS, newest first. Older finished
+// crew leave the panel (owner's ask 2026-10-21: the chat already shows each helper's work), except a failed or
+// stopped one: it stays until the next turn starts. Rows are keyed by tab + agent id and updated in place.
 
 const RECENT_MS = 2 * 60_000;
 const TAG: Record<AgentStatus, string> = { running: 'RUNNING', completed: 'DONE', failed: 'FAILED', stopped: 'STOPPED' };
@@ -49,23 +47,24 @@ function heading(label: string): { el: HTMLElement; extra: HTMLElement } {
 
 class OperatorCard {
   readonly el = el('section', 'op');
-  private sprite = new Sprite('sprite');
-  private name = el('div', 'op-name', 'CLAUDE');
-  private tag = el('div', 'op-tag');
-  private time = el('div', 'op-stat');
-  private tools = el('div', 'op-stat');
-  private crew = el('div', 'op-stat');
-  private turns = el('div', 'op-stat');
+  private scene = new Scene();
+  private name = el('span', 'op-name', 'CLAUDE');
+  private tag = el('span', 'op-tag');
+  private time = el('span', 'op-time');
   private line = el('div', 'op-line');
   // The chat's name, editable here; HISTORY shows the same name later.
   private title = el('input', 'op-title');
   private tab?: TabState;
 
-  constructor() {
+  // The OPERATOR heading's right side: turn and tool counts, so the card stays short (the crew count is CREW's).
+  private stats: HTMLElement;
+
+  constructor(stats: HTMLElement) {
+    this.stats = stats;
     const head = el('div', 'op-head');
-    head.append(this.name, this.tag);
-    const info = el('div', 'op-info');
-    info.append(this.time, this.tools, this.crew, this.turns);
+    head.append(this.name, this.title, this.tag);
+    const foot = el('div', 'op-foot');
+    foot.append(this.line, this.time);
     this.title.maxLength = 60;
     this.title.placeholder = 'Name this chat';
     this.title.title = 'Chat name: click to rename, Enter to save';
@@ -79,23 +78,20 @@ class OperatorCard {
       if (this.tab && t && t !== this.tab.meta.title) send({ t: 'rename_tab', tab: this.tab.meta.id, title: t });
       else this.title.value = this.tab?.meta.title ?? '';
     };
-    this.el.append(head, this.title, this.sprite.canvas, info, this.line);
+    this.el.append(head, this.scene.el, foot);
   }
 
   update(tab: TabState | undefined): void {
     this.tab = tab;
     const meta = tab?.meta;
-    const state: OperatorState = meta?.attention ? 'alert' : meta?.busy ? 'working' : 'idle';
-    this.sprite.play(operatorAnim(state));
+    const state = meta?.attention ? 'alert' : meta?.busy ? 'working' : 'idle';
+    this.scene.update(tab);
     this.el.dataset.state = state;
     setText(this.name, tab?.info.agent === 'gemini' ? 'GEMINI' : 'CLAUDE');
     this.title.disabled = !tab;
     if (document.activeElement !== this.title) this.title.value = meta?.title ?? '';
     setText(this.tag, !tab ? '[NO TAB]' : state === 'alert' ? '[NEEDS YOU]' : state === 'working' ? '[WORKING]' : '[STANDBY]');
-    const agents = tab?.agents ?? [];
-    setText(this.tools, `TOOLS ${tab?.stats.toolCalls ?? 0}`);
-    setText(this.crew, `CREW ${agents.filter((a) => a.status === 'running').length}/${agents.length}`);
-    setText(this.turns, `TURN ${tab?.stats.turns ?? 0}`);
+    setText(this.stats, tab ? `TURN ${tab.stats.turns} · ${tab.stats.toolCalls} TOOLS` : '');
     const line = !tab
       ? 'Open a tab to begin'
       : state === 'alert'
@@ -109,36 +105,31 @@ class OperatorCard {
   tick(): void {
     const s = this.tab?.stats;
     const live = this.tab?.meta.busy && s?.turnStartedAt;
-    setText(this.time, live ? `T+ ${fmtDuration(Date.now() - s.turnStartedAt!)}` : s?.lastTurnMs ? `LAST ${fmtDuration(s.lastTurnMs)}` : 'T+ 0s');
+    setText(this.time, live ? `T+ ${fmtDuration(Date.now() - s.turnStartedAt!)}` : s?.lastTurnMs ? `LAST ${fmtDuration(s.lastTurnMs)}` : '');
   }
 }
 
 // ---------- Crew card ----------
 
+// One compact row: the job, its time; below, type, status and counts. The scene shows the helper itself.
 class AgentCard {
   readonly el = el('article', 'agent');
-  private sprite = new Sprite('sprite');
   private name = el('div', 'agent-name');
-  private tag = el('div', 'agent-tag');
-  private time = el('div', 'agent-stat');
-  private tools = el('div', 'agent-stat');
-  private tokens = el('div', 'agent-stat');
-  private model = el('div', 'agent-stat');
-  private desc = el('div', 'agent-desc');
+  private time = el('div', 'agent-time');
+  private type = el('span', 'agent-type');
+  private tag = el('span', 'agent-tag');
+  private tools = el('span', 'agent-stat');
+  private tokens = el('span', 'agent-stat');
+  private model = el('span', 'agent-stat');
   private line = el('div', 'agent-line');
-  private kind: ReturnType<typeof crewKind>;
-  private look: number;
   private agent: Agent;
 
   constructor(a: Agent) {
     this.agent = a;
-    this.kind = crewKind(a.name);
-    this.look = nameHash(a.name) % CREW_LOOKS;
-    this.el.dataset.kind = this.kind;
-    const info = el('div', 'agent-info');
-    info.append(this.tag, this.time, this.tools, this.tokens, this.model);
-    this.el.append(this.name, this.sprite.canvas, info, this.desc, this.line);
-    // Tap (or Enter) to show the full description and status line.
+    const meta = el('div', 'agent-meta');
+    meta.append(this.type, this.tag, this.tools, this.tokens, this.model);
+    this.el.append(this.name, this.time, meta, this.line);
+    // Tap (or Enter) to show the full job and status line.
     this.el.tabIndex = 0;
     this.el.onclick = () => this.el.classList.toggle('open');
     this.el.onkeydown = (e) => {
@@ -147,7 +138,7 @@ class AgentCard {
         this.el.classList.toggle('open');
       }
     };
-    // Entrance and status flashes play once; moving the card in the list must not replay them.
+    // Entrance and status flashes play once; moving the row in the list must not replay them.
     this.el.classList.add('fresh');
     this.el.addEventListener('animationend', (e) => {
       if (e.target === this.el && !e.pseudoElement) this.el.classList.remove('fresh', 'flash');
@@ -158,7 +149,6 @@ class AgentCard {
   update(a: Agent, first = false): void {
     const prev = this.agent.status;
     this.agent = a;
-    this.sprite.play(crewAnim(this.kind, this.look, a.status));
     if (!first && prev !== a.status) {
       this.el.classList.remove('flash');
       void this.el.offsetWidth; // restart the animation
@@ -167,12 +157,12 @@ class AgentCard {
     for (const s of Object.keys(TAG)) this.el.classList.toggle(`st-${s}`, s === a.status);
     // Heading = the job Claude gave it ("Plan usage meter"); the agent type (mostly "general-purpose") goes below.
     setText(this.name, (a.description || a.name).toUpperCase());
-    setText(this.tag, `[${TAG[a.status]}]`);
+    setText(this.type, a.name);
+    setText(this.tag, TAG[a.status]);
     setText(this.tools, `${a.toolUses} TOOL${a.toolUses === 1 ? '' : 'S'}`);
     setText(this.tokens, `${fmtTokens(a.tokens)} TOK`);
     setText(this.model, modelLabel(a.model));
     setTitle(this.model, a.model ?? '');
-    setText(this.desc, a.description ? `Type: ${a.name}` : '');
     const line = a.summary || a.lastTool || (a.status === 'running' ? 'Starting up' : '');
     setText(this.line, line);
     setTitle(this.name, a.description);
@@ -190,7 +180,6 @@ class AgentCard {
   }
 
   dispose(): void {
-    this.sprite.dispose();
     this.el.remove();
   }
 }
@@ -207,7 +196,7 @@ function modelLabel(id?: string): string {
 export function mountAgents(root: HTMLElement): void {
   root.classList.add('crew');
   const opHead = heading('OPERATOR');
-  const op = new OperatorCard();
+  const op = new OperatorCard(opHead.extra);
   const crewHead = heading('CREW');
   const list = el('div', 'crew-list');
   const empty = el('div', 'crew-empty');

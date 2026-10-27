@@ -1414,13 +1414,6 @@ html[data-theme='lcars'] {
     filter: none;
   }
 
-  /* The side column takes some width: a size smaller on big screens, so the stats beside it fit. */
-  @media (min-width: 1500px) {
-    .op {
-      --px: 4;
-    }
-  }
-
   .op,
   .agent {
     border: 0;
