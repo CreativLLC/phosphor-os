@@ -34,6 +34,7 @@ import { addLauncherCommands, removeLauncherCommands } from './launcher.ts';
 import { mountDocs } from './docs.ts';
 import { keywordsCommands, mountKeywords } from './keywords.ts';
 import { labCommands, mountLab } from './lab.ts';
+import { mountPrompter, prompterCommands } from './prompter.ts';
 import { showChat } from './programs.ts';
 import { mountMcp } from './mcp.ts';
 import { mountUsage } from './usage.ts';
@@ -98,6 +99,9 @@ addLauncherCommands(labCommands);
 // KEYWORDS: YouTube keyword check (keywords.ts). Each of DOCS, LAB and KEYWORDS closes the others.
 mountKeywords($('btn-keys'));
 addLauncherCommands(keywordsCommands);
+// PROMPTER: punch list for recording a video (prompter.ts). Closes DOCS, LAB and KEYWORDS, and they close it.
+mountPrompter($('btn-prompter'));
+addLauncherCommands(prompterCommands);
 
 // Fullscreen button (Fullscreen API). Hidden where the browser can't, or when the app already runs fullscreen.
 const fullBtn = $('btn-full');
