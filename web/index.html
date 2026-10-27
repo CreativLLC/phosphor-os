@@ -37,6 +37,12 @@
         if (s.crt === 'off' || s.crt === 'low') d.dataset.crt = s.crt;
         if (s.size === 's' || s.size === 'l') d.dataset.size = s.size;
         if (s.accent === 'pink' || s.accent === 'off') d.dataset.accent = s.accent;
+        // Hidden side panels (src/focus.ts).
+        try {
+          var v = JSON.parse(localStorage.getItem('phosphor.view') || '{}') || {};
+          if (v.left) d.classList.add('hide-left');
+          if (v.right) d.classList.add('hide-right');
+        } catch (e) {}
         try {
           if (!sessionStorage.getItem('phosphor.booted') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
             d.classList.add('booting');
@@ -62,6 +68,11 @@
         <button id="btn-history" type="button">HISTORY</button>
         <button id="btn-mcp" type="button" title="MCP servers: tools from other apps Claude can use (/mcp)">MCP</button>
         <button id="btn-station" type="button" title="STATION: your servers and self-hosted apps">STATION</button>
+        <div class="view-tools only-wide" role="group" aria-label="Panels">
+          <button id="btn-hide-left" type="button" title="Show or hide the left panel (Ctrl+[)">LEFT</button>
+          <button id="btn-focus" type="button" title="Focus: hide both panels, for recording (Ctrl+\)">FOCUS</button>
+          <button id="btn-hide-right" type="button" title="Show or hide the right panel (Ctrl+])">RIGHT</button>
+        </div>
         <button id="btn-full" class="only-wide" type="button" title="Fullscreen (same as F11)">FULL</button>
         <button id="btn-right" class="only-narrow" type="button">INFO</button>
         <div id="settings"></div>

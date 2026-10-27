@@ -1,6 +1,7 @@
 import '@fontsource/vt323';
 import './theme.css';
 import './layout.css';
+import './focus.css';
 import './chat.css';
 import './agents.css';
 import './today.css';
@@ -22,6 +23,7 @@ import { mountCleanup } from './cleanup.ts';
 import { startCrt } from './crt.ts';
 import { insertIntoChat, mountChat } from './chat.ts';
 import { startDemo } from './demo.ts';
+import { mountFocus, showRight } from './focus.ts';
 import { funCommands, startFun } from './fun.ts';
 import { mountFiles } from './files.ts';
 import { mountHistory } from './history.ts';
@@ -107,6 +109,9 @@ fullBtn.onclick = () => {
 document.addEventListener('fullscreenchange', syncFull);
 syncFull();
 
+// FOCUS: LEFT / FOCUS / RIGHT buttons hide the side panels (focus.ts).
+mountFocus({ left: $<HTMLButtonElement>('btn-hide-left'), right: $<HTMLButtonElement>('btn-hide-right'), focus: $<HTMLButtonElement>('btn-focus') });
+
 // Right panel: MISSION / FILES switch.
 const panels = document.querySelectorAll<HTMLButtonElement>('.panel-switch button');
 for (const b of panels) {
@@ -122,6 +127,7 @@ for (const b of panels) {
 // Right-panel views open the panel too (it slides in on phones).
 const showPanel = (view: string) => {
   document.querySelector<HTMLButtonElement>(`.panel-switch button[data-view="${view}"]`)?.click();
+  showRight();
   if (getComputedStyle($('btn-right')).display !== 'none') document.body.classList.add('show-right');
 };
 addLauncherCommands([
