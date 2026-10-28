@@ -245,6 +245,25 @@
 /* The local AI model in video memory, lined up under the VRAM gauge's text. */
 .sys-gpu-model {
   margin: -2px 0 6px calc(4.5ch + 8px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sys-gpu-model-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sys-unload {
+  flex: 0 0 auto;
+  min-width: 9ch;
+}
+
+.sys-gpu-model[hidden] {
+  display: none;
 }
 
 /* Local model speed: live while a request runs, dim when idle. */

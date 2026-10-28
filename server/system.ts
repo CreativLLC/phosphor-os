@@ -7,7 +7,9 @@ import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { appFolder } from '../shared/names.mjs';
 import type { SystemDisk, SystemResponse, SystemVolume } from '../shared/protocol.ts';
+import { localModel } from './config.ts';
 import { painting } from './imagegen.ts';
+import { freeChatModels } from './localrelay.ts';
 import { localSpeed } from './localmeter.ts';
 
 // SYS panel. GET /api/system -> SystemResponse, POST /api/system/volume { pct?, muted? } (shared/protocol.ts).
@@ -94,6 +96,15 @@ export async function handleSystem(req: IncomingMessage, res: ServerResponse, ur
       return json(res, { error: e instanceof Error ? e.message : String(e) }, 503);
     }
   }
+  // UNLOAD in SYS: every local chat model gives its video memory back (the router's models and a model on its own
+  // server, e.g. Strata, whose running answer finishes first). The next local request loads one again.
+  if (url.pathname === '/api/system/unload') {
+    if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return json(res, { error: 'POST JSON only.' }, 405);
+    await freeChatModels();
+    models.at = 0;
+    await scanModels();
+    return json(res, { ok: true, gpuModels: models.names });
+  }
   if (url.pathname !== '/api/system' || req.method !== 'GET') return json(res, { error: 'not found' }, 404);
   watch();
   if (firstRead) await Promise.race([firstRead, new Promise((r) => setTimeout(r, WAIT_MS))]);
@@ -116,7 +127,20 @@ async function scanModels(): Promise<void> {
     if (!LLAMA.test(basename(argv[0] ?? ''))) continue;
     const i = argv.findIndex((a) => a === '--model' || a === '-m');
     const file = i >= 0 ? argv[i + 1] : argv.find((a) => a.startsWith('--model='))?.slice(8);
-    if (file) names.push(basename(file).replace(/\.gguf$/i, ''));
+    // A CPU-only server (the decision model: --device none / -ngl 0) holds no video memory.
+    const cpuOnly = argv.some((a, j) => (a === '--device' && argv[j + 1] === 'none') || ((a === '-ngl' || a === '--n-gpu-layers' || a === '--gpu-layers') && argv[j + 1] === '0'));
+    if (file && !cpuOnly) names.push(basename(file).replace(/\.gguf$/i, ''));
+  }
+  // A model on its own server (Strata) is not a llama.cpp process: its /health says whether it is loaded.
+  for (const m of localModel?.models ?? []) {
+    const own = localModel?.urls[m.name];
+    if (!own) continue;
+    try {
+      const r = await fetch(new URL('/health', own), { signal: AbortSignal.timeout(1500) });
+      if (r.ok && ((await r.json()) as { loaded?: boolean }).loaded) names.push(m.label);
+    } catch {
+      /* down: holds nothing */
+    }
   }
   models.names = [...new Set(names)];
 }

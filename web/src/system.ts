@@ -1,5 +1,5 @@
 import type { LocalSpeed, LocalSpeedRun, SystemResponse, SystemVolume } from '../../shared/protocol.ts';
-import { el } from './ui.ts';
+import { confirmBox, el } from './ui.ts';
 import { segBar } from './usage.ts';
 
 // SYS panel (right column, next to MISSION and FILES): clock, uptime, CPU / RAM / GPU / VRAM gauges with a
@@ -256,6 +256,27 @@ export function mountSystem(root: HTMLElement): void {
   const gpu = gauge('GPU', 'gpu');
   const vram = gauge('VRAM', 'vram');
   const gpuModel = el('div', 'sys-d sys-gpu-model');
+  const gpuModelText = el('span', 'sys-gpu-model-name');
+  // UNLOAD: the local chat models give the video memory back (POST /api/system/unload); the next local chat loads one.
+  const unload = el('button', 'sys-unload', 'UNLOAD');
+  unload.type = 'button';
+  unload.title = 'Free the video memory: unload the local AI models. The next local chat loads one again.';
+  unload.addEventListener('click', async () => {
+    if (data?.localSpeed?.live && !(await confirmBox('UNLOAD NOW?', 'A local model is answering right now. A Strata answer finishes first; another model stops mid-answer.', 'UNLOAD'))) return;
+    unload.disabled = true;
+    unload.textContent = 'UNLOADING…';
+    try {
+      const r = await fetch('/api/system/unload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const j = (await r.json()) as { gpuModels?: string[] };
+      if (data && r.ok) data = { ...data, gpuModels: j.gpuModels ?? [] };
+    } catch {
+      /* the next poll shows the state */
+    }
+    unload.disabled = false;
+    unload.textContent = 'UNLOAD';
+    render();
+  });
+  gpuModel.append(gpuModelText, unload);
   const speed = localSpeedBlock();
   const paint = el('div', 'sys-d sys-llm-1 sys-paint');
   paint.hidden = true;
@@ -328,7 +349,7 @@ export function mountSystem(root: HTMLElement): void {
     gpu.root.hidden = vram.root.hidden = !d.gpu;
     const loaded = d.gpuModels ?? [];
     gpuModel.hidden = !d.gpu || !loaded.length;
-    gpuModel.textContent = `LOADED: ${loaded.join(', ')}`;
+    gpuModelText.textContent = `LOADED: ${loaded.join(', ')}`;
     gpuModel.title = 'Local AI model in video memory';
     speed.show(d.localSpeed);
     // The local image model at work: PAINTING 12/30 steps · 14 s (+ how many wait).

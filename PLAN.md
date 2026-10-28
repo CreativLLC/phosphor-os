@@ -93,6 +93,7 @@ This file is the build record: what exists and how it works. Install and use: `R
   `volume.exe` (Core Audio), built by `scripts/setup-shell.ps1`; run it once after updating. Temperatures: `--` on
   Windows (need admin). Linux (Omarchy): /proc, /sys (amdgpu, hwmon temps), wpctl; fixture-tested only.
   `sysSummary()` in system.ts gives "CPU 12% RAM 41% GPU 3%" for a top bar or launcher (not placed yet).
+  LOADED + UNLOAD (2026-10-28): under VRAM, the local models in video memory (llama.cpp processes, minus CPU-only ones such as the decision model, plus a loaded Strata by its `/health`) and an UNLOAD button: `POST /api/system/unload` runs `freeChatModels` (server/localrelay.ts: the router's models and any own-server model; a running Strata answer finishes first). It asks first while a local answer runs. The next local request loads a model again.
 - **Fun pack** (built 2026-10-12; SETTINGS rows in their own section, saved per device in `phosphor.fun`):
   SCREENSAVER (moved out of the app 2026-10-14: it is the whole computer's screensaver now, a standalone page
   `saver.ts` built to `web/dist/saver/` and shown by the pack, docs/OMARCHY.md row 9; there is no in-app trigger or
