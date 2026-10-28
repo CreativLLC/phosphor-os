@@ -8,6 +8,7 @@
 // Turned on by { "id": "phosphor-os.screensaver" } in plugins[] of ~/.config/omarchy/shell.json.
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Services.Mpris
 import Quickshell.Wayland
@@ -93,7 +94,15 @@ Scope {
 
   // An HDMI monitor that loses its signal can drop off and come back a moment later (a hotplug); Hyprland then
   // turns it on again, so the second monitor showed the screensaver all night (2026-10-22). While the displays
-  // should be off, any one that is on goes off again.
+  // should be off, a monitor that comes back goes off at once (the MSI on HDMI did it every minute or so, 163 times
+  // in one evening, and each time it lit up until the 30 s check: 2026-10-27), and the check catches anything else.
+  Connections {
+    target: Hyprland
+    enabled: root.screensOff
+    function onRawEvent(event) {
+      if (event && String(event.name).indexOf("monitoradded") === 0) Quickshell.execDetached(["omarchy-brightness-display", "off"])
+    }
+  }
   Timer {
     running: root.screensOff
     interval: 30 * 1000

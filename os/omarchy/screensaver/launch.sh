@@ -65,8 +65,9 @@ warps true
 for m in $(hyprctl monitors -j | jq -r '.[].name'); do
   focus "$m"
   have=$(windows)
-  # The first run starts the browser; the next ones hand their window to it (same profile folder).
-  "$browser" --user-data-dir="$profile" --class="$class" --ozone-platform=wayland --kiosk "file://$page#$hash" \
+  # The first run starts the browser; the next ones hand their window to it (same profile folder). --new-window:
+  # without it the browser took the second one as a tab, so the middle monitor got no screensaver (2026-10-27).
+  "$browser" --user-data-dir="$profile" --class="$class" --ozone-platform=wayland --new-window --kiosk "file://$page#$hash" \
     --no-first-run --no-default-browser-check --disable-extensions --disable-sync --disable-background-networking \
     --disable-component-update --noerrdialogs --disable-session-crashed-bubble >/dev/null 2>&1 &
   [[ -n $pid ]] || pid=$!
