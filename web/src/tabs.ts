@@ -53,10 +53,17 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       const label = el('button', 'tab-label');
       label.type = 'button';
       label.append(el('span', 'tab-dot'), el('span', 'tab-title', m.title));
-      label.onclick = () => store.setActive(m.id);
+      // A second click on the open lead of a project folds or shows its other chats, like the project label (after a
+      // moment, so a double click still renames without folding).
+      label.onclick = (e: MouseEvent) => {
+        if (!(m.project?.main && m.id === store.active)) return store.setActive(m.id);
+        if (e.detail > 1) return clearTimeout(foldSoon);
+        foldSoon = setTimeout(() => toggleFold(m.project!.id), 250);
+      };
       // prompt() does nothing in the desktop app, so the name is edited in the tab itself.
       label.ondblclick = label.oncontextmenu = (e: MouseEvent) => {
         e.preventDefault();
+        clearTimeout(foldSoon);
         editing = true;
         editInline(label, m.title, (title) => send({ t: 'rename_tab', tab: m.id, title }), () => {
           editing = false;
@@ -68,6 +75,18 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       b.classList.toggle('lead', !!m.project?.main);
       b.append(label, close);
       return b;
+  };
+  // Fold or show a project's chats in the tab bar. Folding while one of them is open moves to the lead, which stays.
+  let foldSoon: ReturnType<typeof setTimeout> | undefined;
+  const toggleFold = (id: string) => {
+    if (!folded.delete(id)) {
+      folded.add(id);
+      const cur = store.current()?.meta.project;
+      const lead = [...store.tabs.values()].find((x) => x.meta.project?.id === id && x.meta.project.main);
+      if (cur?.id === id && !cur.main && lead) store.setActive(lead.meta.id);
+    }
+    saveFolded();
+    render();
   };
   const render = () => {
     if (editing) return;
@@ -87,13 +106,14 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       const members = all
         .filter((x) => x.meta.project?.id === p.id)
         .sort((a, b) => Number(!!b.meta.project?.main) - Number(!!a.meta.project?.main) || a.meta.createdAt - b.meta.createdAt);
-      const fold = folded.has(p.id) && !members.some((x) => x.meta.id === store.active && !x.meta.project?.main);
-      const busy = members.filter((x) => working(x)).length;
-      const head = button(`${fold ? '▸' : '▾'} ${p.name}${fold && members.length > 1 ? ` (${members.length - 1})` : ''}`, () => {
-        if (!folded.delete(p.id)) folded.add(p.id);
+      // A folded project opens again when one of its hidden chats becomes the open one (THREADS, a notice).
+      if (folded.has(p.id) && members.some((x) => x.meta.id === store.active && !x.meta.project?.main)) {
+        folded.delete(p.id);
         saveFolded();
-        render();
-      }, 'tab-group-label');
+      }
+      const fold = folded.has(p.id);
+      const busy = members.filter((x) => working(x)).length;
+      const head = button(`${fold ? '▸' : '▾'} ${p.name}${fold && members.length > 1 ? ` (${members.length - 1})` : ''}`, () => toggleFold(p.id), 'tab-group-label');
       head.title = `Project "${p.name}": ${members.length - 1} thread${members.length === 2 ? '' : 's'}${busy ? `, ${busy} working` : ''}. Click to ${fold ? 'show' : 'fold'} the threads.`;
       head.classList.toggle('busy', busy > 0);
       const group = el('div', 'tab-group');
