@@ -137,25 +137,43 @@ function projectRow(p: ProjectSummary, tabs: TabState[], done: () => void, reloa
   top.append(el('span', 'h-title', p.name), el('span', 'project-state', state));
   const count = tabs.length + p.closed.length;
   const meta = [count ? `${count} CHAT${count === 1 ? '' : 'S'}` : 'NO SAVED CHATS', ...(tabs.length && p.closed.length ? [`${tabs.length} OPEN`] : []), timeAgo(p.lastActive)].join(' · ');
-  const names = [...tabs.map((t) => ({ title: t.meta.title, main: !!t.meta.project?.main, open: true })), ...p.closed.map((c) => ({ ...c, open: false }))];
-  const chats = el('span', 'project-chats');
-  // The lead is often named like the project: then just LEAD. Closed chats are dim.
-  names.forEach((c, i) => {
-    if (i) chats.append(' · ');
-    chats.append(el('span', c.open ? 'open' : 'closed', c.main ? (c.title === p.name ? 'LEAD' : `LEAD: ${c.title}`) : c.title));
-  });
-  main.append(top, el('span', 'h-meta', meta), chats);
+  // Every chat of the project, one button each: an open one is shown, a closed one comes back alone (the HISTORY
+  // resume path puts it back in the project). The lead is often named like the project: then just LEAD. Closed: dim.
+  const names = [
+    ...tabs.map((t) => ({ title: t.meta.title, main: !!t.meta.project?.main, go: () => store.setActive(t.meta.id), open: true })),
+    ...p.closed.map((c) => ({ title: c.title, main: c.main, go: () => send({ t: 'open_session', sessionId: c.sessionId, cwd: '', title: c.title, req: newReq() }), open: false })),
+  ];
+  const chats = el('div', 'project-chats');
+  for (const c of names) {
+    const b = button(c.main ? (c.title === p.name ? 'LEAD' : `LEAD: ${c.title}`) : c.title, () => {
+      done();
+      c.go();
+    }, c.open ? 'open' : 'closed');
+    b.title = c.open ? 'Go to this chat' : 'Closed: open this chat again, in the project';
+    chats.append(b);
+  }
+  main.append(top, el('span', 'h-meta', meta));
   main.title = tabs.length ? 'Go to this project' : `Reopen this project${p.closed.length ? ` (${p.closed.length} chat${p.closed.length === 1 ? '' : 's'})` : ': a new lead chat on its memory file'}`;
   main.onclick = () => {
     done();
     openProject(p, tabs);
   };
   row.append(main);
+  if (names.length) row.append(chats);
   const tools = el('div', 'project-tools');
   if (tabs.length) {
     const add = button('+ CHAT', () => newProjectChat(p));
     add.title = 'A new chat in this project';
     tools.append(add);
+    // The lead was closed while other chats stay open: bring it back (or a new one on the same memory).
+    if (!tabs.some((t) => t.meta.project?.main)) {
+      const lead = button('OPEN LEAD', () => {
+        done();
+        send({ t: 'open_lead', project: p.id, req: newReq() });
+      });
+      lead.title = "The project's lead chat: it sees and steers the other chats";
+      tools.append(lead);
+    }
   }
   if (p.closed.length) {
     const back = button(`REOPEN ${p.closed.length} CLOSED`, () => {

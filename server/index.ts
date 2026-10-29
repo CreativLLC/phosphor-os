@@ -70,6 +70,7 @@ wss.on('connection', (ws) => {
     if (ev.t === 'open_project') return typeof ev.project === 'string' ? void tabs.openProject(ev.project, ev.req) : undefined;
     if (ev.t === 'open_session') return void tabs.open(String(ev.sessionId), String(ev.cwd), String(ev.title ?? ''), ev.req);
     if (ev.t === 'close_tab') return tabs.close(ev.tab);
+    if (ev.t === 'open_lead') return typeof ev.project === 'string' ? void tabs.openLead(ev.project, ev.req) : undefined;
     if (ev.t === 'move_to_project') return typeof ev.tab === 'string' && (typeof ev.project === 'string' || ev.project === null) ? tabs.moveToProject(ev.tab, ev.project) : undefined;
     if (ev.t === 'reorder_tabs') return Array.isArray(ev.ids) ? tabs.reorder(ev.ids.slice(0, 500).map(String)) : undefined;
     if (ev.t === 'reopen_closed') return void tabs.reopenClosed(ev.req);

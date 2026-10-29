@@ -45,13 +45,30 @@
   color: var(--ph);
 }
 
+/* Every chat of the project: a small button each (open ones bright, closed ones dim). */
 .project-chats {
-  color: var(--ph-dim);
-  font-size: var(--fs-sm);
-  white-space: normal;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 8px 6px 22px;
 }
 
-.project-chats .open {
+.project-chats button {
+  min-height: 26px;
+  padding: 1px 8px;
+  font-size: var(--fs-sm);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-chats button.closed {
+  color: var(--ph-dim);
+  border-style: dashed;
+}
+
+.project-chats button.open {
   color: var(--ph);
 }
 

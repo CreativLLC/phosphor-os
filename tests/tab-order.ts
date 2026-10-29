@@ -78,6 +78,18 @@ check('take out: D is a plain chat again', !tabs.list().find((t) => t.meta.title
 tabs.moveToProject(id('D'), 'gone1');
 check('move: an unknown project is refused', !tabs.list().find((t) => t.meta.title === 'D')!.meta.project && events.at(-1)?.t === 'toast');
 
+// OPEN LEAD: the lead closed while a chat of the project stays; it comes back as the lead, in the project.
+tabs.moveToProject(id('D'), pid);
+const leadSession = 's-e';
+tabs.close(lead.meta.id);
+check('the lead is closed, D stays in the project', !tabs.list().some((t) => t.meta.project?.main) && tabs.list().some((t) => t.meta.project?.id === pid));
+await tabs.openLead(pid, 'r10');
+const back = tabs.list().find((t) => t.meta.project?.main);
+check('OPEN LEAD: the closed lead comes back as the lead', back?.meta.sessionId === leadSession && back.meta.project?.id === pid);
+const n2 = tabs.list().length;
+await tabs.openLead(pid);
+check('OPEN LEAD again: the open lead is shown, nothing new opens', tabs.list().length === n2 && events.at(-1)?.t === 'tab');
+
 rmSync(root, { recursive: true, force: true });
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

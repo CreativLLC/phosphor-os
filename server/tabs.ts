@@ -131,6 +131,22 @@ export class Tabs {
     for (const c of ProjectBook.reopenOrder(f.closed)) await this.open(c.sessionId, config.cwd, c.title, c === focus ? req : undefined);
   }
 
+  // OPEN LEAD (tab menu, PROJECTS): the project's lead chat. Open: shown. Closed: back (the HISTORY resume path). None
+  // kept (closed before PROJECTS kept them): a new lead on the same memory file.
+  async openLead(id: string, req?: string): Promise<void> {
+    const open = this.members(id).find((t) => t.project?.main);
+    if (open) return this.emit({ t: 'tab', tab: open.state, req });
+    const f = this.book.read(id);
+    const name = f?.name ?? this.members(id)[0]?.project?.name;
+    if (!name) return;
+    const lead = f?.closed.find((c) => c.main);
+    if (lead) return this.open(lead.sessionId, config.cwd, lead.title, req);
+    const tab = this.make({ cwd: config.cwd, title: name, auto: true, project: { id, name, main: true } });
+    this.save();
+    this.emit({ t: 'tab', tab: tab.state, req });
+    void tab.prefillInfo();
+  }
+
   projectList(): ProjectsResponse {
     const paths = transcriptPaths();
     const changed = (sid: string) => {

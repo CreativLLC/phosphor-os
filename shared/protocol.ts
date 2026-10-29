@@ -188,6 +188,7 @@ export type ClientEvent =
   | { t: 'open_session'; sessionId: string; cwd: string; title: string; req?: string }
   | { t: 'close_tab'; tab: string }
   | { t: 'rename_tab'; tab: string; title: string }
+  | { t: 'open_lead'; project: string; req?: string } // the project's lead chat: to it, back from closed, or a new one
   | { t: 'move_to_project'; tab: string; project: string | null } // tab menu: into a project, or out of one (null)
   | { t: 'reorder_tabs'; ids: string[] } // the new order of every tab (a drag in the tab bar)
   | { t: 'reopen_closed'; req?: string } // Ctrl+Shift+T: the tab closed last comes back, in its old place

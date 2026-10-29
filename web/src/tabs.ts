@@ -225,15 +225,19 @@ async function tabMenu(t: TabState, rename: () => void): Promise<void> {
   } catch {
     /* no list: RENAME still works */
   }
-  type Pick = { do: 'rename' } | { do: 'move'; project: string | null };
+  // The lead of this chat's project is closed: bring it back from here.
+  const leadGone = here && ![...store.tabs.values()].some((x) => x.meta.project?.id === here.id && x.meta.project.main);
+  type Pick = { do: 'rename' } | { do: 'lead' } | { do: 'move'; project: string | null };
   const pick = await pickBox<Pick>(t.meta.title.toUpperCase(), [
     { label: 'RENAME', value: { do: 'rename' } },
-    ...(here ? [{ label: `TAKE OUT OF ${here.name.toUpperCase()}`, value: { do: 'move' as const, project: null } }] : []),
+    ...(leadGone ? [{ label: 'OPEN THE LEAD CHAT', value: { do: 'lead' as const } }] : []),
+    ...(here ? [{ label: `REMOVE FROM PROJECT (${here.name.toUpperCase()})`, value: { do: 'move' as const, project: null } }] : []),
     ...(projects.length ? [{ head: here ? 'MOVE TO PROJECT' : 'ADD TO PROJECT' }] : []),
     ...projects.map((p) => ({ label: p.name, value: { do: 'move' as const, project: p.id } })),
   ]);
   if (!pick) return;
   if (pick.do === 'rename') rename();
+  else if (pick.do === 'lead') send({ t: 'open_lead', project: here!.id, req: newReq() });
   else send({ t: 'move_to_project', tab: t.meta.id, project: pick.project });
 }
 
