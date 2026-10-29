@@ -163,6 +163,18 @@ const server = createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/api/projects') return sendJson(res, tabs.projectList());
+    const ren = /^\/api\/projects\/([\w-]+)\/rename$/.exec(url.pathname);
+    if (ren) {
+      if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return sendJson(res, { error: 'POST JSON only.' }, 405);
+      let name: unknown;
+      try {
+        name = JSON.parse(await readBody(req)).name;
+      } catch {
+        /* bad JSON */
+      }
+      const r = typeof name === 'string' ? tabs.renameProject(ren[1], name) : { error: 'Send { name }.' };
+      return sendJson(res, r, 'error' in r ? 400 : 200);
+    }
     const del = /^\/api\/projects\/([\w-]+)\/delete$/.exec(url.pathname);
     if (del) {
       // JSON only: a form on another page cannot send it.

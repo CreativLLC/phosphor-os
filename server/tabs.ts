@@ -230,6 +230,21 @@ export class Tabs {
     for (const t of this.members(id)) t.refreshPrompt();
   }
 
+  // RENAME in the project panel: project.json, and every open chat of the project (its project label and prompt). A
+  // lead named like the project (it starts that way) takes the new name too.
+  renameProject(id: string, raw: string): { ok: true; name: string } | { error: string } {
+    const name = raw.replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!name) return { error: 'Give it a name.' };
+    const old = this.book.read(id)?.name;
+    if (!old || !this.book.rename(id, name)) return { error: 'No such project.' };
+    for (const t of this.members(id)) {
+      if (t.project?.main && t.state.meta.title === old) t.rename(name);
+      t.setProjectName(name);
+    }
+    this.save();
+    return { ok: true, name };
+  }
+
   // DELETE a project: its open chats close (refused while one works or waits for the user), then its folder goes
   // to data/projects-deleted/ (ProjectBook.remove). The chats themselves stay in HISTORY.
   deleteProject(id: string): { ok: true } | { error: string } {

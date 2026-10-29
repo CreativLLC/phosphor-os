@@ -83,6 +83,14 @@ export class ProjectBook {
     return [...closed].sort((a, b) => Number(b.main) - Number(a.main) || a.createdAt - b.createdAt);
   }
 
+  // The project panel's RENAME: the name in project.json (made now for an older project that had only PROJECT.md).
+  rename(id: string, name: string): boolean {
+    const f = this.read(id);
+    if (!f) return false;
+    this.write(id, { ...f, name });
+    return true;
+  }
+
   // DELETE in PROJECTS: the project's folder (memory file, closed-chat list) moves to data/projects-deleted/, so a
   // slip can be undone by moving it back. Its chats stay in HISTORY as plain chats.
   remove(id: string): boolean {

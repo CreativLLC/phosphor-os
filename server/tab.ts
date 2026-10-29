@@ -795,6 +795,16 @@ export class Tab {
     return true;
   }
 
+  // The project was renamed: the name is in the chat's project prompt, so Claude's process starts again when idle.
+  setProjectName(name: string): void {
+    const p = this.state.meta.project;
+    if (!p) return;
+    this.state.meta.project = { ...p, name };
+    this.patch('meta');
+    this.onPersist?.();
+    this.refreshPrompt();
+  }
+
   rename(title: string): void {
     this.state.meta.title = title.slice(0, 60);
     this.autoTitle = false;
