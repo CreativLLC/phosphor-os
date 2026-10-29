@@ -879,6 +879,16 @@ export class Tab {
     w.resolve(answers ? { behavior: 'allow', updatedInput: { ...w.input, answers } } : { behavior: 'deny', message: 'The user skipped the question.' });
   }
 
+  // The system prompt of a new Claude process. A project chat's prompt changes inside a session (INSTRUCTIONS, FILES,
+  // a rename, joining the project), but Claude Code records a session's system prompt on its first request and resends
+  // that record on every resume, ignoring a new append (seen 2026-10-28 with Claude Code 2.1.312). So project chats
+  // render it fresh (snapshot: false); other chats keep the record (a stable prompt cache).
+  private systemPrompt() {
+    const p = this.project;
+    const append = MISSION_HELP + (this.delegates ? DELEGATE_HELP : '') + (p ? projectHelp(p) + projectFilesNote(p, Tab.projects?.files?.(p.id) ?? []) + projectRules(p, Tab.projects?.instructions?.(p.id) ?? '') : '');
+    return { type: 'preset' as const, preset: 'claude_code' as const, append, ...(p ? { snapshot: false } : {}) };
+  }
+
   private start(): void {
     this.promptStale = false; // this process reads the current INSTRUCTIONS
     const local = localChoice(this.pendingModel);
@@ -897,7 +907,7 @@ export class Tab {
         cwd: this.state.info.cwd,
         additionalDirectories: [UPLOADS_DIR, ...(this.project ? [projectDir(this.project.id)] : [])], // attachments; a project's memory
         resume: this.state.meta.sessionId,
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP + (this.delegates ? DELEGATE_HELP : '') + (this.project ? projectHelp(this.project) + projectFilesNote(this.project, Tab.projects?.files?.(this.project.id) ?? []) + projectRules(this.project, Tab.projects?.instructions?.(this.project.id) ?? '') : '') },
+        systemPrompt: this.systemPrompt(),
         includePartialMessages: true,
         agentProgressSummaries: true,
         permissionMode: sdkMode(this.pendingMode, this.pendingModel),

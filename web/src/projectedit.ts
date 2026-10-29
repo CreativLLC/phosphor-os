@@ -106,6 +106,7 @@ async function editProjectDoc(p: { id: string; name: string }, kind: ProjectDocK
       note.hidden = false;
       return;
     }
+    if (newer?.version === next.version) return; // already said (rebuilt every poll, a click on LOAD IT could miss)
     newer = next;
     const loadBtn = button('LOAD IT', () => newer && take(newer), 'proj-edit-load');
     loadBtn.title = 'Show the new version. Your unsaved edits here go.';

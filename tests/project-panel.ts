@@ -206,6 +206,41 @@ tabs.setProjectDefaults('p1', { model: 'local:gone-model', mode: 'acceptEdits' }
 tabs.createInProject('p1', 'Gone');
 check('a default model that is gone now falls back to AUTO (the mode stays)', newest().autoModel && !newest().model && newest().mode === 'acceptEdits');
 
+
+// ---- A closed project chat coming back (PROJECTS, HISTORY, Ctrl+Shift+T) keeps its own model, THINK level and mode
+// (kept when it closed); one closed before they were kept starts with the project's DEFAULTS. A plain chat: AUTO.
+tabs.setProjectDefaults('p1', { model: 'sonnet', effort: 'low', mode: 'plan' });
+proto.saveSessionTitle = () => {}; // closing names the session file: not in a test
+tabs.createInProject('p1', 'Kept');
+const kept = newest();
+kept.state.meta.sessionId = 's-kept';
+await kept.setModel('opus');
+await kept.setEffort('high');
+await kept.setMode('acceptEdits');
+tabs.close(kept.id);
+check('closing keeps its settings', JSON.stringify(book.read('p1')?.closed.find((x) => x.sessionId === 's-kept')?.settings) === JSON.stringify({ model: 'opus', effort: 'high', mode: 'acceptEdits', auto: false }));
+await tabs.open('s-kept', '/tmp', 'Kept');
+const keptBack = newest();
+check('it comes back with them', keptBack.project?.id === 'p1' && keptBack.model === 'opus' && keptBack.effort === 'high' && keptBack.mode === 'acceptEdits' && !keptBack.autoModel, JSON.stringify(keptBack.state.info));
+book.noteClosed(ref, { sessionId: 's-closed', title: 'Old art', main: false, createdAt: 1 });
+await tabs.open('s-closed', '/tmp', 'Old art');
+const back = newest();
+check('none kept: it comes back with the defaults', back.project?.id === 'p1' && back.model === 'sonnet' && back.effort === 'low' && back.mode === 'plan' && !back.autoModel, JSON.stringify(back.state.info));
+await tabs.open('s-plain', '/tmp', 'Plain old');
+check('a plain chat comes back on AUTO', !newest().project && newest().autoModel && !newest().model);
+
+// ---- The system prompt: a project chat's is rendered fresh on every start (Claude Code would resend the one it
+// recorded first, so new INSTRUCTIONS, FILES or a rename would never reach a resumed chat); a plain chat's is recorded.
+type Prompt = { append: string; snapshot?: boolean };
+const promptOf = (t: Tab) => (t as unknown as { systemPrompt(): Prompt }).systemPrompt();
+tabs.saveProjectDoc('p1', 'instructions', 'Say PINEAPPLE.');
+const pp = promptOf(back);
+check('project chat: snapshot off, the instructions in it', pp.snapshot === false && pp.append.includes('<project-instructions>\nSay PINEAPPLE.'));
+tabs.saveProjectDoc('p1', 'instructions', 'Say MANGO.');
+check('project chat: the next start has the new text', promptOf(back).append.includes('Say MANGO.') && !promptOf(back).append.includes('PINEAPPLE'));
+const plainPrompt = promptOf(newest());
+check('plain chat: the prompt is recorded (no snapshot key), no project text', !('snapshot' in plainPrompt) && !plainPrompt.append.includes('project-instructions'));
+
 rmSync(root, { recursive: true, force: true });
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

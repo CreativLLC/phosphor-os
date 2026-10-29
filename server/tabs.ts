@@ -195,7 +195,12 @@ export class Tabs {
     // A closed project chat goes back into its project (from PROJECTS or HISTORY).
     const back = this.book.take(sessionId);
     const project = back && joinRef(back.id, back.name, this.members(back.id).find((t) => t.project?.main), back.chat);
-    const tab = this.make({ cwd: config.cwd, title: title.slice(0, 60) || 'Old chat', ...(gemini ? { gemini } : { sessionId, auto: true }), ...(project ? { project } : {}) });
+    // A closed project chat comes back with its own settings (kept at close); one closed before they were kept, or whose
+    // model is gone now, with the project's DEFAULTS.
+    const kept = back?.chat.settings;
+    const own = kept && cleanDefaults(kept); // project.json can be edited by hand: known values only
+    const settings = kept && own && (own.model || kept.auto) && !modelGone(own.model) ? { ...own, auto: kept.auto === true } : project ? this.startWith(project.id) : {};
+    const tab = this.make({ cwd: config.cwd, title: title.slice(0, 60) || 'Old chat', ...(gemini ? { gemini } : { sessionId, auto: true, ...settings }), ...(project ? { project } : {}) });
     try {
       await tab.loadHistory();
     } catch (e) {
@@ -304,7 +309,8 @@ export class Tabs {
     if (!tab) return;
     const p = tab.project;
     const sessionId = tab.geminiId ? `gemini:${tab.geminiId}` : tab.state.meta.sessionId;
-    if (p && sessionId) this.book.noteClosed(p, { sessionId, title: tab.state.meta.title, main: p.main, ...(p.own ? { own: true } : {}), createdAt: tab.state.meta.createdAt });
+    const settings = tab.geminiId ? undefined : { model: tab.model, effort: tab.effort, mode: tab.mode, auto: tab.autoModel };
+    if (p && sessionId) this.book.noteClosed(p, { sessionId, title: tab.state.meta.title, main: p.main, ...(p.own ? { own: true } : {}), createdAt: tab.state.meta.createdAt, ...(settings ? { settings } : {}) });
     if (sessionId) this.closedStack = [...this.closedStack.filter((c) => c.sessionId !== sessionId), { sessionId, title: tab.state.meta.title, cwd: tab.state.info.cwd, index: [...this.tabs.keys()].indexOf(id) }].slice(-30);
     tab.close();
     this.tabs.delete(id);
