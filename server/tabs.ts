@@ -2,7 +2,7 @@ import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type InstructionsSaved, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import type { ThreadModel } from './delegate.ts';
 import { chatText, geminiModels, savedGeminiChats } from './geminitab.ts';
@@ -27,7 +27,7 @@ export class Tabs {
   constructor(private emit: (ev: ServerEvent) => void) {
     Tab.models = () => this.models();
     Tab.knownModels = () => this.modelsLoaded;
-    Tab.projects = { thread: (lead, title, brief, run) => this.thread(lead, title, brief, run), members: (id) => this.members(id) };
+    Tab.projects = { thread: (lead, title, brief, run) => this.thread(lead, title, brief, run), members: (id) => this.members(id), instructions: (id) => this.book.instructions(id).text };
     // AUTO-CONTINUE: a chat stopped by the usage limit goes on once the limit resets (Tab.resumeIfDue).
     // A short interval, not one long timer: survives sleep, and the time can move.
     setInterval(() => {
@@ -205,6 +205,16 @@ export class Tabs {
     const lead = this.members(project).find((t) => t.project?.main);
     tab.setProject(joinRef(project, name, lead, { main: false, own: true }));
     this.save();
+  }
+
+  // INSTRUCTIONS saved: each open chat of the project restarts its Claude process when idle (next message, same
+  // session), so the new text is in its system prompt; a working chat waits until it is done.
+  setInstructions(id: string, text: string): InstructionsSaved {
+    const r = this.book.setInstructions(id, text);
+    if ('error' in r) return r;
+    const chats = this.members(id);
+    const waiting = chats.filter((t) => t.refreshPrompt()).length;
+    return { ...r, chats: chats.length, waiting };
   }
 
   // DELETE a project: its open chats close (refused while one works or waits for the user), then its folder goes

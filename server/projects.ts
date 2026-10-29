@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ProjectRef, ProjectSummary, TabState } from '../shared/protocol.ts';
+import { INSTRUCTIONS_MAX, type ProjectInstructions, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR } from './config.ts';
 
 // PROJECTS (owner's ask 2026-10-27): a project outlives its tabs. data/projects/<id>/project.json keeps its name and
@@ -87,6 +87,32 @@ export class ProjectBook {
     mkdirSync(bin, { recursive: true });
     renameSync(join(this.root, id), join(bin, `${id}-${Date.now()}`));
     return true;
+  }
+
+  // INSTRUCTIONS (owner's ask 2026-10-28): the user's own rules for the project, like a CLAUDE.md for it. Every chat
+  // of the project gets them in its system prompt (Tab.start). Empty text removes the file.
+  instructions(id: string): ProjectInstructions {
+    const file = this.instructionsFile(id);
+    try {
+      return file && lstatSync(file).isFile() ? { text: readFileSync(file, 'utf8').slice(0, INSTRUCTIONS_MAX), updatedAt: statSync(file).mtimeMs } : { text: '', updatedAt: 0 };
+    } catch {
+      return { text: '', updatedAt: 0 };
+    }
+  }
+
+  setInstructions(id: string, text: string): { ok: true; updatedAt: number } | { error: string } {
+    const file = this.instructionsFile(id);
+    if (!file || !existsSync(join(this.root, id))) return { error: 'No such project.' };
+    if (lstatSync(file, { throwIfNoEntry: false })?.isFile() === false) return { error: 'INSTRUCTIONS.md is not a plain file.' }; // a link put there
+    text = text.replace(/\r\n/g, '\n').trim();
+    if (Buffer.byteLength(text) > INSTRUCTIONS_MAX) return { error: `Too long: at most ${INSTRUCTIONS_MAX / 1000} KB.` };
+    if (text) writeFileSync(file, text + '\n');
+    else rmSync(file, { force: true });
+    return { ok: true, updatedAt: text ? statSync(file).mtimeMs : Date.now() };
+  }
+
+  private instructionsFile(id: string): string | undefined {
+    return /^[\w-]+$/.test(id) ? join(this.root, id, 'INSTRUCTIONS.md') : undefined;
   }
 
   private ids(): string[] {

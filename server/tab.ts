@@ -96,6 +96,12 @@ export function projectHelp(p: ProjectRef): string {
     : `\n\nThis chat is a THREAD of the project "${p.name}" in Phosphor-OS, ${p.own ? 'opened by the user (the lead chat can see and steer it)' : "started by the project's lead chat"}. The shared memory is ${memory}: read it first, and add your decisions and results to it. Messages that start with "${LEAD_PREFIX.trim()}" come from the lead. ${p.own ? 'Call report_to_project (a short summary to the lead) only when the user asks you to tell the lead.' : 'When your job is done, or you need a decision you cannot make, call report_to_project with a short summary.'}`;
 }
 
+// The user's INSTRUCTIONS for a project (ProjectBook.instructions), after projectHelp, marked as the user's own.
+export function projectRules(p: ProjectRef, text: string): string {
+  if (!text.trim()) return '';
+  return `\n\n# The user's instructions for the project "${p.name}"\n\nThe user wrote these for every chat of this project (lead and threads). Follow them like a CLAUDE.md; where they and the instructions above disagree, these win. The user edits them in the app: do not change ${join(projectDir(p.id), 'INSTRUCTIONS.md')} yourself.\n\n<project-instructions>\n${text.trim()}\n</project-instructions>`;
+}
+
 // One word for how a chat is doing, for the project tools and the THREADS list.
 export function chatStatus(t: TabState): string {
   if (t.meta.attention) return 'NEEDS YOU';
@@ -177,6 +183,7 @@ export class Tab {
   private stopEpoch = 0; // STOP bumps it: messages still waiting for the router are dropped
   private sendQueue: Promise<void> = Promise.resolve(); // keeps messages in order while the router works
   private gone = false; // the tab was closed by the owner
+  private promptStale = false; // the project's INSTRUCTIONS changed while Claude worked: restart once idle
   private autoTitle: boolean;
   private undoNote?: string; // told to Claude with the next message after an UNDO
   private titleFromPrompt = false; // title is the first words typed; swap in Claude's chat title when it exists
@@ -349,7 +356,7 @@ export class Tab {
   static images: Imager | undefined = painter && imageModel ? { painter, model: imageModel } : undefined;
   // The Gemini picture models (server/geminiimage.ts), by picker value. They can change an attached picture.
   // Projects (set by server/tabs.ts): start a thread for a lead, and a project's chats.
-  static projects?: { thread(lead: Tab, title: string, brief: string, run?: ThreadModel): Tab; members(id: string): Tab[] };
+  static projects?: { thread(lead: Tab, title: string, brief: string, run?: ThreadModel): Tab; members(id: string): Tab[]; instructions?(id: string): string };
   static gemini = new Map<string, Imager>(geminiImage.models.map((m) => [m.value, { painter: new GeminiPainter(m.model), model: { label: m.label, edit: true, turbo: '' } }]));
 
   // For the AUTO tag: the model's name as the picker shows it.
@@ -429,6 +436,7 @@ export class Tab {
     const forClaude = [this.undoNote, paintNote, text].filter(Boolean).join('\n\n');
     this.undoNote = undefined;
     this.paintNote = [];
+    this.restartIfStale(); // new INSTRUCTIONS saved while it worked: this message starts a process with them
     this.setBusy(true);
     const deliver = () => {
       if (this.gone) return;
@@ -758,6 +766,22 @@ export class Tab {
     this.onPersist?.();
   }
 
+  // The project's INSTRUCTIONS changed: Claude's process starts again with the next message (same session), so the
+  // new system prompt applies. Never mid-work: a busy chat (or one with a message on its way) waits until it is idle.
+  refreshPrompt(): boolean {
+    if (!this.q) return false; // not running: the next start reads the new text
+    this.promptStale = true;
+    return !this.restartIfStale();
+  }
+
+  private restartIfStale(): boolean {
+    const working = this.state.meta.busy || this.waiters.size > 0 || this.routing > 0 || !!this.run?.inbox.length || this.state.agents.some((a) => a.status === 'running');
+    if (!this.promptStale || working) return false;
+    this.promptStale = false;
+    this.close(true);
+    return true;
+  }
+
   rename(title: string): void {
     this.state.meta.title = title.slice(0, 60);
     this.autoTitle = false;
@@ -832,6 +856,7 @@ export class Tab {
   }
 
   private start(): void {
+    this.promptStale = false; // this process reads the current INSTRUCTIONS
     const local = localChoice(this.pendingModel);
     const run: Run = { inbox: [], closed: false };
     this.run = run;
@@ -848,7 +873,7 @@ export class Tab {
         cwd: this.state.info.cwd,
         additionalDirectories: [UPLOADS_DIR, ...(this.project ? [projectDir(this.project.id)] : [])], // attachments; a project's memory
         resume: this.state.meta.sessionId,
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP + (this.delegates ? DELEGATE_HELP : '') + (this.project ? projectHelp(this.project) : '') },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP + (this.delegates ? DELEGATE_HELP : '') + (this.project ? projectHelp(this.project) + projectRules(this.project, Tab.projects?.instructions?.(this.project.id) ?? '') : '') },
         includePartialMessages: true,
         agentProgressSummaries: true,
         permissionMode: sdkMode(this.pendingMode, this.pendingModel),
@@ -1272,6 +1297,7 @@ export class Tab {
       this.setActivity('Thinking');
     } else {
       this.setActivity('');
+      if (this.promptStale) setTimeout(() => this.restartIfStale(), 0); // out of the message loop that called this
     }
     this.patch('meta');
   }

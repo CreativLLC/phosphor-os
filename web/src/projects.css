@@ -74,11 +74,13 @@
 
 .project-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin: 0 8px 8px 22px;
 }
 
 .project-tools button {
+  white-space: nowrap;
   min-height: 30px;
   padding: 2px 10px;
   font-size: var(--fs-sm);
@@ -105,4 +107,54 @@ dialog .in-project {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* INSTRUCTIONS editor (projectedit.ts): a big text box with the size, SAVE and CANCEL under it. */
+dialog.proj-edit {
+  width: min(760px, calc(100vw - 32px));
+  max-width: none;
+  max-height: 90dvh;
+}
+
+.proj-edit-help {
+  margin: 10px 14px 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+dialog .proj-edit-text {
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% - 28px);
+  min-height: 0;
+  height: min(52dvh, 480px);
+  margin: 10px 14px;
+  resize: vertical;
+  font: var(--fs-sm) / 1.35 var(--font);
+}
+
+dialog.proj-edit > .buttons {
+  align-items: center;
+}
+
+.proj-edit-size {
+  margin-right: auto;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.proj-edit-size.over {
+  color: var(--ph-bright);
+  animation: crew-blink 1s steps(1) infinite;
+}
+
+@media (max-width: 700px) {
+  dialog.proj-edit {
+    width: calc(100vw - 16px);
+    max-height: 94dvh;
+  }
+
+  dialog .proj-edit-text {
+    height: 56dvh;
+  }
 }

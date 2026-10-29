@@ -2,6 +2,7 @@ import type { ProjectsResponse, ProjectSummary, TabState } from '../../shared/pr
 import { demoProjects } from './demo.ts';
 import { firstMessage, type FirstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
+import { editInstructions } from './projectedit.ts';
 import { store, working } from './store.ts';
 import { newProject } from './tabs.ts';
 import { button, confirmBox, el, timeAgo } from './ui.ts';
@@ -183,6 +184,12 @@ function projectRow(p: ProjectSummary, tabs: TabState[], done: () => void, reloa
     back.title = 'Bring back the chats of this project you closed';
     if (tabs.length) tools.append(back);
   }
+  const rules = button('INSTRUCTIONS', () => {
+    done();
+    void editInstructions(p);
+  });
+  rules.title = 'Your own rules for this project: every chat in it follows them';
+  tools.append(rules);
   const del = button('DELETE', () => void deleteProject(p, tabs, reload), 'project-delete');
   del.title = 'Delete this project: its open chats close, its memory file goes. The chats stay in HISTORY.';
   tools.append(del);
