@@ -24,6 +24,7 @@ import { handleSystem } from './system.ts';
 import { handlePrompter } from './prompter.ts';
 import { handlePush, notePresence, watchForPush } from './push.ts';
 import { Tabs } from './tabs.ts';
+import { deleteFile, receiveFile, serveFile as serveProjectFile } from './projectfiles.ts';
 import { startUnraid } from './unraid.ts';
 import { getUpload, receiveUpload, serveUpload } from './uploads.ts';
 import { usage } from './usage.ts';
@@ -168,6 +169,32 @@ const server = createServer(async (req, res) => {
       if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return sendJson(res, { error: 'POST JSON only.' }, 405);
       const r = tabs.deleteProject(del[1]);
       return sendJson(res, r, 'error' in r ? 409 : 200);
+    }
+    // FILES of a project: list (GET .../files), upload (POST .../files?name=, raw bytes), open (GET .../files/<name>,
+    // ?download=1 to save it), delete (POST .../files/<name>/delete, JSON only).
+    const pf = /^\/api\/projects\/([\w-]+)\/files(?:\/([^/]+)(\/delete)?)?$/.exec(url.pathname);
+    if (pf) {
+      const dir = tabs.book.dir(pf[1]);
+      let name = '';
+      try {
+        name = pf[2] ? decodeURIComponent(pf[2]) : '';
+      } catch {
+        /* a bad escape: no such file */
+      }
+      if (!dir) return sendJson(res, { error: 'No such project.' }, 404);
+      if (!pf[2] && req.method === 'GET') return sendJson(res, { files: tabs.projectFiles(pf[1]) });
+      if (!pf[2] && req.method === 'POST') {
+        const r = await receiveFile(req, dir, url.searchParams.get('name') ?? '', url.searchParams.get('replace') === '1');
+        if (r.status === 200) tabs.projectFilesChanged(pf[1]);
+        return sendJson(res, r.body, r.status);
+      }
+      if (pf[2] && !pf[3] && req.method === 'GET') return serveProjectFile(res, dir, name, url.searchParams.has('download'));
+      if (pf[3] && req.method === 'POST' && String(req.headers['content-type'] ?? '').includes('application/json')) {
+        if (!deleteFile(dir, name)) return sendJson(res, { error: 'No such file.' }, 404);
+        tabs.projectFilesChanged(pf[1]);
+        return sendJson(res, { ok: true });
+      }
+      return sendJson(res, { error: 'Not allowed.' }, 405);
     }
     // INSTRUCTIONS and MEMORY (PROJECT.md) of a project: read, or save (JSON { text, base? }; base: the version loaded).
     const doc = /^\/api\/projects\/([\w-]+)\/(instructions|memory)$/.exec(url.pathname);

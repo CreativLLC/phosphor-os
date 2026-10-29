@@ -96,6 +96,14 @@ export function projectHelp(p: ProjectRef): string {
     : `\n\nThis chat is a THREAD of the project "${p.name}" in Phosphor-OS, ${p.own ? 'opened by the user (the lead chat can see and steer it)' : "started by the project's lead chat"}. The shared memory is ${memory}: read it first, and add your decisions and results to it. Messages that start with "${LEAD_PREFIX.trim()}" come from the lead. ${p.own ? 'Call report_to_project (a short summary to the lead) only when the user asks you to tell the lead.' : 'When your job is done, or you need a decision you cannot make, call report_to_project with a short summary.'}`;
 }
 
+// The project's FILES (server/projectfiles.ts): where they are and their names, so a chat knows to read them.
+const FILES_SHOWN = 40;
+export function projectFilesNote(p: ProjectRef, names: string[]): string {
+  if (!names.length) return '';
+  const more = names.length > FILES_SHOWN ? `, and ${names.length - FILES_SHOWN} more (list the folder)` : '';
+  return `\n\nThe user added reference files to this project, in ${join(projectDir(p.id), 'files')}: ${names.slice(0, FILES_SHOWN).join(', ')}${more}. Read the ones that help with your task (they are not loaded for you). Do not change or delete them unless the user asks.`;
+}
+
 // The user's INSTRUCTIONS for a project (ProjectBook.instructions), after projectHelp, marked as the user's own.
 export function projectRules(p: ProjectRef, text: string): string {
   if (!text.trim()) return '';
@@ -188,7 +196,7 @@ export class Tab {
   private stopEpoch = 0; // STOP bumps it: messages still waiting for the router are dropped
   private sendQueue: Promise<void> = Promise.resolve(); // keeps messages in order while the router works
   private gone = false; // the tab was closed by the owner
-  private promptStale = false; // the project's INSTRUCTIONS changed while Claude worked: restart once idle
+  private promptStale = false; // the project's INSTRUCTIONS or FILES changed while Claude worked: restart once idle
   private autoTitle: boolean;
   private undoNote?: string; // told to Claude with the next message after an UNDO
   private titleFromPrompt = false; // title is the first words typed; swap in Claude's chat title when it exists
@@ -361,7 +369,7 @@ export class Tab {
   static images: Imager | undefined = painter && imageModel ? { painter, model: imageModel } : undefined;
   // The Gemini picture models (server/geminiimage.ts), by picker value. They can change an attached picture.
   // Projects (set by server/tabs.ts): start a thread for a lead, and a project's chats.
-  static projects?: { thread(lead: Tab, title: string, brief: string, run?: ThreadModel): Tab; members(id: string): Tab[]; instructions?(id: string): string };
+  static projects?: { thread(lead: Tab, title: string, brief: string, run?: ThreadModel): Tab; members(id: string): Tab[]; instructions?(id: string): string; files?(id: string): string[] };
   static gemini = new Map<string, Imager>(geminiImage.models.map((m) => [m.value, { painter: new GeminiPainter(m.model), model: { label: m.label, edit: true, turbo: '' } }]));
 
   // For the AUTO tag: the model's name as the picker shows it.
@@ -771,8 +779,8 @@ export class Tab {
     this.onPersist?.();
   }
 
-  // The project's INSTRUCTIONS changed: Claude's process starts again with the next message (same session), so the
-  // new system prompt applies. Never mid-work: a busy chat (or one with a message on its way) waits until it is idle.
+  // The project's INSTRUCTIONS or FILES changed: Claude's process starts again with the next message (same session),
+  // so the new system prompt applies. Never mid-work: a busy chat (or one with a message on its way) waits until it is idle.
   refreshPrompt(): boolean {
     if (!this.q) return false; // not running: the next start reads the new text
     this.promptStale = true;
@@ -878,7 +886,7 @@ export class Tab {
         cwd: this.state.info.cwd,
         additionalDirectories: [UPLOADS_DIR, ...(this.project ? [projectDir(this.project.id)] : [])], // attachments; a project's memory
         resume: this.state.meta.sessionId,
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP + (this.delegates ? DELEGATE_HELP : '') + (this.project ? projectHelp(this.project) + projectRules(this.project, Tab.projects?.instructions?.(this.project.id) ?? '') : '') },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: MISSION_HELP + (this.delegates ? DELEGATE_HELP : '') + (this.project ? projectHelp(this.project) + projectFilesNote(this.project, Tab.projects?.files?.(this.project.id) ?? []) + projectRules(this.project, Tab.projects?.instructions?.(this.project.id) ?? '') : '') },
         includePartialMessages: true,
         agentProgressSummaries: true,
         permissionMode: sdkMode(this.pendingMode, this.pendingModel),
