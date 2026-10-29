@@ -388,3 +388,30 @@ dialog.proj-panel > .buttons .project-delete {
     max-height: 94dvh;
   }
 }
+
+/* DEFAULTS in the project panel: three pickers in a row (stacked on a phone). */
+.pp-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.pp-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .pp-fields {
+    grid-template-columns: 1fr;
+  }
+}

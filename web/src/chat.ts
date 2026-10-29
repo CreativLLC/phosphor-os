@@ -10,7 +10,7 @@ import { shellApi } from './shellapi.ts';
 import { button, el, toast } from './ui.ts';
 import { whenFull, whenText } from './when.ts';
 
-const MODE_LABELS: Record<string, string> = {
+export const MODE_LABELS: Record<string, string> = {
   default: 'ASK FIRST',
   acceptEdits: 'AUTO-EDIT',
   plan: 'PLAN ONLY',

@@ -163,6 +163,18 @@ const server = createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/api/projects') return sendJson(res, tabs.projectList());
+    const defs = /^\/api\/projects\/([\w-]+)\/defaults$/.exec(url.pathname);
+    if (defs) {
+      if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return sendJson(res, { error: 'POST JSON only.' }, 405);
+      let body: unknown;
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        return sendJson(res, { error: 'Send { model?, effort?, mode? }.' }, 400);
+      }
+      const r = tabs.setProjectDefaults(defs[1], body);
+      return sendJson(res, r, 'error' in r ? 400 : 200);
+    }
     const ren = /^\/api\/projects\/([\w-]+)\/rename$/.exec(url.pathname);
     if (ren) {
       if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return sendJson(res, { error: 'POST JSON only.' }, 405);

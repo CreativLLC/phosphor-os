@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { INSTRUCTIONS_MAX, MEMORY_MAX, PROJECT_FILE_MAX } from '../shared/protocol.ts';
-import { ProjectBook } from '../server/projects.ts';
+import { cleanDefaults, ProjectBook } from '../server/projects.ts';
 import { deleteFile, listFiles, receiveFile, serveFile } from '../server/projectfiles.ts';
 import { projectFilesNote, projectRules, Tab } from '../server/tab.ts';
 import { Tabs } from '../server/tabs.ts';
@@ -174,6 +174,37 @@ check('rename: an older project (PROJECT.md only) gets a project.json', (() => {
   writeFileSync(join(root, 'old2', 'PROJECT.md'), '# Old name\n');
   return 'ok' in tabs.renameProject('old2', 'New name') && book.read('old2')?.name === 'New name' && readFileSync(join(root, 'old2', 'PROJECT.md'), 'utf8') === '# Old name\n';
 })());
+
+// ---- DEFAULTS: what new chats in the project start with.
+check('defaults: only known values are kept; effort only with a model; AUTO, image and Gemini models are not kept', JSON.stringify(cleanDefaults({ model: 'sonnet', effort: 'high', mode: 'acceptEdits', x: 1 })) === '{"model":"sonnet","effort":"high","mode":"acceptEdits"}' && JSON.stringify(cleanDefaults({ model: 'auto', effort: 'high', mode: 'nope' })) === '{}' && JSON.stringify(cleanDefaults({ model: 'gemini:x' })) === '{}' && JSON.stringify(cleanDefaults({ model: 'image' })) === '{}');
+const sd = tabs.setProjectDefaults('p1', { model: 'sonnet', effort: 'low', mode: 'plan' });
+check('defaults: saved in project.json, listed', 'ok' in sd && book.read('p1')?.defaults?.model === 'sonnet' && JSON.parse(readFileSync(join(root, 'p1', 'project.json'), 'utf8')).defaults.mode === 'plan' && tabs.projectList().projects.find((x) => x.id === 'p1')?.defaults?.effort === 'low');
+check('defaults: unknown project refused', 'error' in tabs.setProjectDefaults('nope', {}));
+const T2 = tabs as unknown as { thread(lead: Tab, title: string, brief: string, run?: unknown): Tab; tabs: Map<string, Tab> };
+const newest = () => [...T2.tabs.values()].at(-1)!;
+proto.send = () => {};
+tabs.createInProject('p1', 'Mine');
+const mine = newest();
+check('+ CHAT starts with the defaults', mine.state.meta.title === 'Mine' && mine.model === 'sonnet' && mine.effort === 'low' && mine.mode === 'plan' && !mine.autoModel, JSON.stringify(mine.state.info));
+const th = T2.thread(idle, 'Art 2', 'Draw.');
+check('a thread with no worker chosen starts with the defaults, not the lead\'s', th.model === 'sonnet' && th.effort === 'low' && th.mode === 'plan');
+const th2 = T2.thread(idle, 'Fast', 'Go.', { model: 'haiku', auto: false });
+check('a thread with a worker keeps the worker (the default mode applies)', th2.model === 'haiku' && th2.mode === 'plan');
+idle.state.meta.project = { ...idle.project!, main: false }; // no lead open now
+for (const t of [...T2.tabs.values()]) if (t.project?.main) t.state.meta.project = { ...t.project, main: false };
+await tabs.openLead('p1', 'rq');
+const lead = newest();
+check('OPEN LEAD: a new lead starts with the defaults', lead.project?.main === true && lead.model === 'sonnet' && lead.mode === 'plan');
+tabs.setProjectDefaults('p1', {});
+check('defaults cleared: gone from project.json', !('defaults' in JSON.parse(readFileSync(join(root, 'p1', 'project.json'), 'utf8'))));
+tabs.createInProject('p1', 'Plain');
+check('no defaults: + CHAT starts on AUTO', newest().autoModel && !newest().model);
+const lead0 = new Tab(() => {}, { cwd: '/tmp', title: 'L', model: 'opus', effort: 'high', mode: 'acceptEdits', project: { ...ref, main: true } });
+const th3 = T2.thread(lead0, 'Same', 'Go.');
+check("no defaults: a thread with no worker takes the lead's settings", th3.model === 'opus' && th3.effort === 'high' && th3.mode === 'acceptEdits' && !th3.autoModel);
+tabs.setProjectDefaults('p1', { model: 'local:gone-model', mode: 'acceptEdits' });
+tabs.createInProject('p1', 'Gone');
+check('a default model that is gone now falls back to AUTO (the mode stays)', newest().autoModel && !newest().model && newest().mode === 'acceptEdits');
 
 rmSync(root, { recursive: true, force: true });
 console.log(fail ? `\n${fail} failed` : '\nall passed');

@@ -319,8 +319,9 @@ export class Tab {
     return [
       tool('start_thread', 'Start a thread chat for one job of this project. It is a full chat with its own helper agents; it starts working on the brief at once and reports back here.', { title: z.string().describe('Short tab name, 1-4 words (for example "Thumbnails")'), brief: z.string().describe('The job: what to do, what to read, what done looks like'), worker: z.enum(threadWorkers() as [string, ...string[]]).optional().describe(WORKER_HELP()) }, async (args) => {
         // The worker (server/delegate.ts): the lead's model, the local model, or a cheaper Claude.
-        const run = await threadModel(args.worker as Parameters<typeof threadModel>[0], { model: this.model, effort: this.effort, auto: this.autoModel }, { efforts: (m) => Tab.knownModels?.()?.models.find((x) => x.value === m)?.efforts });
-        if ('error' in run) return { ...say(run.error), isError: true };
+        // No worker: the project's DEFAULTS, else the lead's own settings (Tabs.thread).
+        const run = args.worker ? await threadModel(args.worker as Parameters<typeof threadModel>[0], { model: this.model, effort: this.effort, auto: this.autoModel }, { efforts: (m) => Tab.knownModels?.()?.models.find((x) => x.value === m)?.efforts }) : undefined;
+        if (run && 'error' in run) return { ...say(run.error), isError: true };
         const t = projects.thread(this, args.title, args.brief, run);
         return say(`Started thread "${t.state.meta.title}" (id ${t.id})${args.worker ? ` on ${args.worker}` : ''}.`);
       }),

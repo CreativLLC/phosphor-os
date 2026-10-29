@@ -208,7 +208,10 @@ export type HistoryResponse = { sessions: HistoryEntry[] };
 
 // GET /api/projects: every project, open or not, newest activity first (server/projects.ts). Its open chats are the
 // tabs with its ProjectRef; closed: its chats closed since, which open_project reopens (a chat never used is not kept).
-export type ProjectSummary = { id: string; name: string; createdAt: number; lastActive: number; closed: { sessionId: string; title: string; main: boolean }[] };
+// DEFAULTS of a project: what new chats in it start with (+ CHAT, a thread the lead starts without a worker, a new
+// lead). Left out: the app's own (AUTO model, the model's THINK level, ASK FIRST).
+export type ProjectDefaults = { model?: string; effort?: Effort; mode?: Mode };
+export type ProjectSummary = { id: string; name: string; createdAt: number; lastActive: number; closed: { sessionId: string; title: string; main: boolean }[]; defaults?: ProjectDefaults };
 export type ProjectsResponse = { projects: ProjectSummary[] };
 // A project's text files the user edits in the app: INSTRUCTIONS (the user's own rules, in every project chat's
 // prompt) and MEMORY (PROJECT.md, the chats' shared memory, which they write too). version: a hash of the text, so a
