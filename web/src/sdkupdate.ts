@@ -17,7 +17,12 @@ export function mountUpdate(btn: HTMLButtonElement): void {
     btn.hidden = !s || (!s.pending && !s.running);
     if (!s) return;
     const v = s.claude ?? s.pending ?? '';
-    btn.textContent = s.running ? 'UPDATING…' : `UPDATE ${v}`;
+    // The version is its own span: phones show just UPDATE (layout.css), the title has the version.
+    const ver = document.createElement('span');
+    ver.className = 'upd-v';
+    ver.textContent = ` ${v}`;
+    if (s.running) btn.textContent = 'UPDATING…';
+    else btn.replaceChildren('UPDATE', ver);
     btn.disabled = s.running;
     btn.title = s.running
       ? 'Updating Claude Code. The app restarts when it is done.'

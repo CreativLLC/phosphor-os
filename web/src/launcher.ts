@@ -14,7 +14,7 @@ import { openNewTab } from './tabs.ts';
 import { openUsage } from './usage.ts';
 import { button, el, folderName, timeAgo, toast } from './ui.ts';
 
-// LAUNCHER: one full-screen prompt for everything. Ctrl+K, the LAUNCH button (MENU > LAUNCH on phones), or the
+// LAUNCHER: one full-screen prompt for everything. Ctrl+K, the LAUNCH button (in MENU), or the
 // desktop app's 'launcher' command (Ctrl+Alt+Space on Windows, the Super key on Linux).
 // Type to filter (fuzzy, best first). Up/Down, PageUp/PageDown move; Tab jumps to the next group; Enter or a
 // tap runs; Esc closes. Prefixes: "run <name>" programs and games, "chat <name>", "open <file>", ">" commands
@@ -562,7 +562,7 @@ function appCommands(): Entry[] {
   return out;
 }
 
-// SETTINGS lives in MENU on phones: open MENU first, else the box has nowhere to show.
+// SETTINGS lives in MENU: open MENU first, else the box has nowhere to show.
 function openSettings(): void {
   const btn = document.querySelector<HTMLButtonElement>('#settings .settings-btn');
   const pop = document.querySelector<HTMLElement>('#settings .settings-pop');

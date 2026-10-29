@@ -1,10 +1,10 @@
 # STATION: your servers, and Unraid's health
 
-STATION (the STATION button, MENU on phones) is the hub for your self-hosted services: a tile per service with UP / SLOW /
+STATION (MENU > STATION) is the hub for your self-hosted services: a tile per service with UP / SLOW /
 DOWN, the last answer time, a sparkline of the last 40 checks and a 24-hour uptime strip. DISCOVER finds apps on one of
 your servers. Above the tiles, if you connect it, sits the **Unraid panel**: the health of your Unraid server.
 
-The STATION button shows a number when something needs a look: services that are down, Unraid alerts and warnings, or an
+STATION in MENU shows a number (and MENU a dot) when something needs a look: services that are down, Unraid alerts and warnings, or an
 Unraid that does not answer.
 
 ## Connect your Unraid server

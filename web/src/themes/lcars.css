@@ -238,15 +238,18 @@ html[data-theme='lcars'] {
     align-items: flex-end;
     justify-content: flex-end;
     flex: 0 0 auto;
-    min-width: 200px;
+    min-width: 130px;
     padding: 0 12px 4px 40px;
     background: var(--lc-orange);
     color: var(--lc-ink);
     border-radius: calc(var(--lc-bar) * 1.4) 0 0 0 / var(--lc-bar) 0 0 0;
     box-shadow: none;
-    font-weight: 700;
-    letter-spacing: 2px;
-    line-height: 1;
+    filter: none;
+  }
+
+  .brand svg {
+    width: 28px;
+    height: 28px;
   }
 
   /* Chat tabs: segments of the bar. A filler block takes the room left over. */
@@ -342,22 +345,51 @@ html[data-theme='lcars'] {
     line-height: 1.15;
   }
 
-  /* Tool buttons on the right of the bar. */
-  .top-tools {
-    gap: var(--lc-gap);
-    align-items: stretch;
+  /* MENU: a lilac segment at the right of the bar; its drop-down is a panel with a lilac column. */
+  #top #btn-menu {
+    background: var(--lc-lilac);
+    min-width: 92px;
   }
 
-  #settings {
-    display: flex;
-    align-items: stretch;
+  #top #btn-menu:hover {
+    background: #e0bce0;
+  }
+
+  body.menu-open #top #btn-menu {
+    background: var(--lc-butter);
+  }
+
+  .top-tools {
+    top: calc(100% + 6px);
+    right: calc(var(--lc-arm) + var(--lc-r) + 30px + var(--lc-gap));
+    gap: 6px;
+    padding: 10px 10px 12px 12px;
+    background: #000;
+    border: 0;
+    border-left: 16px solid var(--lc-lilac);
+    border-bottom: 8px solid var(--lc-lilac);
+    border-radius: 28px 0 0 28px;
+    box-shadow: 0 0 0 6px #000, 0 16px 40px rgb(0 0 0 / 0.85);
+  }
+
+  .menu-head {
+    margin: 6px 0 0 12px;
+    color: var(--lc-butter);
+    font-weight: 700;
+  }
+
+  .menu-head:first-child {
+    margin-top: 0;
   }
 
   #top .top-tools > button,
-  #top .settings-btn {
+  #top .top-tools .settings-btn {
+    align-items: center;
+    min-height: 36px;
+    padding: 2px 16px 0 18px;
+    border-radius: 999px;
     background: var(--lc-lilac);
     color: var(--lc-ink);
-    min-width: 76px;
   }
 
   #top .top-tools > button:hover,
@@ -367,6 +399,39 @@ html[data-theme='lcars'] {
 
   #top .settings-btn.on {
     background: var(--lc-orange);
+  }
+
+  /* Shortcut on the left of a pill, the name on the right (LCARS labels sit right). */
+  #top .top-tools > button[data-key]::before {
+    order: -1;
+    margin: 0 auto 0 0;
+    padding: 0 12px 0 0;
+    color: var(--lc-ink);
+    opacity: 0.6;
+  }
+
+  #top .view-tools button {
+    min-height: 40px;
+    padding: 2px 6px 0;
+    border-radius: 0;
+    opacity: 1;
+  }
+
+  #top .view-tools button:first-child {
+    border-radius: 999px 0 0 999px;
+  }
+
+  #top .view-tools button:last-child {
+    border-radius: 0 999px 999px 0;
+  }
+
+  #top .view-tools button + button {
+    margin-left: var(--lc-gap);
+  }
+
+  #top .view-tools button[data-key]::before {
+    color: var(--lc-ink);
+    opacity: 0.6;
   }
 
   /* Right end of the bar: the top of the right elbow (desktop and a foldable on its side). */
@@ -2330,30 +2395,16 @@ html[data-theme='lcars'] {
       padding-left: 14px;
     }
 
-    /* MENU drop-down: a panel with a lilac column. */
+    /* MENU drop-down: full width under the bar. */
     .top-tools {
-      top: calc(100% + 6px);
       left: 6px;
       right: 6px;
-      padding: 10px 10px 10px 12px;
-      gap: 6px;
-      background: #000;
-      border: 0;
-      border-left: 16px solid var(--lc-lilac);
-      border-bottom: 8px solid var(--lc-lilac);
-      border-radius: 28px 0 0 28px;
-      box-shadow: 0 0 0 6px #000, 0 16px 40px rgb(0 0 0 / 0.85);
     }
 
     #top .top-tools > button,
     #top .top-tools .settings-btn {
       min-height: 46px;
-      border-radius: 999px;
-      width: 100%;
-    }
-
-    #settings {
-      display: block;
+      justify-content: flex-end;
     }
 
     #settings .settings-pop {

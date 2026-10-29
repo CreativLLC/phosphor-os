@@ -4,7 +4,7 @@ Check YouTube search terms before you title a video: how much people look for ea
 
 ## Use it
 
-- **Screen:** KEYWORDS (program bar, header or phone MENU). Type up to 10 terms, CHECK, wait about 8 s per term. Tap a row for the reasons, the top videos, related searches and tags. SUGGEST gives autocomplete ideas for a seed word. HISTORY keeps every run.
+- **Screen:** KEYWORDS (program bar, or MENU > KEYS). Type up to 10 terms, CHECK, wait about 8 s per term. Tap a row for the reasons, the top videos, related searches and tags. SUGGEST gives autocomplete ideas for a seed word. HISTORY keeps every run.
 - **Command line (and Claude):** `npx tsx scripts/keywords.ts "term one" "term two" [--region US] [--json]`, or `--suggest "seed"`. Runs from the command line are saved the same way and show on the screen.
 
 ## Where the numbers come from

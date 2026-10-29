@@ -54,29 +54,38 @@
   </head>
   <body>
     <header id="top">
-      <button id="btn-menu" class="only-narrow" type="button" aria-expanded="false" title="Menu">MENU</button>
-      <div class="brand">PHOSPHOR-OS</div>
+      <div class="brand" role="img" aria-label="Phosphor-OS" title="Phosphor-OS">
+        <svg viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <path fill="currentColor" fill-rule="evenodd" d="M1 2h14v10H1zM2 3v8h12V3z" />
+          <path fill="currentColor" d="M3 4h1v1H3zM4 5h1v1H4zM5 6h1v1H5zM4 7h1v1H4zM3 8h1v1H3zM7 8h4v1H7z" />
+          <path fill="currentColor" opacity=".55" d="M5 13h6v2H5z" />
+        </svg>
+      </div>
       <nav id="programs" hidden></nav>
       <nav id="tabs"></nav>
-      <div class="top-tools">
-        <button id="btn-update" type="button" hidden></button>
-        <button id="btn-launch" type="button" title="Launcher: programs, chats, files and commands (Ctrl+K)">LAUNCH</button>
+      <button id="btn-update" type="button" hidden></button>
+      <button id="btn-menu" type="button" aria-expanded="false" aria-controls="menu" title="Menu: programs, screens, view and settings">MENU</button>
+      <div class="top-tools" id="menu">
+        <div class="menu-head">GO</div>
+        <button id="btn-launch" type="button" data-key="Ctrl+K" title="Launcher: programs, chats, files and commands (Ctrl+K)">LAUNCH</button>
         <button id="btn-docs" type="button" title="DOCS: write and edit documents">DOCS</button>
         <button id="btn-lab" type="button" title="LAB: one prompt to many AI models, compare and rate">LAB</button>
         <button id="btn-keys" type="button" title="KEYS: check YouTube keywords, demand and competition">KEYS</button>
         <button id="btn-prompter" type="button" title="PROMPTER: punch list for recording a video, ticks off points as you talk">PROMPTER</button>
-        <button id="btn-left" class="only-narrow" type="button" title="Agents">AGENTS</button>
+        <div class="menu-head">WORK</div>
         <button id="btn-projects" type="button" title="PROJECTS: every project, open or closed; open one">PROJECTS</button>
         <button id="btn-history" type="button">HISTORY</button>
         <button id="btn-mcp" type="button" title="MCP servers: tools from other apps Claude can use (/mcp)">MCP</button>
         <button id="btn-station" type="button" title="STATION: your servers and self-hosted apps">STATION</button>
-        <div class="view-tools only-wide" role="group" aria-label="Panels">
-          <button id="btn-hide-left" type="button" title="Show or hide the left panel (Ctrl+[)">LEFT</button>
-          <button id="btn-focus" type="button" title="Focus: hide both panels, for recording (Ctrl+\)">FOCUS</button>
-          <button id="btn-hide-right" type="button" title="Show or hide the right panel (Ctrl+])">RIGHT</button>
-        </div>
-        <button id="btn-full" class="only-wide" type="button" title="Fullscreen (same as F11)">FULL</button>
+        <div class="menu-head">VIEW</div>
+        <button id="btn-left" class="only-narrow" type="button" title="Agents">AGENTS</button>
         <button id="btn-right" class="only-narrow" type="button">INFO</button>
+        <div class="view-tools only-wide" role="group" aria-label="Panels">
+          <button id="btn-hide-left" type="button" data-key="Ctrl+[" title="Show or hide the left panel (Ctrl+[)">LEFT</button>
+          <button id="btn-focus" type="button" data-key="Ctrl+\" title="Focus: hide both panels, for recording (Ctrl+\)">FOCUS</button>
+          <button id="btn-hide-right" type="button" data-key="Ctrl+]" title="Show or hide the right panel (Ctrl+])">RIGHT</button>
+        </div>
+        <button id="btn-full" class="only-wide" type="button" data-key="F11" title="Fullscreen (same as F11)">FULL</button>
         <div id="settings"></div>
       </div>
     </header>
