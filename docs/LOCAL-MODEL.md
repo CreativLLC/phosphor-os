@@ -87,7 +87,7 @@ and a 29 GB file.
 
 | Part | Choice | Why |
 |---|---|---|
-| Engine | Strata, pinned release, compiled for the card (HIP on AMD) | the only engine built around this model's small experts |
+| Engine | Strata, pinned release (`STRATA_VERSION`, v0.2.7.1), compiled for the card (HIP on AMD) | the only engine built around this model's small experts |
 | Model | ISTA-DASLab's Coder (`IQ1_M` by name, experts stored like IQ3_S; 256 of the 512 experts per layer kept, chosen for code and tools; 23 GB of experts, plus a 29 GB table read from the SSD) | Strata's pick for a 32 GB PC; weaker outside code. `STRATA_FAMILY=qwen` installs a size with every expert (`IQ2_XS`: 35.5 GB of experts, `IQ3_XXS`: 43 GB; see the RAM note below) |
 | Server | its own per size: the Coder on port 8082, a qwen size on 8083; `phosphor-strata-<size>.service` (user), not started at login | not a llama.cpp model, so not in the router |
 | AUTO mode | runs as ACCEPT EDITS on a model with its own server: edits and read-only commands go ahead, other commands ask | AUTO's safety check uses the chat's model, and Strata reads its long prompt too slowly: the check timed out and blocked most Bash calls |
@@ -121,6 +121,14 @@ turns read only what is new.
 RAM: a size runs fast when the part of its experts the card does not hold fits in RAM (the start log's
 `FileExpertSource` line says how much did); Strata's own table: 48 GB of RAM for `Q2_0` and `IQ2_XS`, 64 GB for every
 size. Quality, Strata's measurement (same top token as Q8_0): `IQ3_S` 87.7%, `IQ3_XXS` 84.5%, `Q2_0` 80.6%.
+
+**Strata 0.2 (tested 0.2.7.1).** Its setup picks the memory mode itself and keeps what it should not touch in the
+config's `user_args` (the installer puts its context and `--kv-resident` there). On a PC just too small for a size it
+can pick the mode that loads every expert into RAM: `IQ3_XXS` on 55 GB tried to (40 GB of experts), reached the service's
+`MemoryMax` and stopped; the desktop was fine. Then add `--resident-experts` to `args` and `user_args` of that size's
+`strata-*.json` (the 0.1 setup chose it there by itself). Measured against 0.1.44.1 on one PC, same prompts:
+`IQ3_XXS` (resident) 4K tokens in 5 s (was 7), 20K in 21 s (was 20), writing 61-67 tok/s (65-72); the Coder, now with
+every expert in RAM (its cap raised to 32G), writes 70-72 tok/s (was 52-62) and reads 20K tokens in 14 s.
 
 **AMD: faster prompts with a hipBLASLt table (optional).** Strata reads a prompt through hipBLASLt when its engine is
 built with it and has a table tuned for the card and the hipBLASLt version; without it, plain hipBLAS. Arch has no

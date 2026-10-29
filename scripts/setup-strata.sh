@@ -20,9 +20,9 @@
 #   STRATA_FAMILY    coder (default) or qwen (every expert; needs more RAM, see Strata's docs/MODELS.md)
 #   STRATA_MODEL     the size: IQ1_M for the Coder (its only one), Q2_0, IQ2_XS (default), IQ3_XXS or IQ3_S for qwen
 #   STRATA_PORT      (default 8082 for the Coder, 8083 for qwen; two qwen sizes need different ports)
-#   STRATA_CONTEXT   (default 131072; the context needs 13.7 KB of RAM per token)    STRATA_VERSION (default v0.1.44.1)
+#   STRATA_CONTEXT   (default 131072; the context needs 13.7 KB of RAM per token)    STRATA_VERSION (default v0.2.7.1)
 #   STRATA_MEMORY_MAX  RAM cap for the service, so a full RAM ends Strata instead of the desktop
-#                    (default 24G for the Coder, 40G for qwen)
+#                    (default 32G for the Coder, 40G for qwen; Strata 0.2 keeps all Coder experts in RAM where they fit)
 # Needs: an AMD card Strata supports (RX 7900 XT/XTX and others, see its docs/AMD_HIP.md), git, a C++ compiler and
 # ROCm 7 (Arch: the llama.cpp ROCm packages bring it; without it Strata installs its own, about 10 GB). Faster
 # prompts on AMD: hipBLASLt (Arch: sudo pacman -S hipblaslt) and a tuned table, see docs/LOCAL-MODEL.md.
@@ -42,7 +42,7 @@ FAMILY="${STRATA_FAMILY:-coder}"
 case "$FAMILY" in
   coder)
     MODEL="${STRATA_MODEL:-IQ1_M}" NAME=strata-flash-next-coder LABEL="Qwen3.8 Flash-Next Coder (local Strata)"
-    PORT="${STRATA_PORT:-8082}" MEMORY_MAX="${STRATA_MEMORY_MAX:-24G}"
+    PORT="${STRATA_PORT:-8082}" MEMORY_MAX="${STRATA_MEMORY_MAX:-32G}"
     ;;
   qwen)
     MODEL="${STRATA_MODEL:-IQ2_XS}"
@@ -52,7 +52,7 @@ case "$FAMILY" in
   *) printf 'STOP: STRATA_FAMILY is coder or qwen, not %s\n' "$FAMILY" >&2; exit 1 ;;
 esac
 CONTEXT="${STRATA_CONTEXT:-131072}"
-VERSION="${STRATA_VERSION:-v0.1.44.1}"
+VERSION="${STRATA_VERSION:-v0.2.7.1}"
 # Strata names its files by family and size in lower case: run-coder-iq1_m.sh, strata-iq3_xxs.json (qwen has no prefix);
 # its model folder keeps the size's case (models/coder-IQ1_M, models/IQ3_XXS).
 PREFIX="$([[ $FAMILY == qwen ]] || printf '%s-' "$FAMILY")"
@@ -153,11 +153,20 @@ cfg = json.load(open(path))
 # The context window. Past 32K Strata keeps the older part of the KV cache in RAM (about 13.7 KB per token, 1.7 GB at
 # 128K) and only the last 32K in VRAM, so a longer context costs RAM, not the experts' room on the card.
 args = cfg["args"]
+# "user_args": what Strata's own setup (0.2 and newer) keeps when it runs again.
+user = cfg.setdefault("user_args", [])
 for flag, value in (("--max-context", context), ("--kv-resident", "32768")):
-    if flag in args:
-        args[args.index(flag) + 1] = value
-    else:
-        args += [flag, value]
+    for a in (args, user):
+        if flag in a:
+            a[a.index(flag) + 1] = value
+        else:
+            a += [flag, value]
+# A hipBLASLt table tuned on this card (docs/LOCAL-MODEL.md) wins over the one Strata ships with the same name.
+import os
+table = cfg.get("env", {}).get("STRATA_HIPBLASLT_TUNING", "")
+mine = os.path.join(os.path.dirname(path), "local", os.path.basename(table))
+if table and os.path.isfile(mine):
+    cfg["env"]["STRATA_HIPBLASLT_TUNING"] = mine
 cfg["idle_unload_s"] = 900
 cfg["before_load"] = ["bash", script, "unload", "--keep", own]
 cfg["before_load_ignore_failure"] = True
