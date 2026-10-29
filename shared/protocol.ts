@@ -157,6 +157,7 @@ export type ServerEvent =
   | { t: 'sdk_update'; state: SdkUpdate } // sent on connect and on every change
   | { t: 'tab'; tab: TabState; req?: string } // opened or reloaded; req echoes the client's new_tab/open_session req
   | { t: 'tab_closed'; tab: string }
+  | { t: 'tab_order'; ids: string[] } // the tab bar's order changed (a drag, a reopened tab put back in its place)
   | { t: 'item'; tab: string; item: Item }
   | { t: 'update'; tab: string; item: Item }
   | { t: 'delta'; tab: string; id: string; text: string }
@@ -187,6 +188,9 @@ export type ClientEvent =
   | { t: 'open_session'; sessionId: string; cwd: string; title: string; req?: string }
   | { t: 'close_tab'; tab: string }
   | { t: 'rename_tab'; tab: string; title: string }
+  | { t: 'move_to_project'; tab: string; project: string | null } // tab menu: into a project, or out of one (null)
+  | { t: 'reorder_tabs'; ids: string[] } // the new order of every tab (a drag in the tab bar)
+  | { t: 'reopen_closed'; req?: string } // Ctrl+Shift+T: the tab closed last comes back, in its old place
   // Put files back to how they were before user message `id` (its item id). dryRun first to preview.
   | { t: 'undo'; tab: string; id: string; dryRun: boolean }
   // AUTO-CONTINUE: now = send the continue message now; otherwise cancel it.

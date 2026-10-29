@@ -1,10 +1,10 @@
-import type { FoldersResponse, TabState } from '../../shared/protocol.ts';
+import type { FoldersResponse, ProjectsResponse, TabState } from '../../shared/protocol.ts';
 import { firstMessage, type FirstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
 import { newProjectChat } from './projects.ts';
 import { store, working } from './store.ts';
 import { shellApi } from './shellapi.ts';
-import { button, editInline, el, folderName } from './ui.ts';
+import { button, editInline, el, folderName, pickBox } from './ui.ts';
 
 // Projects whose threads are folded away in the tab bar (this browser only).
 const FOLD_KEY = 'phosphor-os.folded-projects';
@@ -49,7 +49,7 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       b.classList.toggle('busy', working(t));
       b.classList.toggle('attention', m.attention);
       b.classList.toggle('done', unseen.has(m.id) && !working(t) && !m.attention);
-      b.title = `${m.title}\n${t.info.cwd}\nRight-click or double-click to rename`;
+      b.title = `${m.title}\n${t.info.cwd}\nDouble-click to rename. Right-click: rename, projects. Drag to move.`;
       const label = el('button', 'tab-label');
       label.type = 'button';
       label.append(el('span', 'tab-dot'), el('span', 'tab-title', m.title));
@@ -61,19 +61,29 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
         foldSoon = setTimeout(() => toggleFold(m.project!.id), 250);
       };
       // prompt() does nothing in the desktop app, so the name is edited in the tab itself.
-      label.ondblclick = label.oncontextmenu = (e: MouseEvent) => {
-        e.preventDefault();
+      const rename = () => {
         clearTimeout(foldSoon);
+        b.draggable = false; // text in the name box can be selected
         editing = true;
         editInline(label, m.title, (title) => send({ t: 'rename_tab', tab: m.id, title }), () => {
           editing = false;
           render();
         });
       };
+      label.ondblclick = (e: MouseEvent) => {
+        e.preventDefault();
+        rename();
+      };
+      // Right-click (a long press on a phone): RENAME, and into a project, to another, or out of it.
+      label.oncontextmenu = (e: MouseEvent) => {
+        e.preventDefault();
+        void tabMenu(t, rename);
+      };
       const close = button('×', () => closeTab(m.id), 'tab-close');
       close.title = 'Close tab (the chat stays in HISTORY)';
       b.classList.toggle('lead', !!m.project?.main);
       b.append(label, close);
+      if (!m.project) draggable(b, [m.id]);
       return b;
   };
   // Fold or show a project's chats in the tab bar. Folded, the whole project is one tab: its name and how many chats
@@ -84,6 +94,48 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
     if (!folded.delete(id)) folded.add(id);
     saveFolded();
     render();
+  };
+  // Drag a tab (or a project's group) to a new place in the bar. The order is the server's (tabs.json), so every
+  // device shows it. A drop lands before or after the item under the pointer, by which half it is on.
+  let dragIds: string[] | null = null;
+  const draggable = (item: HTMLElement, ids: string[]) => {
+    item.draggable = true;
+    item.dataset.ids = ids.join(',');
+    item.addEventListener('dragstart', (e) => {
+      dragIds = ids;
+      item.classList.add('dragging');
+      e.dataTransfer?.setData('text/plain', '');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    });
+    item.addEventListener('dragend', () => {
+      dragIds = null;
+      item.classList.remove('dragging');
+      for (const x of nav.querySelectorAll('.drop-before, .drop-after')) x.classList.remove('drop-before', 'drop-after');
+    });
+    item.addEventListener('dragover', (e) => {
+      if (!dragIds || dragIds.join(',') === item.dataset.ids) return;
+      e.preventDefault();
+      const r = item.getBoundingClientRect();
+      const after = e.clientX > r.left + r.width / 2;
+      item.classList.toggle('drop-after', after);
+      item.classList.toggle('drop-before', !after);
+    });
+    item.addEventListener('dragleave', () => item.classList.remove('drop-before', 'drop-after'));
+    item.addEventListener('drop', (e) => {
+      if (!dragIds) return;
+      e.preventDefault();
+      const after = item.classList.contains('drop-after');
+      item.classList.remove('drop-before', 'drop-after');
+      const moving = dragIds;
+      const groups = [...nav.querySelectorAll<HTMLElement>(':scope > [data-ids]')].map((x) => x.dataset.ids!.split(',')).filter((g) => g.join(',') !== moving.join(','));
+      const at = groups.findIndex((g) => g.join(',') === item.dataset.ids);
+      if (at < 0) return;
+      groups.splice(at + (after ? 1 : 0), 0, moving);
+      const ids = groups.flat();
+      store.tabs = new Map(ids.flatMap((id) => (store.tabs.has(id) ? [[id, store.tabs.get(id)!] as const] : [])));
+      store.emit({ kind: 'tabs' });
+      send({ t: 'reorder_tabs', ids });
+    });
   };
   const render = () => {
     if (editing) return;
@@ -129,6 +181,7 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       const more = button('+', () => newProjectChat(p), 'tab-add tab-group-add');
       more.title = `New chat in "${p.name}"`;
       group.append(head, ...(fold ? [] : [...members.map(tabEl), more]));
+      draggable(group, members.map((x) => x.meta.id)); // a project moves as one
       items.push(group);
     }
     shownActive = store.active;
@@ -153,8 +206,35 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
     // Ctrl+W in the desktop app. Not while DOCS or the launcher is in front: the chat tab is not what you are looking at.
     if (c === 'close-tab' && store.active && !document.body.classList.contains('docs-open') && !document.querySelector('dialog.launcher[open]')) closeTab(store.active);
   });
+  // Ctrl+Shift+T: the chat closed last comes back in its place; again for the one before it (server/tabs.ts).
+  document.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey || e.isComposing || e.key.toLowerCase() !== 't') return;
+    e.preventDefault();
+    send({ t: 'reopen_closed', req: newReq() });
+  });
   track();
   render();
+}
+
+// The tab menu. Projects come from GET /api/projects (open or closed), the chat's own project left out.
+async function tabMenu(t: TabState, rename: () => void): Promise<void> {
+  const here = t.meta.project;
+  let projects: { id: string; name: string }[] = [];
+  try {
+    projects = store.demo ? [] : (((await (await fetch('/api/projects')).json()) as ProjectsResponse).projects ?? []).filter((p) => p.id !== here?.id);
+  } catch {
+    /* no list: RENAME still works */
+  }
+  type Pick = { do: 'rename' } | { do: 'move'; project: string | null };
+  const pick = await pickBox<Pick>(t.meta.title.toUpperCase(), [
+    { label: 'RENAME', value: { do: 'rename' } },
+    ...(here ? [{ label: `TAKE OUT OF ${here.name.toUpperCase()}`, value: { do: 'move' as const, project: null } }] : []),
+    ...(projects.length ? [{ head: here ? 'MOVE TO PROJECT' : 'ADD TO PROJECT' }] : []),
+    ...projects.map((p) => ({ label: p.name, value: { do: 'move' as const, project: p.id } })),
+  ]);
+  if (!pick) return;
+  if (pick.do === 'rename') rename();
+  else send({ t: 'move_to_project', tab: t.meta.id, project: pick.project });
 }
 
 function closeTab(id: string): void {

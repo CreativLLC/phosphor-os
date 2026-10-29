@@ -912,6 +912,27 @@ dialog.confirm-box p {
   max-width: 46ch;
 }
 
+/* Menu box (ui.ts pickBox): one choice per line; a long project list scrolls. */
+dialog.pick-box .pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 30ch;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 10px 0;
+}
+
+dialog.pick-box .pick-list button {
+  text-align: left;
+}
+
+dialog.pick-box .pick-head {
+  margin-top: 8px;
+  color: var(--ph-dim);
+  letter-spacing: 2px;
+}
+
 /* AUTO-CONTINUE (web/src/resume.ts): the banner above the progress row, and the message it sent. */
 .resume-bar {
   flex: 0 0 auto;

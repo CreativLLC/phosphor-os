@@ -899,9 +899,25 @@ html.booting body > :not(#boot) {
 
 /* ---------- Project tab groups ---------- */
 
+/* The frame is an outline, not a border: a border made an open project 2 px taller than a tab, so the whole bar
+   grew and shrank when it folded (2026-10-28). */
 .tab-group {
-  border: 1px solid var(--ph-dim);
+  outline: 1px solid var(--ph-dim);
+  outline-offset: -1px;
   background: rgb(var(--ph-rgb) / 0.07);
+}
+
+/* Dragging a tab or a project: where it lands. */
+#tabs > .dragging {
+  opacity: 0.4;
+}
+
+#tabs > .drop-before {
+  box-shadow: inset 3px 0 0 var(--ph-bright);
+}
+
+#tabs > .drop-after {
+  box-shadow: inset -3px 0 0 var(--ph-bright);
 }
 
 #top .tab-group-label,

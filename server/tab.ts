@@ -748,6 +748,16 @@ export class Tab {
     return out;
   }
 
+  // The tab menu's MOVE TO PROJECT / TAKE OUT: the chat joins a project or leaves it. Its Claude process starts again
+  // with the next message (same session), so the project's prompt, memory folder and tools apply from then on.
+  setProject(p: ProjectRef | undefined): void {
+    if (p) this.state.meta.project = p;
+    else delete this.state.meta.project;
+    if (!this.state.meta.busy) this.close(true);
+    this.patch('meta');
+    this.onPersist?.();
+  }
+
   rename(title: string): void {
     this.state.meta.title = title.slice(0, 60);
     this.autoTitle = false;

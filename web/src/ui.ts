@@ -96,3 +96,27 @@ export function confirmBox(title: string, text: string, okLabel = 'OK'): Promise
     d.showModal();
   });
 }
+
+// Themed menu box: a title and one button per choice, one under another. Resolves the chosen value, or null for
+// CANCEL / Escape. A choice with `head` is a plain heading line between the buttons.
+export function pickBox<T>(title: string, choices: ({ label: string; value: T } | { head: string })[]): Promise<T | null> {
+  return new Promise((resolve) => {
+    const d = el('dialog', 'confirm-box pick-box');
+    const done = (v: T | null) => {
+      d.close();
+      d.remove();
+      resolve(v);
+    };
+    const list = el('div', 'pick-list');
+    for (const c of choices) list.append('head' in c ? el('div', 'pick-head', c.head) : button(c.label, () => done(c.value)));
+    const row = el('div', 'buttons');
+    row.append(button('CANCEL', () => done(null)));
+    d.append(el('h2', '', title), list, row);
+    d.addEventListener('cancel', (e) => {
+      e.preventDefault();
+      done(null);
+    });
+    document.body.append(d);
+    d.showModal();
+  });
+}

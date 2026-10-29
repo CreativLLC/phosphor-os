@@ -121,6 +121,13 @@ export function apply(ev: ServerEvent): void {
       }
       return;
     }
+    case 'tab_order': {
+      const old = store.tabs;
+      store.tabs = new Map(ev.ids.flatMap((id) => (old.has(id) ? [[id, old.get(id)!] as const] : [])));
+      for (const [id, t] of old) if (!store.tabs.has(id)) store.tabs.set(id, t);
+      store.emit({ kind: 'tabs' });
+      return;
+    }
     case 'tab_closed': {
       const ids = [...store.tabs.keys()];
       const idx = ids.indexOf(ev.tab);

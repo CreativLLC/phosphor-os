@@ -18,6 +18,8 @@ const TABS_FILE = join(DATA_DIR, 'tabs.json');
 export class Tabs {
   private tabs = new Map<string, Tab>();
   private saveTimer?: ReturnType<typeof setTimeout>;
+  // Ctrl+Shift+T: the chats closed lately, the last one on top, with where each sat in the tab bar.
+  private closedStack: { sessionId: string; title: string; cwd: string; index: number }[] = [];
   private modelList?: Promise<ModelsResponse>;
   private modelsLoaded?: ModelsResponse;
   readonly book = new ProjectBook(); // projects and their closed chats (server/projects.ts)
@@ -171,6 +173,24 @@ export class Tabs {
     void tab.prefillInfo();
   }
 
+  // The tab menu: a chat goes into a project (as the user's own chat, like + CHAT) or out of it (project null). Not
+  // while it works, and not a lead that still has other chats open (they hang on it).
+  moveToProject(tabId: string, project: string | null): void {
+    const tab = this.tabs.get(tabId);
+    if (!tab) return;
+    const say = (text: string) => this.emit({ t: 'toast', text });
+    if (tab.state.meta.busy || tab.state.meta.attention) return say('This chat is working or waiting for you. Try again when it is done.');
+    const was = tab.project;
+    if (was?.main && this.members(was.id).length > 1) return say(`This is the lead of "${was.name}" and other chats hang on it. Move or close them first.`);
+    if (project === null) return was ? tab.setProject(undefined) : undefined;
+    if (project === was?.id) return;
+    const name = this.members(project)[0]?.project?.name ?? this.book.read(project)?.name;
+    if (!name) return say('That project is gone.');
+    const lead = this.members(project).find((t) => t.project?.main);
+    tab.setProject(joinRef(project, name, lead, { main: false, own: true }));
+    this.save();
+  }
+
   // DELETE a project: its open chats close (refused while one works or waits for the user), then its folder goes
   // to data/projects-deleted/ (ProjectBook.remove). The chats themselves stay in HISTORY.
   deleteProject(id: string): { ok: true } | { error: string } {
@@ -180,12 +200,41 @@ export class Tabs {
     return this.book.remove(id) || members.length ? { ok: true } : { error: 'No such project.' };
   }
 
+  // Ctrl+Shift+T: the chat closed last comes back (through the HISTORY resume path) where it sat; again for the one
+  // before. A chat open again by now is skipped. Only chats that had begun (a session id) are kept.
+  async reopenClosed(req?: string): Promise<void> {
+    let c = this.closedStack.pop();
+    while (c && [...this.tabs.values()].some((t) => (t.geminiId ? `gemini:${t.geminiId}` : t.state.meta.sessionId) === c!.sessionId)) c = this.closedStack.pop();
+    if (!c) return this.emit({ t: 'toast', text: 'No closed chat to bring back.' });
+    const before = new Set(this.tabs.keys());
+    await this.open(c.sessionId, c.cwd, c.title, req);
+    const added = [...this.tabs.keys()].find((k) => !before.has(k));
+    if (!added) return;
+    const ids = [...this.tabs.keys()].filter((k) => k !== added);
+    ids.splice(Math.min(Math.max(c.index, 0), ids.length), 0, added);
+    this.reorder(ids);
+  }
+
+  // A drag in the tab bar: the tabs in this order (ids it does not name keep their order, after them).
+  reorder(ids: string[]): void {
+    const next = new Map<string, Tab>();
+    for (const id of ids) {
+      const t = this.tabs.get(String(id));
+      if (t) next.set(t.id, t);
+    }
+    for (const [id, t] of this.tabs) if (!next.has(id)) next.set(id, t);
+    this.tabs = next;
+    this.save();
+    this.emit({ t: 'tab_order', ids: [...next.keys()] });
+  }
+
   close(id: string): void {
     const tab = this.tabs.get(id);
     if (!tab) return;
     const p = tab.project;
     const sessionId = tab.geminiId ? `gemini:${tab.geminiId}` : tab.state.meta.sessionId;
     if (p && sessionId) this.book.noteClosed(p, { sessionId, title: tab.state.meta.title, main: p.main, ...(p.own ? { own: true } : {}), createdAt: tab.state.meta.createdAt });
+    if (sessionId) this.closedStack = [...this.closedStack.filter((c) => c.sessionId !== sessionId), { sessionId, title: tab.state.meta.title, cwd: tab.state.info.cwd, index: [...this.tabs.keys()].indexOf(id) }].slice(-30);
     tab.close();
     this.tabs.delete(id);
     this.save();
