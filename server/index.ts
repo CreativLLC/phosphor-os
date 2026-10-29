@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { AUTO_MODEL, EFFORTS, MODES, type ClientEvent, type ServerEvent } from '../shared/protocol.ts';
+import { AUTO_MODEL, EFFORTS, INSTRUCTIONS_MAX, MODES, type ClientEvent, type ServerEvent } from '../shared/protocol.ts';
 import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPassword } from './auth.ts';
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
@@ -104,12 +104,12 @@ function sendFile(res: ServerResponse, file: string, extra: Record<string, strin
   res.end(readFileSync(file));
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+function readBody(req: IncomingMessage, max = 4096): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (c) => {
       body += c;
-      if (body.length > 4096) req.destroy();
+      if (body.length > max) req.destroy();
     });
     req.on('end', () => resolve(body));
     req.on('error', reject);
@@ -168,6 +168,20 @@ const server = createServer(async (req, res) => {
       if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return sendJson(res, { error: 'POST JSON only.' }, 405);
       const r = tabs.deleteProject(del[1]);
       return sendJson(res, r, 'error' in r ? 409 : 200);
+    }
+    const rules = /^\/api\/projects\/([\w-]+)\/instructions$/.exec(url.pathname);
+    if (rules) {
+      if (req.method === 'GET') return sendJson(res, tabs.book.instructions(rules[1]));
+      if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return sendJson(res, { error: 'POST JSON only.' }, 405);
+      let text: unknown;
+      try {
+        text = JSON.parse(await readBody(req, 4 * INSTRUCTIONS_MAX)).text;
+      } catch {
+        /* bad JSON */
+      }
+      if (typeof text !== 'string') return sendJson(res, { error: 'Send { text }.' }, 400);
+      const r = tabs.setInstructions(rules[1], text);
+      return sendJson(res, r, 'error' in r ? 400 : 200);
     }
     if (url.pathname === '/api/history') return sendJson(res, await tabs.history(url.searchParams.has('all')));
     if (url.pathname === '/api/history/search') return sendJson(res, await tabs.searchHistory(url.searchParams.get('q') ?? '', url.searchParams.has('all')));

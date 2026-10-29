@@ -210,6 +210,11 @@ export type HistoryResponse = { sessions: HistoryEntry[] };
 // tabs with its ProjectRef; closed: its chats closed since, which open_project reopens (a chat never used is not kept).
 export type ProjectSummary = { id: string; name: string; createdAt: number; lastActive: number; closed: { sessionId: string; title: string; main: boolean }[] };
 export type ProjectsResponse = { projects: ProjectSummary[] };
+// INSTRUCTIONS: the user's own rules for a project (data/projects/<id>/INSTRUCTIONS.md), in every project chat's prompt.
+export const INSTRUCTIONS_MAX = 20_000; // bytes
+export type ProjectInstructions = { text: string; updatedAt: number };
+// Saved: waiting = chats busy now, which take the new text once they are done.
+export type InstructionsSaved = { ok: true; updatedAt: number; chats: number; waiting: number } | { error: string };
 // GET /api/history/search?q=words[&all=1]: chats whose own text (yours and Claude's) has every word.
 export type HistorySearchResponse = { hits: { sessionId: string; snippet: string }[] };
 
