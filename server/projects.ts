@@ -1,11 +1,15 @@
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { INSTRUCTIONS_MAX, type ProjectInstructions, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
+import { basename, join } from 'node:path';
+import { INSTRUCTIONS_MAX, MEMORY_MAX, type ProjectDoc, type ProjectDocKind, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR } from './config.ts';
 
 // PROJECTS (owner's ask 2026-10-27): a project outlives its tabs. data/projects/<id>/project.json keeps its name and
 // the chats closed since, so the PROJECTS list shows every project and reopens its chats through the HISTORY resume
 // path (Tabs.open). Projects made before this file have only PROJECT.md: the name comes from its title line.
+
+const DOC_MAX: Record<ProjectDocKind, number> = { instructions: INSTRUCTIONS_MAX, memory: MEMORY_MAX };
+const hash = (text: string) => (text ? createHash('sha1').update(text).digest('hex').slice(0, 16) : '');
 
 export type ClosedChat = { sessionId: string; title: string; main: boolean; own?: boolean; createdAt: number; closedAt: number };
 type ProjectFile = { name: string; createdAt: number; closed: ClosedChat[] };
@@ -91,28 +95,39 @@ export class ProjectBook {
 
   // INSTRUCTIONS (owner's ask 2026-10-28): the user's own rules for the project, like a CLAUDE.md for it. Every chat
   // of the project gets them in its system prompt (Tab.start). Empty text removes the file.
-  instructions(id: string): ProjectInstructions {
-    const file = this.instructionsFile(id);
-    try {
-      return file && lstatSync(file).isFile() ? { text: readFileSync(file, 'utf8').slice(0, INSTRUCTIONS_MAX), updatedAt: statSync(file).mtimeMs } : { text: '', updatedAt: 0 };
-    } catch {
-      return { text: '', updatedAt: 0 };
-    }
+  // MEMORY: PROJECT.md, the shared memory the chats read and write; the user views and edits it too.
+  // base: the version the editor loaded; a save over a newer version (a chat wrote it since) is refused.
+  instructions(id: string): ProjectDoc {
+    return this.doc(id, 'instructions') ?? { text: '', updatedAt: 0, version: '' };
   }
 
-  setInstructions(id: string, text: string): { ok: true; updatedAt: number } | { error: string } {
-    const file = this.instructionsFile(id);
+  doc(id: string, kind: ProjectDocKind): ProjectDoc | undefined {
+    const file = this.docFile(id, kind);
+    if (!file) return undefined;
+    const st = lstatSync(file, { throwIfNoEntry: false });
+    if (!st?.isFile()) return { text: '', updatedAt: 0, version: '' }; // none yet (a link is not followed)
+    if (st.size > DOC_MAX[kind] * 2) return undefined; // grown far past what the editor takes
+    const text = readFileSync(file, 'utf8');
+    return { text, updatedAt: st.mtimeMs, version: hash(text) };
+  }
+
+  setDoc(id: string, kind: ProjectDocKind, text: string, base?: string): { ok: true; updatedAt: number; version: string } | { error: string; changed?: ProjectDoc } {
+    const file = this.docFile(id, kind);
     if (!file || !existsSync(join(this.root, id))) return { error: 'No such project.' };
-    if (lstatSync(file, { throwIfNoEntry: false })?.isFile() === false) return { error: 'INSTRUCTIONS.md is not a plain file.' }; // a link put there
-    text = text.replace(/\r\n/g, '\n').trim();
-    if (Buffer.byteLength(text) > INSTRUCTIONS_MAX) return { error: `Too long: at most ${INSTRUCTIONS_MAX / 1000} KB.` };
-    if (text) writeFileSync(file, text + '\n');
+    if (lstatSync(file, { throwIfNoEntry: false })?.isFile() === false) return { error: `${basename(file)} is not a plain file.` }; // a link put there
+    text = text.replace(/\r\n/g, '\n');
+    if (kind === 'instructions') text = text.trim();
+    if (Buffer.byteLength(text) > DOC_MAX[kind]) return { error: `Too long: at most ${DOC_MAX[kind] / 1000} KB.` };
+    if (kind === 'instructions' && text) text += '\n';
+    const now = this.doc(id, kind);
+    if (base !== undefined && now && now.version !== base) return { error: 'The file changed since you opened it.', changed: now };
+    if (text || kind === 'memory') writeFileSync(file, text);
     else rmSync(file, { force: true });
-    return { ok: true, updatedAt: text ? statSync(file).mtimeMs : Date.now() };
+    return { ok: true, updatedAt: text || kind === 'memory' ? statSync(file).mtimeMs : Date.now(), version: hash(text) };
   }
 
-  private instructionsFile(id: string): string | undefined {
-    return /^[\w-]+$/.test(id) ? join(this.root, id, 'INSTRUCTIONS.md') : undefined;
+  private docFile(id: string, kind: ProjectDocKind): string | undefined {
+    return /^[\w-]+$/.test(id) ? join(this.root, id, kind === 'instructions' ? 'INSTRUCTIONS.md' : 'PROJECT.md') : undefined;
   }
 
   private ids(): string[] {

@@ -2,7 +2,7 @@ import type { ProjectsResponse, ProjectSummary, TabState } from '../../shared/pr
 import { demoProjects } from './demo.ts';
 import { firstMessage, type FirstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
-import { editInstructions } from './projectedit.ts';
+import { editInstructions, editMemory } from './projectedit.ts';
 import { store, working } from './store.ts';
 import { newProject } from './tabs.ts';
 import { button, confirmBox, el, timeAgo } from './ui.ts';
@@ -189,7 +189,12 @@ function projectRow(p: ProjectSummary, tabs: TabState[], done: () => void, reloa
     void editInstructions(p);
   });
   rules.title = 'Your own rules for this project: every chat in it follows them';
-  tools.append(rules);
+  const memory = button('MEMORY', () => {
+    done();
+    void editMemory(p);
+  });
+  memory.title = "The project's shared memory file (PROJECT.md): view and edit it";
+  tools.append(rules, memory);
   const del = button('DELETE', () => void deleteProject(p, tabs, reload), 'project-delete');
   del.title = 'Delete this project: its open chats close, its memory file goes. The chats stay in HISTORY.';
   tools.append(del);

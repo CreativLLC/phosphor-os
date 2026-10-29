@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { AUTO_MODEL, EFFORTS, INSTRUCTIONS_MAX, MODES, type ClientEvent, type ServerEvent } from '../shared/protocol.ts';
+import { AUTO_MODEL, EFFORTS, MEMORY_MAX, MODES, type ClientEvent, type ProjectDocKind, type ServerEvent } from '../shared/protocol.ts';
 import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPassword } from './auth.ts';
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
@@ -169,19 +169,21 @@ const server = createServer(async (req, res) => {
       const r = tabs.deleteProject(del[1]);
       return sendJson(res, r, 'error' in r ? 409 : 200);
     }
-    const rules = /^\/api\/projects\/([\w-]+)\/instructions$/.exec(url.pathname);
-    if (rules) {
-      if (req.method === 'GET') return sendJson(res, tabs.book.instructions(rules[1]));
+    // INSTRUCTIONS and MEMORY (PROJECT.md) of a project: read, or save (JSON { text, base? }; base: the version loaded).
+    const doc = /^\/api\/projects\/([\w-]+)\/(instructions|memory)$/.exec(url.pathname);
+    if (doc) {
+      const kind = doc[2] as ProjectDocKind;
+      if (req.method === 'GET') return sendJson(res, tabs.book.doc(doc[1], kind) ?? { error: 'The file is too big to show here.' });
       if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return sendJson(res, { error: 'POST JSON only.' }, 405);
-      let text: unknown;
+      let body: { text?: unknown; base?: unknown } = {};
       try {
-        text = JSON.parse(await readBody(req, 4 * INSTRUCTIONS_MAX)).text;
+        body = JSON.parse(await readBody(req, 4 * MEMORY_MAX));
       } catch {
         /* bad JSON */
       }
-      if (typeof text !== 'string') return sendJson(res, { error: 'Send { text }.' }, 400);
-      const r = tabs.setInstructions(rules[1], text);
-      return sendJson(res, r, 'error' in r ? 400 : 200);
+      if (typeof body.text !== 'string' || (body.base !== undefined && typeof body.base !== 'string')) return sendJson(res, { error: 'Send { text, base? }.' }, 400);
+      const r = tabs.saveProjectDoc(doc[1], kind, body.text, body.base);
+      return sendJson(res, r, 'error' in r ? (r.changed ? 409 : 400) : 200);
     }
     if (url.pathname === '/api/history') return sendJson(res, await tabs.history(url.searchParams.has('all')));
     if (url.pathname === '/api/history/search') return sendJson(res, await tabs.searchHistory(url.searchParams.get('q') ?? '', url.searchParams.has('all')));
