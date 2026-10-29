@@ -76,15 +76,12 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       b.append(label, close);
       return b;
   };
-  // Fold or show a project's chats in the tab bar. Folding while one of them is open moves to the lead, which stays.
+  // Fold or show a project's chats in the tab bar. Folded, the whole project is one tab: its name and how many chats
+  // it holds, lit like a tab when one of them is open, busy, done or needs you (the owner, 2026-10-28).
   let foldSoon: ReturnType<typeof setTimeout> | undefined;
+  let shownActive = store.active;
   const toggleFold = (id: string) => {
-    if (!folded.delete(id)) {
-      folded.add(id);
-      const cur = store.current()?.meta.project;
-      const lead = [...store.tabs.values()].find((x) => x.meta.project?.id === id && x.meta.project.main);
-      if (cur?.id === id && !cur.main && lead) store.setActive(lead.meta.id);
-    }
+    if (!folded.delete(id)) folded.add(id);
     saveFolded();
     render();
   };
@@ -106,22 +103,35 @@ export function mountTabs(nav: HTMLElement, dialog: HTMLDialogElement): void {
       const members = all
         .filter((x) => x.meta.project?.id === p.id)
         .sort((a, b) => Number(!!b.meta.project?.main) - Number(!!a.meta.project?.main) || a.meta.createdAt - b.meta.createdAt);
-      // A folded project opens again when one of its hidden chats becomes the open one (THREADS, a notice).
-      if (folded.has(p.id) && members.some((x) => x.meta.id === store.active && !x.meta.project?.main)) {
+      // A folded project opens again when another of its chats becomes the open one (THREADS, a notice, HISTORY).
+      const inside = members.some((x) => x.meta.id === store.active);
+      if (folded.has(p.id) && inside && store.active !== shownActive) {
         folded.delete(p.id);
         saveFolded();
       }
       const fold = folded.has(p.id);
       const busy = members.filter((x) => working(x)).length;
-      const head = button(`${fold ? '▸' : '▾'} ${p.name}${fold && members.length > 1 ? ` (${members.length - 1})` : ''}`, () => toggleFold(p.id), 'tab-group-label');
-      head.title = `Project "${p.name}": ${members.length - 1} thread${members.length === 2 ? '' : 's'}${busy ? `, ${busy} working` : ''}. Click to ${fold ? 'show' : 'fold'} the threads.`;
+      const n = members.length;
+      const head = button('', () => toggleFold(p.id), 'tab-group-label');
+      head.append(el('span', 'tab-dot'), `${fold ? '▸' : '▾'} `, el('span', 'tab-group-name', p.name));
+      if (fold) head.append(el('span', 'tab-group-count', String(n)));
+      head.title = `Project "${p.name}": ${n} chat${n === 1 ? '' : 's'}${busy ? `, ${busy} working` : ''}. Click to ${fold ? 'show' : 'fold'} them.`;
       head.classList.toggle('busy', busy > 0);
+      // Folded: the project's tab stands in for its chats.
+      if (fold) {
+        head.classList.add('tab', 'folded');
+        head.classList.toggle('on', inside);
+        head.classList.toggle('attention', members.some((x) => x.meta.attention));
+        head.classList.toggle('done', !busy && members.some((x) => unseen.has(x.meta.id) && !x.meta.attention));
+      }
       const group = el('div', 'tab-group');
+      group.classList.toggle('folded', fold);
       const more = button('+', () => newProjectChat(p), 'tab-add tab-group-add');
       more.title = `New chat in "${p.name}"`;
-      group.append(head, ...members.filter((x) => !fold || x.meta.project?.main).map(tabEl), more);
+      group.append(head, ...(fold ? [] : [...members.map(tabEl), more]));
       items.push(group);
     }
+    shownActive = store.active;
     const add = button('+', () => openNewTab(dialog), 'tab-add');
     add.title = 'New chat or project';
     nav.replaceChildren(...items, add);

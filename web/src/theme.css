@@ -919,6 +919,50 @@ html.booting body > :not(#boot) {
   text-shadow: var(--glow);
 }
 
+/* A folded project: one tab for all its chats (the dot shows busy, ! needs you, ✓ done, like a tab). */
+#top .tab-group-label.folded {
+  display: inline-flex;
+  max-width: 260px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+}
+
+/* The name gives way, the count stays (a project with a long name). */
+.tab-group-label .tab-group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.tab-group-count {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  color: var(--bg);
+  background: var(--ph);
+  letter-spacing: 0;
+}
+
+#top .tab-group-label.folded.on {
+  border-color: var(--ph);
+  color: var(--ph-bright);
+  background: rgb(var(--ph-rgb) / 0.14);
+  box-shadow: inset 0 -3px 0 var(--ph);
+}
+
+#top .tab-group-label.folded.done {
+  border-color: var(--ph-bright);
+}
+
+#top .tab-group-label.folded.attention {
+  border-color: var(--ph-bright);
+  animation: attn-flash 1s steps(1) infinite;
+}
+
+.tab-group.folded {
+  padding: 0;
+}
+
 .tab.lead .tab-title::before {
   content: 'LEAD · ';
   color: var(--ph-dim);
