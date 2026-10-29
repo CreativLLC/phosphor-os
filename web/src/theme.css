@@ -332,13 +332,14 @@ select option {
   min-height: 36px;
 }
 
+/* Logo: the pixel CRT of the favicon, in the theme color with the phosphor glow. */
 .brand {
-  background: var(--ph);
-  color: var(--bg);
-  text-shadow: none;
-  padding: 3px 10px 2px;
-  letter-spacing: 3px;
-  box-shadow: 0 0 12px rgb(var(--ph-rgb) / 0.35);
+  color: var(--ph);
+  filter: drop-shadow(0 0 1px rgb(var(--ph-rgb) / var(--glow-a))) drop-shadow(0 0 5px rgb(var(--ph-rgb) / var(--glow-b)));
+}
+
+html[data-crt='off'] .brand {
+  filter: none;
 }
 
 #left {

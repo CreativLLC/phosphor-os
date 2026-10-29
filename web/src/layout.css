@@ -26,8 +26,21 @@ body {
   min-width: 0;
 }
 
+#top {
+  position: relative;
+}
+
 .brand {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.brand svg {
+  display: block;
+  width: 32px;
+  height: 32px;
 }
 
 #tabs {
@@ -65,10 +78,106 @@ body {
   white-space: nowrap;
 }
 
+/* MENU: every top bar tool in one drop-down under the button, in groups (GO, WORK, VIEW, then SETTINGS). */
+#btn-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+body.menu-open #btn-menu {
+  background: var(--ph);
+  color: var(--bg);
+  text-shadow: none;
+}
+
+/* A dot on MENU when something inside needs a look (STATION's number, a hidden panel's news dot). */
+#top:has(.top-tools .st-badge:not([hidden]), .top-tools .news) #btn-menu::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ph-bright);
+  box-shadow: 0 0 6px var(--ph-bright);
+}
+
 .top-tools {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 16px;
+  z-index: 80;
+  width: 280px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px 10px;
+  background: var(--bg);
+  border: 2px solid var(--ph);
+  box-shadow:
+    0 0 0 4px var(--bg),
+    0 0 0 5px rgb(var(--ph-rgb) / 0.45),
+    0 0 40px rgba(0, 0, 0, 0.8);
+}
+
+body.menu-open .top-tools {
+  display: flex;
+}
+
+.menu-head {
+  margin: 8px 2px 0;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 2px;
+}
+
+.menu-head:first-child {
+  margin-top: 0;
+}
+
+.top-tools > button,
+.top-tools .settings-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 4px 10px;
+}
+
+.top-tools > .only-narrow {
+  display: none;
+}
+
+/* Keyboard shortcut at the right end of a row. */
+.top-tools [data-key]::before {
+  content: attr(data-key);
+  order: 1;
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+}
+
+.top-tools button:active[data-key]::before {
+  color: inherit;
+}
+
+#settings {
+  margin-top: 8px;
+}
+
+/* SETTINGS opens its box beside the menu, from the top, so it never runs off the screen. */
+.top-tools #settings {
+  position: static;
+}
+
+#settings .settings-pop {
+  top: -2px;
+  right: calc(100% + 12px);
+  max-height: calc(100dvh - 72px);
+  overflow-y: auto;
 }
 
 #app {
@@ -266,6 +375,10 @@ dialog {
     display: none;
   }
 
+  #btn-menu {
+    order: -1;
+  }
+
   /* Two rows: buttons on top, tabs full width under them. */
   #top {
     padding: 6px 8px;
@@ -276,10 +389,6 @@ dialog {
   #tabs {
     order: 5;
     flex: 1 0 100%;
-  }
-
-  .top-tools {
-    margin-left: auto;
   }
 
   #app {
@@ -384,7 +493,7 @@ dialog {
   }
 }
 
-/* ---------- Phones: one-row header. MENU opens AGENTS / HISTORY / INFO / SETTINGS as a drop-down. ---------- */
+/* ---------- Phones: one-row header, MENU on the left; its drop-down is full width, two columns. ---------- */
 
 #btn-opts {
   display: none; /* only in the narrow message box below */
@@ -404,18 +513,13 @@ dialog {
   }
 
   .top-tools {
-    display: none;
-    position: absolute;
     top: 100%;
     left: 6px;
     right: 6px;
-    z-index: 80;
-    margin: 0;
+    width: auto;
     padding: 8px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
-    background: var(--bg);
-    border: 2px solid var(--ph);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
   }
 
@@ -423,17 +527,41 @@ dialog {
     display: grid;
   }
 
+  .menu-head,
+  #settings {
+    grid-column: 1 / -1;
+  }
+
+  .menu-head {
+    margin: 4px 2px -2px;
+  }
+
   .top-tools > button,
   .top-tools .settings-btn {
-    display: block;
-    width: 100%;
+    justify-content: center;
     min-height: 44px;
   }
 
-  body.menu-open #btn-menu {
-    background: var(--ph);
-    color: var(--bg);
-    text-shadow: none;
+  .top-tools > .only-narrow {
+    display: flex;
+  }
+
+  .top-tools > .only-wide,
+  .top-tools [data-key]::before {
+    display: none;
+  }
+
+  #settings {
+    margin-top: 0;
+  }
+
+  #btn-update {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  #btn-update .upd-v {
+    display: none;
   }
 
   /* #settings: beats settings.css (loaded later), which would put the box below the screen. */

@@ -85,7 +85,7 @@ mountSystem($('system'));
 mountStation($('station'), $('btn-station'));
 // Desktop app only: program bar (CHAT, WEB, saved sites) and the web pane. Last: it watches SETTINGS, HISTORY and MCP.
 mountPrograms($('programs'), $('webapp'));
-// LAUNCHER: Ctrl+K, the LAUNCH button (MENU on phones), the desktop app's 'launcher' command. After the program bar.
+// LAUNCHER: Ctrl+K, the LAUNCH button (in MENU), the desktop app's 'launcher' command. After the program bar.
 mountLauncher($('btn-launch'));
 // Linux desktop app: no LAUNCH button, the Super key opens the launcher. Asked of the desktop app itself, never the
 // user agent (Android's says Linux too). Windows and the phone keep it; Ctrl+K and the launcher's keys stay.
@@ -145,8 +145,9 @@ addLauncherCommands([
   ...funCommands(),
 ]);
 
-// Phones: the header tools live in a MENU; the message box pickers behind OPTIONS.
+// The top bar tools live in MENU (a drop-down on every screen size); on phones the message box pickers sit behind OPTIONS.
 const menuBtn = $('btn-menu');
+const menu = $('menu');
 const setMenu = (open: boolean) => {
   document.body.classList.toggle('menu-open', open);
   menuBtn.setAttribute('aria-expanded', String(open));
@@ -155,13 +156,22 @@ menuBtn.onclick = (e) => {
   e.stopPropagation();
   setMenu(!document.body.classList.contains('menu-open'));
 };
-document.querySelector('.top-tools')!.addEventListener('click', (e) => {
-  // Picking AGENTS / HISTORY / INFO closes the menu; SETTINGS keeps it open while its box shows.
-  if ((e.target as HTMLElement).closest('#settings')) return;
+menu.addEventListener('click', (e) => {
+  // Picking an item closes the menu; SETTINGS keeps it open while its box shows.
+  const t = e.target as HTMLElement;
+  if (!t.closest('button') || t.closest('#settings')) return;
   setMenu(false);
 });
 document.addEventListener('click', (e) => {
   if (!(e.target as HTMLElement).closest('.top-tools, #btn-menu, .settings-pop')) setMenu(false);
+});
+// Esc closes the menu; with the SETTINGS box open, Esc closes the box first (settings.ts).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !document.body.classList.contains('menu-open')) return;
+  if (document.querySelector('dialog[open], #settings .settings-pop:not([hidden])')) return;
+  const inside = menu.contains(document.activeElement);
+  setMenu(false);
+  if (inside) menuBtn.focus();
 });
 const optsBtn = $('btn-opts');
 optsBtn.onclick = () => {
