@@ -7,7 +7,7 @@ import { button, confirmBox, el, timeAgo, toast } from './ui.ts';
 // files on the box), open, download, delete. Opened from PROJECTS and the tab menu of a project chat.
 
 const MB = 1024 * 1024;
-const fmtSize = (b: number) => (b >= MB ? `${(b / MB).toFixed(1)} MB` : b >= 1024 ? `${Math.round(b / 1024)} KB` : `${b} B`);
+export const fmtSize = (b: number) => (b >= MB ? `${(b / MB).toFixed(1)} MB` : b >= 1024 ? `${Math.round(b / 1024)} KB` : `${b} B`);
 const base = (id: string) => `/api/projects/${encodeURIComponent(id)}/files`;
 
 // Demo (?demo=1): a short list kept in this page.
@@ -19,7 +19,7 @@ const demoFiles: Record<string, ProjectFile[]> = {
   ],
 };
 
-async function list(id: string): Promise<ProjectFile[]> {
+export async function listFiles(id: string): Promise<ProjectFile[]> {
   if (store.demo) return [...(demoFiles[id] ?? [])];
   const r = (await (await fetch(base(id))).json()) as ProjectFilesResponse & { error?: string };
   if (r.error) throw new Error(r.error);
@@ -52,7 +52,7 @@ async function upload(id: string, file: File): Promise<boolean> {
   }
 }
 
-export async function editFiles(p: { id: string; name: string }): Promise<void> {
+export async function editFiles(p: { id: string; name: string }, onClose?: () => void): Promise<void> {
   const d = el('dialog', 'proj-edit proj-files');
   const rows = el('div', 'pf-list');
   const total = el('span', 'proj-edit-size');
@@ -87,7 +87,7 @@ export async function editFiles(p: { id: string; name: string }): Promise<void> 
   };
   const reload = async () => {
     try {
-      render(await list(p.id));
+      render(await listFiles(p.id));
     } catch (e) {
       rows.replaceChildren(el('div', 'empty', `Could not load the files${e instanceof Error && e.message ? `: ${e.message}` : '.'}`));
     }
@@ -137,6 +137,7 @@ export async function editFiles(p: { id: string; name: string }): Promise<void> 
   const close = () => {
     d.close();
     d.remove();
+    onClose?.();
   };
   const help = el('p', 'proj-edit-help', `Reference files for this project: notes, PDFs, pictures, code. Every chat in it can read them. Up to ${PROJECT_FILE_MAX / MB} MB a file.`);
   const foot = el('div', 'buttons');

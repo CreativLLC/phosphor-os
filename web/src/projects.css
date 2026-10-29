@@ -265,3 +265,126 @@ dialog.proj-files.pf-drop {
     margin-right: auto;
   }
 }
+
+/* PROJECT PANEL (projectpanel.ts): name, chats, then INSTRUCTIONS, MEMORY, FILES; the middle scrolls. */
+dialog.proj-panel {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.pp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.pp-part {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pp-part-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pp-head {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: normal;
+  letter-spacing: 2px;
+  color: var(--ph-dim);
+}
+
+.pp-line {
+  color: var(--ph);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.pp-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pp-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.pp-part button,
+.pp-tools button {
+  min-height: 30px;
+  padding: 2px 10px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.pp-chats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pp-part .pp-chat {
+  display: flex;
+  justify-content: space-between;
+  gap: 1ch;
+  width: 100%;
+  text-align: left;
+}
+
+.pp-chat-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-chat-state {
+  flex: none;
+  color: var(--ph-dim);
+}
+
+.pp-chat.st-working .pp-chat-state {
+  color: var(--ph-bright);
+  text-shadow: var(--glow);
+}
+
+.pp-chat.st-needs-you .pp-chat-state {
+  color: var(--ph-bright);
+  animation: crew-blink 1s steps(1) infinite;
+}
+
+.pp-chat.st-closed {
+  color: var(--ph-dim);
+  border-style: dashed;
+}
+
+.pp-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pp-tools:empty {
+  display: none;
+}
+
+dialog.proj-panel > .buttons .project-delete {
+  margin-right: auto;
+  border-color: rgb(var(--ph-rgb) / 0.35);
+  color: var(--ph-dim);
+}
+
+@media (max-width: 700px) {
+  dialog.proj-panel {
+    width: calc(100vw - 16px);
+    max-height: 94dvh;
+  }
+}

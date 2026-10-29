@@ -2,7 +2,7 @@
 // Fake tabs only: no Claude process starts, nothing is written to data/ (the project book uses a temp folder).
 //   npx tsx tests/project-panel.ts
 
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -159,6 +159,21 @@ check('the prompt hook lists the files', Tab.projects?.files?.('p1')?.join() ===
 const g = live(idle);
 tabs.projectFilesChanged('p1');
 check('a files change restarts idle chats (new names in the prompt)', g.closed() === 1);
+
+// ---- RENAME (project panel): project.json, the open chats' project name and prompt, a lead named like the project.
+idle.state.meta.title = 'Game jam';
+const h = live(idle);
+const rn = tabs.renameProject('p1', '  Puzzle   jam ');
+check('rename: saved, spaces tidied', 'ok' in rn && rn.name === 'Puzzle jam' && book.read('p1')?.name === 'Puzzle jam');
+check('rename: every open chat of the project gets the name', [idle, busy, agent].every((t) => t.project?.name === 'Puzzle jam'));
+check('rename: the lead named like the project follows; other chats keep their names', idle.state.meta.title === 'Puzzle jam' && busy.state.meta.title === 'Art');
+check('rename: idle chats restart (the name is in their prompt)', h.closed() === 1);
+check('rename: empty or unknown is refused', 'error' in tabs.renameProject('p1', '   ') && 'error' in tabs.renameProject('nope', 'x') && 'error' in tabs.renameProject('../p1', 'x'));
+check('rename: an older project (PROJECT.md only) gets a project.json', (() => {
+  mkdirSync(join(root, 'old2'));
+  writeFileSync(join(root, 'old2', 'PROJECT.md'), '# Old name\n');
+  return 'ok' in tabs.renameProject('old2', 'New name') && book.read('old2')?.name === 'New name' && readFileSync(join(root, 'old2', 'PROJECT.md'), 'utf8') === '# Old name\n';
+})());
 
 rmSync(root, { recursive: true, force: true });
 console.log(fail ? `\n${fail} failed` : '\nall passed');

@@ -2,11 +2,10 @@ import type { ProjectsResponse, ProjectSummary, TabState } from '../../shared/pr
 import { demoProjects } from './demo.ts';
 import { firstMessage, type FirstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
-import { editInstructions, editMemory } from './projectedit.ts';
-import { editFiles } from './projectfiles.ts';
+import { openPanel } from './projectpanel.ts';
 import { store, working } from './store.ts';
 import { newProject } from './tabs.ts';
-import { button, confirmBox, el, timeAgo } from './ui.ts';
+import { button, confirmBox, el, timeAgo, toast } from './ui.ts';
 
 // PROJECTS (owner's ask 2026-10-27): every project in one list (open or closed), and + CHAT, one more chat in a
 // project. The list comes from GET /api/projects (server/projects.ts); open chats and how they are doing come live
@@ -162,65 +161,36 @@ function projectRow(p: ProjectSummary, tabs: TabState[], done: () => void, reloa
   };
   row.append(main);
   if (names.length) row.append(chats);
+  // One line of buttons: + CHAT on an open project, and PANEL for the rest (name, chats, lead, instructions, memory,
+  // files, delete: projectpanel.ts).
   const tools = el('div', 'project-tools');
   if (tabs.length) {
     const add = button('+ CHAT', () => newProjectChat(p));
     add.title = 'A new chat in this project';
     tools.append(add);
-    // The lead was closed while other chats stay open: bring it back (or a new one on the same memory).
-    if (!tabs.some((t) => t.meta.project?.main)) {
-      const lead = button('OPEN LEAD', () => {
-        done();
-        send({ t: 'open_lead', project: p.id, req: newReq() });
-      });
-      lead.title = "The project's lead chat: it sees and steers the other chats";
-      tools.append(lead);
-    }
   }
-  if (p.closed.length) {
-    const back = button(`REOPEN ${p.closed.length} CLOSED`, () => {
-      done();
-      send({ t: 'open_project', project: p.id, req: newReq() });
-    }, 'project-reopen');
-    back.title = 'Bring back the chats of this project you closed';
-    if (tabs.length) tools.append(back);
-  }
-  const rules = button('INSTRUCTIONS', () => {
-    done();
-    void editInstructions(p);
-  });
-  rules.title = 'Your own rules for this project: every chat in it follows them';
-  const memory = button('MEMORY', () => {
-    done();
-    void editMemory(p);
-  });
-  memory.title = "The project's shared memory file (PROJECT.md): view and edit it";
-  const files = button('FILES', () => {
-    done();
-    void editFiles(p);
-  });
-  files.title = 'Reference files for this project: every chat in it can read them';
-  tools.append(rules, memory, files);
-  const del = button('DELETE', () => void deleteProject(p, tabs, reload), 'project-delete');
-  del.title = 'Delete this project: its open chats close, its memory file goes. The chats stay in HISTORY.';
-  tools.append(del);
+  const panel = button('PANEL', () => void openPanel(p, done, reload), 'project-panel-btn');
+  panel.title = 'Everything about this project: name, chats, lead, instructions, memory, files';
+  tools.append(panel);
   row.append(tools);
   return row;
 }
 
-// DELETE: asks first; the server closes the project's open chats and moves its folder to data/projects-deleted/.
-async function deleteProject(p: ProjectSummary, tabs: TabState[], reload: () => void): Promise<void> {
+// DELETE (in the project panel): asks first; the server closes the project's open chats and moves its folder to
+// data/projects-deleted/. True when it went.
+export async function deleteProject(p: ProjectSummary, tabs: TabState[]): Promise<boolean> {
   const open = tabs.length ? ` Its ${tabs.length} open chat${tabs.length === 1 ? '' : 's'} close.` : '';
-  if (!(await confirmBox(`DELETE ${p.name.toUpperCase()}?`, `The project and its memory file go away.${open} The chats stay in HISTORY as plain chats.`, 'DELETE'))) return;
-  if (store.demo) return;
+  if (!(await confirmBox(`DELETE ${p.name.toUpperCase()}?`, `The project and its memory file go away.${open} The chats stay in HISTORY as plain chats.`, 'DELETE'))) return false;
+  if (store.demo) return toast('Not deleted: this is the demo.'), false;
   try {
     const r = await fetch(`/api/projects/${encodeURIComponent(p.id)}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const j = (await r.json()) as { error?: string };
-    if (j.error) await confirmBox('NOT DELETED', j.error, 'OK');
+    if (!j.error) return true;
+    await confirmBox('NOT DELETED', j.error, 'OK');
   } catch {
-    /* the list shows what is left */
+    toast('Not deleted: the app did not answer.');
   }
-  reload();
+  return false;
 }
 
 function openProject(p: ProjectSummary, tabs: TabState[]): void {

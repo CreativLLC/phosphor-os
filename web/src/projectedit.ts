@@ -43,7 +43,7 @@ function demoDoc(id: string, kind: ProjectDocKind): ProjectDoc {
 
 const url = (id: string, kind: ProjectDocKind) => `/api/projects/${encodeURIComponent(id)}/${kind}`;
 
-async function load(id: string, kind: ProjectDocKind): Promise<ProjectDoc> {
+export async function loadDoc(id: string, kind: ProjectDocKind): Promise<ProjectDoc> {
   if (store.demo) return demoDoc(id, kind);
   const r = (await (await fetch(url(id, kind))).json()) as ProjectDoc | { error: string };
   if ('error' in r) throw new Error(r.error);
@@ -60,15 +60,16 @@ async function save(id: string, kind: ProjectDocKind, text: string, base: string
   return (await (await fetch(url(id, kind), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, base }) })).json()) as DocSaved;
 }
 
-export const editInstructions = (p: { id: string; name: string }) => editProjectDoc(p, 'instructions');
-export const editMemory = (p: { id: string; name: string }) => editProjectDoc(p, 'memory');
+// onClose: after the box closes (saved or not), so the project panel can show the new state.
+export const editInstructions = (p: { id: string; name: string }, onClose?: () => void) => editProjectDoc(p, 'instructions', onClose);
+export const editMemory = (p: { id: string; name: string }, onClose?: () => void) => editProjectDoc(p, 'memory', onClose);
 
-async function editProjectDoc(p: { id: string; name: string }, kind: ProjectDocKind): Promise<void> {
+async function editProjectDoc(p: { id: string; name: string }, kind: ProjectDocKind, onClose?: () => void): Promise<void> {
   const k = KINDS[kind];
   let doc: ProjectDoc;
   try {
     if (store.demo && kind === 'memory') demoOpened = Date.now();
-    doc = await load(p.id, kind);
+    doc = await loadDoc(p.id, kind);
   } catch (e) {
     return toast(`Could not load the ${k.title.toLowerCase()}${e instanceof Error && e.message ? `: ${e.message}` : '.'}`);
   }
@@ -114,13 +115,14 @@ async function editProjectDoc(p: { id: string; name: string }, kind: ProjectDocK
   const poll = setInterval(() => {
     if (!d.open) return;
     count(); // the CHANGED time moves on
-    load(p.id, kind).then(changedOnDisk, () => {});
+    loadDoc(p.id, kind).then(changedOnDisk, () => {});
   }, POLL_MS);
 
   const done = () => {
     clearInterval(poll);
     d.close();
     d.remove();
+    onClose?.();
   };
   const leave = async () => {
     if (!edited() || (await confirmBox('DISCARD CHANGES?', `Your edits to the ${k.title.toLowerCase()} are not saved.`, 'DISCARD'))) done();
