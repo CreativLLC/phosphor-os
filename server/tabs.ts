@@ -2,10 +2,11 @@ import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type DocSaved, INSTRUCTIONS_MAX, type ProjectDocKind, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type DocSaved, INSTRUCTIONS_MAX, type ProjectDocKind, type ProjectFile, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import type { ThreadModel } from './delegate.ts';
 import { chatText, geminiModels, savedGeminiChats } from './geminitab.ts';
+import { listFiles } from './projectfiles.ts';
 import { joinRef, ProjectBook } from './projects.ts';
 import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
@@ -27,7 +28,7 @@ export class Tabs {
   constructor(private emit: (ev: ServerEvent) => void) {
     Tab.models = () => this.models();
     Tab.knownModels = () => this.modelsLoaded;
-    Tab.projects = { thread: (lead, title, brief, run) => this.thread(lead, title, brief, run), members: (id) => this.members(id), instructions: (id) => this.book.instructions(id).text.slice(0, INSTRUCTIONS_MAX) };
+    Tab.projects = { thread: (lead, title, brief, run) => this.thread(lead, title, brief, run), members: (id) => this.members(id), instructions: (id) => this.book.instructions(id).text.slice(0, INSTRUCTIONS_MAX), files: (id) => this.projectFiles(id).map((f) => f.name) };
     // AUTO-CONTINUE: a chat stopped by the usage limit goes on once the limit resets (Tab.resumeIfDue).
     // A short interval, not one long timer: survives sleep, and the time can move.
     setInterval(() => {
@@ -216,6 +217,17 @@ export class Tabs {
     const chats = this.members(id);
     const waiting = chats.filter((t) => t.refreshPrompt()).length;
     return { ...r, chats: chats.length, waiting };
+  }
+
+  // FILES of a project (server/projectfiles.ts). Their names are in each project chat's system prompt, so a change
+  // restarts the chats' Claude processes like new INSTRUCTIONS do (when idle, same session).
+  projectFiles(id: string): ProjectFile[] {
+    const dir = this.book.dir(id);
+    return dir ? listFiles(dir) : [];
+  }
+
+  projectFilesChanged(id: string): void {
+    for (const t of this.members(id)) t.refreshPrompt();
   }
 
   // DELETE a project: its open chats close (refused while one works or waits for the user), then its folder goes

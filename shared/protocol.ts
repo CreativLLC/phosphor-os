@@ -220,6 +220,12 @@ export type ProjectDoc = { text: string; updatedAt: number; version: string };
 // Saved INSTRUCTIONS also say how many chats there are, and how many still work (they take the text once done).
 // changed: the file on disk now, when it changed since `base`.
 export type DocSaved = { ok: true; updatedAt: number; version: string; chats?: number; waiting?: number } | { error: string; changed?: ProjectDoc };
+// FILES: reference files of a project (data/projects/<id>/files/), readable by every chat in it.
+export const PROJECT_FILE_MAX = 30 * 1024 * 1024; // one file
+export const PROJECT_FILES_TOTAL = 200 * 1024 * 1024; // the whole folder
+export const PROJECT_FILES_COUNT = 100;
+export type ProjectFile = { name: string; size: number; updatedAt: number };
+export type ProjectFilesResponse = { files: ProjectFile[] };
 // GET /api/history/search?q=words[&all=1]: chats whose own text (yours and Claude's) has every word.
 export type HistorySearchResponse = { hits: { sessionId: string; snippet: string }[] };
 

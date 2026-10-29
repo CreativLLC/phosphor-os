@@ -3,6 +3,7 @@ import { firstMessage, type FirstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
 import { newProjectChat } from './projects.ts';
 import { editInstructions, editMemory } from './projectedit.ts';
+import { editFiles } from './projectfiles.ts';
 import { store, working } from './store.ts';
 import { shellApi } from './shellapi.ts';
 import { button, editInline, el, folderName, pickBox } from './ui.ts';
@@ -228,11 +229,11 @@ async function tabMenu(t: TabState, rename: () => void): Promise<void> {
   }
   // The lead of this chat's project is closed: bring it back from here.
   const leadGone = here && ![...store.tabs.values()].some((x) => x.meta.project?.id === here.id && x.meta.project.main);
-  type Pick = { do: 'rename' } | { do: 'lead' } | { do: 'rules' } | { do: 'memory' } | { do: 'move'; project: string | null };
+  type Pick = { do: 'rename' } | { do: 'lead' } | { do: 'rules' } | { do: 'memory' } | { do: 'files' } | { do: 'move'; project: string | null };
   const pick = await pickBox<Pick>(t.meta.title.toUpperCase(), [
     { label: 'RENAME', value: { do: 'rename' } },
     ...(leadGone ? [{ label: 'OPEN THE LEAD CHAT', value: { do: 'lead' as const } }] : []),
-    ...(here ? [{ label: 'PROJECT INSTRUCTIONS', value: { do: 'rules' as const } }, { label: 'PROJECT MEMORY', value: { do: 'memory' as const } }] : []),
+    ...(here ? [{ label: 'PROJECT INSTRUCTIONS', value: { do: 'rules' as const } }, { label: 'PROJECT MEMORY', value: { do: 'memory' as const } }, { label: 'PROJECT FILES', value: { do: 'files' as const } }] : []),
     ...(here ? [{ label: `REMOVE FROM PROJECT (${here.name.toUpperCase()})`, value: { do: 'move' as const, project: null } }] : []),
     ...(projects.length ? [{ head: here ? 'MOVE TO PROJECT' : 'ADD TO PROJECT' }] : []),
     ...projects.map((p) => ({ label: p.name, value: { do: 'move' as const, project: p.id } })),
@@ -242,6 +243,7 @@ async function tabMenu(t: TabState, rename: () => void): Promise<void> {
   else if (pick.do === 'lead') send({ t: 'open_lead', project: here!.id, req: newReq() });
   else if (pick.do === 'rules') void editInstructions(here!);
   else if (pick.do === 'memory') void editMemory(here!);
+  else if (pick.do === 'files') void editFiles(here!);
   else send({ t: 'move_to_project', tab: t.meta.id, project: pick.project });
 }
 

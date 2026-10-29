@@ -26,7 +26,7 @@ const IMAGE_TYPES: Record<string, string> = {
 
 export type StoredUpload = Attachment & { path: string };
 
-function safeName(raw: string): string {
+export function safeName(raw: string): string {
   const base = raw.split(/[\\/]/).pop() ?? '';
   const clean = base.replace(/[^\w.\- ()]/g, '_').replace(/^[. ]+|[. ]+$/g, '').slice(-100);
   return clean || 'file';

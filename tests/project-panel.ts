@@ -2,12 +2,15 @@
 // Fake tabs only: no Claude process starts, nothing is written to data/ (the project book uses a temp folder).
 //   npx tsx tests/project-panel.ts
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { INSTRUCTIONS_MAX, MEMORY_MAX } from '../shared/protocol.ts';
+import { PassThrough, Readable } from 'node:stream';
+import { INSTRUCTIONS_MAX, MEMORY_MAX, PROJECT_FILE_MAX } from '../shared/protocol.ts';
 import { ProjectBook } from '../server/projects.ts';
-import { projectRules, Tab } from '../server/tab.ts';
+import { deleteFile, listFiles, receiveFile, serveFile } from '../server/projectfiles.ts';
+import { projectFilesNote, projectRules, Tab } from '../server/tab.ts';
 import { Tabs } from '../server/tabs.ts';
 
 let fail = 0;
@@ -106,6 +109,56 @@ const e = live(idle);
 const rm = tabs.saveProjectDoc('p1', 'memory', '# Game jam\n\nNew goal.\n');
 check('saving MEMORY restarts no chat (they read the file themselves)', 'ok' in rm && rm.chats === undefined && e.closed() === 0);
 check('setInstructions: an unknown project is an error', 'error' in tabs.saveProjectDoc('nope', 'instructions', 'x'));
+
+// ---- FILES: reference files in the project folder's files/.
+const pdir = join(root, 'p1');
+const req = (body: string | Buffer, headers: Record<string, string> = {}) => Object.assign(Readable.from([Buffer.from(body)]), { headers }) as unknown as IncomingMessage;
+check('files: none yet', listFiles(pdir).length === 0);
+const up = await receiveFile(req('# Notes\nUse pixel art.'), pdir, 'notes.md', false);
+check('upload: saved under its name', up.status === 200 && readFileSync(join(pdir, 'files', 'notes.md'), 'utf8') === '# Notes\nUse pixel art.' && listFiles(pdir).map((f) => f.name).join() === 'notes.md', JSON.stringify(up));
+const again = await receiveFile(req('v2'), pdir, 'notes.md', false);
+check('upload: a name in use is refused unless replace', again.status === 409 && 'exists' in again.body && readFileSync(join(pdir, 'files', 'notes.md'), 'utf8').startsWith('# Notes'));
+check('upload: replace', (await receiveFile(req('v2'), pdir, 'notes.md', true)).status === 200 && readFileSync(join(pdir, 'files', 'notes.md'), 'utf8') === 'v2');
+const tricky = await receiveFile(req('x'), pdir, '../../evil.sh', false);
+check('upload: a path in the name is cut to the file name', tricky.status === 200 && (tricky.body as { name: string }).name === 'evil.sh' && existsSync(join(pdir, 'files', 'evil.sh')) && !existsSync(join(root, 'evil.sh')));
+check('upload: empty is refused, leaves nothing', (await receiveFile(req(''), pdir, 'empty.txt', false)).status === 400 && !existsSync(join(pdir, 'files', 'empty.txt')) && readdirSync(join(pdir, 'files')).every((n) => !n.startsWith('.up-')));
+check('upload: over the size cap is refused', (await receiveFile(req('x', { 'content-length': String(PROJECT_FILE_MAX + 1) }), pdir, 'big.bin', false)).status === 413);
+check('upload: an unknown project is refused', (await receiveFile(req('x'), join(root, 'nope'), 'a.txt', false)).status === 404 && !existsSync(join(root, 'nope')));
+symlinkSync('/etc/hostname', join(pdir, 'files', 'link.txt'));
+check('a link in files/ is not listed', !listFiles(pdir).some((f) => f.name === 'link.txt'));
+check('upload over a link is refused', (await receiveFile(req('x'), pdir, 'link.txt', true)).status === 409);
+type Head = { status: number; headers: Record<string, unknown>; body: string };
+const serve = (name: string, download = false) =>
+  new Promise<Head>((resolve) => {
+    const out: Head = { status: 0, headers: {}, body: '' };
+    const res = new PassThrough();
+    Object.assign(res, {
+      writeHead(status: number, headers: Record<string, unknown>) {
+        out.status = status;
+        out.headers = headers;
+        return { end: (b: string) => ((out.body = b), resolve(out)) };
+      },
+    });
+    res.on('data', (c: Buffer) => (out.body += c));
+    res.on('end', () => resolve(out));
+    serveFile(res as unknown as ServerResponse, pdir, name, download);
+  });
+const txt = await serve('notes.md');
+check('open: text shows as plain text, sandboxed, inline', txt.status === 200 && txt.body === 'v2' && String(txt.headers['Content-Type']).startsWith('text/plain') && txt.headers['Content-Security-Policy'] === 'sandbox' && String(txt.headers['Content-Disposition']).startsWith('inline'));
+writeFileSync(join(pdir, 'files', 'doc.pdf'), '%PDF-1.4');
+const pdf = await serve('doc.pdf');
+check("open: a PDF opens in the browser's viewer (no sandbox)", pdf.headers['Content-Type'] === 'application/pdf' && !pdf.headers['Content-Security-Policy']);
+writeFileSync(join(pdir, 'files', 'blob.bin'), Buffer.from([1, 0, 2]));
+check('open: binary downloads', String((await serve('blob.bin')).headers['Content-Disposition']).startsWith('attachment') && String((await serve('notes.md', true)).headers['Content-Disposition']).startsWith('attachment'));
+check('open: path tricks, links and missing files are 404', (await serve('../PROJECT.md')).status === 404 && (await serve('link.txt')).status === 404 && (await serve('nope.txt')).status === 404 && (await serve('.')).status === 404);
+check('delete: removes a file; tricks and links refused', deleteFile(pdir, 'evil.sh') && !existsSync(join(pdir, 'files', 'evil.sh')) && !deleteFile(pdir, '../PROJECT.md') && !deleteFile(pdir, 'link.txt') && existsSync(join(pdir, 'files', 'link.txt')));
+const note = projectFilesNote(ref, ['a.md', 'b.pdf']);
+check('prompt: the files folder and names', /files: a\.md, b\.pdf\./.test(note) && projectFilesNote(ref, []) === '', note);
+check('prompt: a long list is cut', /and 10 more/.test(projectFilesNote(ref, Array.from({ length: 50 }, (_, i) => `f${i}.md`))));
+check('the prompt hook lists the files', Tab.projects?.files?.('p1')?.join() === 'blob.bin,doc.pdf,notes.md');
+const g = live(idle);
+tabs.projectFilesChanged('p1');
+check('a files change restarts idle chats (new names in the prompt)', g.closed() === 1);
 
 rmSync(root, { recursive: true, force: true });
 console.log(fail ? `\n${fail} failed` : '\nall passed');

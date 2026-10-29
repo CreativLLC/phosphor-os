@@ -126,6 +126,11 @@ export class ProjectBook {
     return { ok: true, updatedAt: text || kind === 'memory' ? statSync(file).mtimeMs : Date.now(), version: hash(text) };
   }
 
+  // The project's folder, for its files (server/projectfiles.ts); undefined for an id with a path in it.
+  dir(id: string): string | undefined {
+    return /^[\w-]+$/.test(id) ? join(this.root, id) : undefined;
+  }
+
   private docFile(id: string, kind: ProjectDocKind): string | undefined {
     return /^[\w-]+$/.test(id) ? join(this.root, id, kind === 'instructions' ? 'INSTRUCTIONS.md' : 'PROJECT.md') : undefined;
   }

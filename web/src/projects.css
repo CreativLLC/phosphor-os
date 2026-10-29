@@ -181,3 +181,87 @@ dialog.proj-edit > .buttons {
   padding: 1px 10px;
   font-size: var(--fs-sm);
 }
+
+/* FILES (projectfiles.ts): one row per file, name opens it; drop files on the box to upload. */
+dialog.proj-files {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.pf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 14px;
+  overflow-y: auto;
+  max-height: 56dvh;
+}
+
+.pf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.pf-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ph-bright);
+}
+
+.pf-meta {
+  flex: none;
+  color: var(--ph-dim);
+  font-size: var(--fs-sm);
+}
+
+.pf-row .pf-btn,
+.pf-row button {
+  flex: none;
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: var(--fs-sm);
+  border: 1px solid var(--ph);
+  color: var(--ph);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pf-row .pf-delete {
+  border-color: rgb(var(--ph-rgb) / 0.35);
+  color: var(--ph-dim);
+}
+
+.pf-status {
+  margin: 10px 14px 0;
+  color: var(--ph-bright);
+  font-size: var(--fs-sm);
+}
+
+.pf-status[hidden] {
+  display: none;
+}
+
+dialog.proj-files.pf-drop {
+  outline: 2px dashed var(--ph-bright);
+  outline-offset: -8px;
+}
+
+@media (max-width: 700px) {
+  .pf-row {
+    flex-wrap: wrap;
+  }
+
+  .pf-name {
+    flex-basis: 100%;
+  }
+
+  .pf-meta {
+    margin-right: auto;
+  }
+}
