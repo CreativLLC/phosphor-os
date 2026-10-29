@@ -514,7 +514,15 @@ async function testView(id: string): Promise<HTMLElement> {
   blindBtn.title = 'BLIND hides the model names, so the brand does not change your stars. REVEAL works once every DONE result has stars, or all are ranked. Runs that hit a limit, failed or stopped do not count.';
   const addBtn = button('+ MODELS', () => void openAddModels(t), 'lab-add');
   addBtn.title = "Run this exact prompt on more models. They join this test's cards and ranking, with its effort and time limit.";
-  head.append(back, h, el('span', 'lab-grow'), modeBtns, addBtn, blindBtn, videoBtn);
+  // STOP ALL at the top, where it is seen at once (owner, 2026-10-28: "Where is the stop button?"), and with the other
+  // test actions at the bottom. Both show only while a model runs (schedulePoll keeps them current).
+  const stopBtn = () => {
+    const b = button('STOP ALL', () => void act(`tests/${t.id}/stop`, 'Stopping.'), 'lab-stop');
+    b.title = 'Stop every model still running in this test';
+    b.hidden = !t.results.some(busy);
+    return b;
+  };
+  head.append(back, h, el('span', 'lab-grow'), stopBtn(), modeBtns, addBtn, blindBtn, videoBtn);
 
   const meta = el('div', 'lab-meta');
   const sum = el('span', 'lab-sum', sumText(t));
@@ -530,11 +538,8 @@ async function testView(id: string): Promise<HTMLElement> {
   fillResults(t, body);
 
   const more = el('div', 'lab-row lab-actions');
-  const stop = button('STOP ALL', () => void act(`tests/${t.id}/stop`, 'Stopping.'));
-  stop.hidden = !t.results.some(busy);
-  stop.classList.add('lab-stop');
   more.append(
-    stop,
+    stopBtn(),
     button('RE-RUN', () => rerun(t)),
     button('REMOVE JUNK', () => void act(`tests/${t.id}/junk`, 'Junk removed: node_modules and build caches.')),
     button(t.archived ? 'RESTORE' : 'ARCHIVE', () => void act(`tests/${t.id}/${t.archived ? 'restore' : 'archive'}`, t.archived ? 'Back in HISTORY.' : 'Archived: kept, but hidden from HISTORY.')),
@@ -587,8 +592,7 @@ function schedulePoll(id: string, ms = 2000): void {
     const sum = main.querySelector('.lab-sum');
     if (sum) sum.textContent = sumText(t);
     afterRate(t);
-    const stop = main.querySelector<HTMLElement>('.lab-stop');
-    if (stop) stop.hidden = !t.results.some(busy);
+    for (const stop of main.querySelectorAll<HTMLElement>('.lab-stop')) stop.hidden = !t.results.some(busy);
     if (t.results.some(working)) schedulePoll(id);
   }, ms);
 }

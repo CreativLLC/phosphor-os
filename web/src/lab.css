@@ -120,6 +120,22 @@ body.has-shell #btn-lab {
   border-left: none;
 }
 
+/* STOP ALL looks like the chat's STOP: bright, with a square. */
+.lab-stop {
+  border-color: var(--ph-bright);
+  color: var(--ph-bright);
+}
+
+.lab-stop::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 6px;
+  vertical-align: 0.05em;
+  background: currentColor;
+}
+
 .lab-danger {
   border-color: rgb(var(--ph-rgb) / 0.35);
   color: var(--ph-dim);
