@@ -158,3 +158,26 @@ dialog.proj-edit > .buttons {
     height: 56dvh;
   }
 }
+
+/* MEMORY editor: a chat changed the file while it was open. */
+.proj-edit-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 10px 14px 0;
+  padding: 6px 10px;
+  border: 1px dashed var(--ph-bright);
+  color: var(--ph-bright);
+  font-size: var(--fs-sm);
+}
+
+.proj-edit-note[hidden] {
+  display: none;
+}
+
+.proj-edit-note button {
+  min-height: 28px;
+  padding: 1px 10px;
+  font-size: var(--fs-sm);
+}

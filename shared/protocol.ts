@@ -210,11 +210,16 @@ export type HistoryResponse = { sessions: HistoryEntry[] };
 // tabs with its ProjectRef; closed: its chats closed since, which open_project reopens (a chat never used is not kept).
 export type ProjectSummary = { id: string; name: string; createdAt: number; lastActive: number; closed: { sessionId: string; title: string; main: boolean }[] };
 export type ProjectsResponse = { projects: ProjectSummary[] };
-// INSTRUCTIONS: the user's own rules for a project (data/projects/<id>/INSTRUCTIONS.md), in every project chat's prompt.
+// A project's text files the user edits in the app: INSTRUCTIONS (the user's own rules, in every project chat's
+// prompt) and MEMORY (PROJECT.md, the chats' shared memory, which they write too). version: a hash of the text, so a
+// save over a newer version (a chat wrote it since) is refused unless forced.
 export const INSTRUCTIONS_MAX = 20_000; // bytes
-export type ProjectInstructions = { text: string; updatedAt: number };
-// Saved: waiting = chats busy now, which take the new text once they are done.
-export type InstructionsSaved = { ok: true; updatedAt: number; chats: number; waiting: number } | { error: string };
+export const MEMORY_MAX = 200_000; // bytes
+export type ProjectDocKind = 'instructions' | 'memory';
+export type ProjectDoc = { text: string; updatedAt: number; version: string };
+// Saved INSTRUCTIONS also say how many chats there are, and how many still work (they take the text once done).
+// changed: the file on disk now, when it changed since `base`.
+export type DocSaved = { ok: true; updatedAt: number; version: string; chats?: number; waiting?: number } | { error: string; changed?: ProjectDoc };
 // GET /api/history/search?q=words[&all=1]: chats whose own text (yours and Claude's) has every word.
 export type HistorySearchResponse = { hits: { sessionId: string; snippet: string }[] };
 
