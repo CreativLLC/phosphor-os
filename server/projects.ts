@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { INSTRUCTIONS_MAX, MEMORY_MAX, type ProjectDoc, type ProjectDocKind, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
+import { AUTO_MODEL, EFFORTS, INSTRUCTIONS_MAX, isGeminiModel, isImageModel, MEMORY_MAX, MODES, type ProjectDefaults, type ProjectDoc, type ProjectDocKind, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR } from './config.ts';
 
 // PROJECTS (owner's ask 2026-10-27): a project outlives its tabs. data/projects/<id>/project.json keeps its name and
@@ -12,7 +12,7 @@ const DOC_MAX: Record<ProjectDocKind, number> = { instructions: INSTRUCTIONS_MAX
 const hash = (text: string) => (text ? createHash('sha1').update(text).digest('hex').slice(0, 16) : '');
 
 export type ClosedChat = { sessionId: string; title: string; main: boolean; own?: boolean; createdAt: number; closedAt: number };
-type ProjectFile = { name: string; createdAt: number; closed: ClosedChat[] };
+type ProjectFile = { name: string; createdAt: number; closed: ClosedChat[]; defaults?: ProjectDefaults };
 
 export class ProjectBook {
   constructor(readonly root = join(DATA_DIR, 'projects')) {}
@@ -27,7 +27,7 @@ export class ProjectBook {
     const dir = join(this.root, id);
     try {
       const f = JSON.parse(readFileSync(join(dir, 'project.json'), 'utf8')) as ProjectFile;
-      return { name: String(f.name), createdAt: Number(f.createdAt) || 0, closed: Array.isArray(f.closed) ? f.closed : [] };
+      return { name: String(f.name), createdAt: Number(f.createdAt) || 0, closed: Array.isArray(f.closed) ? f.closed : [], ...(f.defaults ? { defaults: cleanDefaults(f.defaults) } : {}) };
     } catch {
       /* none yet: an older project */
     }
@@ -73,7 +73,7 @@ export class ProjectBook {
         ...tabs.map((t) => (t.meta.sessionId && lastActive(t.meta.sessionId)) || t.meta.createdAt),
         ...closed.map((c) => Math.max(c.closedAt, lastActive(c.sessionId) ?? 0)),
       ];
-      out.push({ id, name, createdAt: f?.createdAt ?? Math.min(...tabs.map((t) => t.meta.createdAt)), lastActive: Math.max(...times), closed: closed.map(({ sessionId, title, main }) => ({ sessionId, title, main })) });
+      out.push({ id, name, createdAt: f?.createdAt ?? Math.min(...tabs.map((t) => t.meta.createdAt)), lastActive: Math.max(...times), closed: closed.map(({ sessionId, title, main }) => ({ sessionId, title, main })), ...(f?.defaults ? { defaults: f.defaults } : {}) });
     }
     return out.sort((a, b) => b.lastActive - a.lastActive);
   }
@@ -88,6 +88,16 @@ export class ProjectBook {
     const f = this.read(id);
     if (!f) return false;
     this.write(id, { ...f, name });
+    return true;
+  }
+
+  // DEFAULTS (project panel): what new chats in the project start with. Empty: the app's own.
+  setDefaults(id: string, d: ProjectDefaults): boolean {
+    const f = this.read(id);
+    if (!f) return false;
+    const clean = cleanDefaults(d);
+    const { defaults: _old, ...rest } = f;
+    this.write(id, Object.keys(clean).length ? { ...rest, defaults: clean } : rest);
     return true;
   }
 
@@ -152,6 +162,15 @@ export class ProjectBook {
     mkdirSync(join(this.root, id), { recursive: true });
     writeFileSync(join(this.root, id, 'project.json'), JSON.stringify(f, null, 2));
   }
+}
+
+// Only known values are kept (the file can be edited by hand, or by a chat in the project folder).
+export function cleanDefaults(d: unknown): ProjectDefaults {
+  const x = (d ?? {}) as Record<string, unknown>;
+  const model = typeof x.model === 'string' && x.model && x.model !== AUTO_MODEL && x.model.length <= 100 && !isImageModel(x.model) && !isGeminiModel(x.model) ? x.model : undefined;
+  const effort = EFFORTS.find((e) => e === x.effort);
+  const mode = MODES.find((m) => m === x.mode);
+  return { ...(model ? { model } : {}), ...(model && effort ? { effort } : {}), ...(mode ? { mode } : {}) };
 }
 
 // The project ref of a chat joining a project: + CHAT (own), or a closed chat coming back. lead: the project's open

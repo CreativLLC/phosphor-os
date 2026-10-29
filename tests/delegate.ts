@@ -365,7 +365,7 @@ const ask = async (d: Deps, args: Record<string, unknown>, extra: unknown = {}) 
   const said = (await start.handler({ title: 'Sort', brief: 'Sort the list.', worker: 'haiku' }, {})).content[0].text;
   check('start_thread with worker haiku: the thread runs on haiku', same(got, { model: 'haiku', auto: false }) && /on haiku/.test(said), `${JSON.stringify(got)} ${said}`);
   await start.handler({ title: 'Plan', brief: 'Plan it.' }, {});
-  check('start_thread without a worker: the lead\'s settings', same(got, { model: 'opus', effort: 'high', auto: false }), JSON.stringify(got));
+  check('start_thread without a worker: no run given (Tabs.thread takes the project\'s DEFAULTS, else the lead\'s settings)', got === undefined, JSON.stringify(got));
 
   // A cloud chat gets ask_local; a chat on the local model does not (it would ask itself).
   // Which way depends on this PC's .env (a local model set up, PHOSPHOR_ROUTER), so both are checked against routerOn.

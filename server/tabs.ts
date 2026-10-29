@@ -2,16 +2,21 @@ import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type DocSaved, INSTRUCTIONS_MAX, type ProjectDocKind, type ProjectFile, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type DocSaved, INSTRUCTIONS_MAX, type ProjectDefaults, type ProjectDocKind, type ProjectFile, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import type { ThreadModel } from './delegate.ts';
 import { chatText, geminiModels, savedGeminiChats } from './geminitab.ts';
 import { listFiles } from './projectfiles.ts';
-import { joinRef, ProjectBook } from './projects.ts';
+import { cleanDefaults, joinRef, ProjectBook } from './projects.ts';
 import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
 const SHOWN_MODELS = ['opus', 'sonnet', 'haiku'];
+
+// The local model (or image model) a saved setting names is gone (not configured now): Claude would be handed the name
+// "local" and fail.
+const modelGone = (model?: string): boolean =>
+  !!model && (((model === LOCAL_MODEL || model.startsWith(`${LOCAL_MODEL}:`)) && !localChoice(model)) || (model === IMAGE_MODEL && !imageModel) || (isImageModel(model) && model !== IMAGE_MODEL && !Tab.gemini.has(model)));
 
 const TABS_FILE = join(DATA_DIR, 'tabs.json');
 
@@ -44,10 +49,7 @@ export class Tabs {
       saved = [];
     }
     for (const init of saved) {
-      // The local model is gone (not configured now): Claude would be handed the name "local" and fail.
-      const missingLocal =
-        !!init.model && (((init.model === LOCAL_MODEL || init.model.startsWith(`${LOCAL_MODEL}:`)) && !localChoice(init.model)) || (init.model === IMAGE_MODEL && !imageModel) || (isImageModel(init.model) && init.model !== IMAGE_MODEL && !Tab.gemini.has(init.model)));
-      const tab = this.make(missingLocal ? { ...init, model: undefined, effort: undefined, auto: true } : init);
+      const tab = this.make(modelGone(init.model) ? { ...init, model: undefined, effort: undefined, auto: true } : init);
       await tab.loadHistory().catch((e) => console.warn(`Could not load history for tab ${init.title}:`, e));
     }
     if (this.tabs.size === 0) this.make({ cwd: config.cwd, auto: true });
@@ -91,9 +93,12 @@ export class Tabs {
 
   // A thread for a project's lead: the lead's folder and model settings, or the worker the lead chose (`run`,
   // server/delegate.ts); it starts on the brief at once.
-  private thread(lead: Tab, title: string, brief: string, run: ThreadModel = { model: lead.model, effort: lead.effort, auto: lead.autoModel }): Tab {
+  // No worker chosen: the project's DEFAULTS if it has any, else the lead's settings.
+  private thread(lead: Tab, title: string, brief: string, run?: ThreadModel): Tab {
     const p = lead.project!;
-    const tab = this.make({ cwd: lead.state.info.cwd, title: title.trim().slice(0, 60) || 'Thread', mode: lead.mode, model: run.model, effort: run.effort, auto: run.auto, project: { id: p.id, name: p.name, main: false, parent: lead.id } });
+    const d = this.book.read(p.id)?.defaults;
+    const start = run ? { mode: d?.mode ?? lead.mode, model: run.model, effort: run.effort, auto: run.auto } : d ? { mode: lead.mode, ...this.startWith(p.id) } : { mode: lead.mode, model: lead.model, effort: lead.effort, auto: lead.autoModel };
+    const tab = this.make({ cwd: lead.state.info.cwd, title: title.trim().slice(0, 60) || 'Thread', ...start, project: { id: p.id, name: p.name, main: false, parent: lead.id } });
     this.save();
     this.emit({ t: 'tab', tab: tab.state });
     void tab.prefillInfo();
@@ -108,7 +113,7 @@ export class Tabs {
     const name = members[0]?.project?.name ?? this.book.read(id)?.name;
     if (!name) return;
     const lead = members.find((t) => t.project?.main);
-    const tab = this.make({ cwd: lead?.state.info.cwd ?? config.cwd, title: title?.trim().slice(0, 60) || `Chat ${members.length + 1}`, auto: true, project: joinRef(id, name, lead, { main: false, own: true }) });
+    const tab = this.make({ cwd: lead?.state.info.cwd ?? config.cwd, title: title?.trim().slice(0, 60) || `Chat ${members.length + 1}`, ...this.startWith(id), project: joinRef(id, name, lead, { main: false, own: true }) });
     this.save();
     this.emit({ t: 'tab', tab: tab.state, req });
     void tab.prefillInfo();
@@ -122,7 +127,7 @@ export class Tabs {
     const open = this.members(id);
     if (!f.closed.length) {
       if (open.length) return this.emit({ t: 'tab', tab: (open.find((t) => t.project?.main) ?? open[0]).state, req });
-      const tab = this.make({ cwd: config.cwd, title: f.name, auto: true, project: { id, name: f.name, main: true } });
+      const tab = this.make({ cwd: config.cwd, title: f.name, ...this.startWith(id), project: { id, name: f.name, main: true } });
       this.save();
       this.emit({ t: 'tab', tab: tab.state, req });
       void tab.prefillInfo();
@@ -142,10 +147,22 @@ export class Tabs {
     if (!name) return;
     const lead = f?.closed.find((c) => c.main);
     if (lead) return this.open(lead.sessionId, config.cwd, lead.title, req);
-    const tab = this.make({ cwd: config.cwd, title: name, auto: true, project: { id, name, main: true } });
+    const tab = this.make({ cwd: config.cwd, title: name, ...this.startWith(id), project: { id, name, main: true } });
     this.save();
     this.emit({ t: 'tab', tab: tab.state, req });
     void tab.prefillInfo();
+  }
+
+  // DEFAULTS of a project as a new chat's settings; a model that is gone now falls back to AUTO.
+  private startWith(id: string): Pick<TabInit, 'model' | 'effort' | 'auto' | 'mode'> {
+    const d = this.book.read(id)?.defaults ?? {};
+    const model = d.model && !modelGone(d.model) ? d.model : undefined;
+    return { ...(model ? { model, effort: d.effort, auto: false } : { auto: true }), ...(d.mode ? { mode: d.mode } : {}) };
+  }
+
+  setProjectDefaults(id: string, d: unknown): { ok: true; defaults: ProjectDefaults } | { error: string } {
+    if (!this.book.setDefaults(id, cleanDefaults(d))) return { error: 'No such project.' };
+    return { ok: true, defaults: this.book.read(id)?.defaults ?? {} };
   }
 
   projectList(): ProjectsResponse {
