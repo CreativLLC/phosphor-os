@@ -3,7 +3,7 @@
 // Fake tabs only: no Claude process starts, nothing is written to data/ (the project book uses a temp folder).
 //   npx tsx tests/projects.ts
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LEAD_PREFIX, REPORT_PREFIX, type ServerEvent, type TabState } from '../shared/protocol.ts';
@@ -137,6 +137,19 @@ check('HISTORY reopening a closed project chat puts it back in its project', ope
 await tabs.open('s-plain', '/tmp', 'Plain', 'r5');
 check('HISTORY reopening any other chat: a plain chat', !opened().at(-1)!.meta.project);
 check('project.json is plain JSON with the name', JSON.parse(readFileSync(join(root, 'old1', 'project.json'), 'utf8')).name === 'Piano app v2');
+// DELETE: refused while a chat of the project works; then its chats close and its folder moves to projects-deleted.
+const inOld1 = () => [...(tabs as unknown as { tabs: Map<string, Tab> }).tabs.values()].filter((t) => t.state.meta.project?.id === 'old1');
+const busyOne = inOld1()[0];
+busyOne.state.meta.busy = true;
+check('deleteProject: refused while one of its chats works', 'error' in tabs.deleteProject('old1') && inOld1().length > 0);
+busyOne.state.meta.busy = false;
+const bin = join(root, '..', 'projects-deleted');
+check('deleteProject: ok, its open chats close', 'ok' in tabs.deleteProject('old1') && inOld1().length === 0);
+const moved = readdirSync(bin).filter((d) => d.startsWith('old1-'));
+check('deleteProject: the folder moved to projects-deleted, gone from the list', moved.length === 1 && !T.book.read('old1') && !tabs.projectList().projects.some((p) => p.id === 'old1'));
+check('deleteProject: an unknown or bad id is refused', 'error' in tabs.deleteProject('nope') && T.book.remove('../p1') === false);
+for (const d of moved) rmSync(join(bin, d), { recursive: true, force: true });
+if (!readdirSync(bin).length) rmSync(bin, { recursive: true });
 rmSync(root, { recursive: true, force: true });
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');

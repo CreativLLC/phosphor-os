@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ProjectRef, ProjectSummary, TabState } from '../shared/protocol.ts';
 import { DATA_DIR } from './config.ts';
@@ -77,6 +77,16 @@ export class ProjectBook {
   // The order PROJECTS reopens closed chats in: the lead first (threads find it), then the oldest first.
   static reopenOrder(closed: ClosedChat[]): ClosedChat[] {
     return [...closed].sort((a, b) => Number(b.main) - Number(a.main) || a.createdAt - b.createdAt);
+  }
+
+  // DELETE in PROJECTS: the project's folder (memory file, closed-chat list) moves to data/projects-deleted/, so a
+  // slip can be undone by moving it back. Its chats stay in HISTORY as plain chats.
+  remove(id: string): boolean {
+    if (!/^[\w-]+$/.test(id) || !existsSync(join(this.root, id))) return false;
+    const bin = join(this.root, '..', 'projects-deleted');
+    mkdirSync(bin, { recursive: true });
+    renameSync(join(this.root, id), join(bin, `${id}-${Date.now()}`));
+    return true;
   }
 
   private ids(): string[] {

@@ -158,6 +158,13 @@ const server = createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/api/projects') return sendJson(res, tabs.projectList());
+    const del = /^\/api\/projects\/([\w-]+)\/delete$/.exec(url.pathname);
+    if (del) {
+      // JSON only: a form on another page cannot send it.
+      if (req.method !== 'POST' || !String(req.headers['content-type'] ?? '').includes('application/json')) return sendJson(res, { error: 'POST JSON only.' }, 405);
+      const r = tabs.deleteProject(del[1]);
+      return sendJson(res, r, 'error' in r ? 409 : 200);
+    }
     if (url.pathname === '/api/history') return sendJson(res, await tabs.history(url.searchParams.has('all')));
     if (url.pathname === '/api/history/search') return sendJson(res, await tabs.searchHistory(url.searchParams.get('q') ?? '', url.searchParams.has('all')));
     if (url.pathname === '/api/folders') return sendJson(res, tabs.folders());

@@ -4,7 +4,7 @@ import { firstMessage, type FirstMessage } from './firstmsg.ts';
 import { newReq, send } from './net.ts';
 import { store, working } from './store.ts';
 import { newProject } from './tabs.ts';
-import { button, el, timeAgo } from './ui.ts';
+import { button, confirmBox, el, timeAgo } from './ui.ts';
 
 // PROJECTS (owner's ask 2026-10-27): every project in one list (open or closed), and + CHAT, one more chat in a
 // project. The list comes from GET /api/projects (server/projects.ts); open chats and how they are doing come live
@@ -83,7 +83,7 @@ export function mountProjects(drawer: HTMLElement, openBtn: HTMLElement, dialog:
     if (drawer.hidden) return;
     const q = search.value.trim().toLowerCase();
     const shown = rows().filter((p) => !q || p.name.toLowerCase().includes(q));
-    list.replaceChildren(...shown.map((p) => projectRow(p, p.tabs, () => (drawer.hidden = true))));
+    list.replaceChildren(...shown.map((p) => projectRow(p, p.tabs, () => (drawer.hidden = true), () => void load())));
     if (!shown.length) list.append(el('div', 'empty', !loaded ? 'Loading…' : q ? 'No match.' : 'No projects yet. NEW PROJECT starts one.'));
   };
 
@@ -128,7 +128,7 @@ export function mountProjects(drawer: HTMLElement, openBtn: HTMLElement, dialog:
 
 // One project in the list: name and state, chats and last activity, its chat names. A tap opens it: the chat last
 // used (or the lead) when it has open chats, else its closed chats come back. REOPEN brings back closed ones too.
-function projectRow(p: ProjectSummary, tabs: TabState[], done: () => void): HTMLElement {
+function projectRow(p: ProjectSummary, tabs: TabState[], done: () => void, reload: () => void): HTMLElement {
   const state = projectState(tabs);
   const row = el('div', `project-row st-${state.toLowerCase().replace(/ /g, '-')}`);
   const main = el('button', 'history-row project-open');
@@ -151,21 +151,40 @@ function projectRow(p: ProjectSummary, tabs: TabState[], done: () => void): HTML
     openProject(p, tabs);
   };
   row.append(main);
-  if (!tabs.length) return row;
   const tools = el('div', 'project-tools');
-  const add = button('+ CHAT', () => newProjectChat(p));
-  add.title = 'A new chat in this project';
-  tools.append(add);
+  if (tabs.length) {
+    const add = button('+ CHAT', () => newProjectChat(p));
+    add.title = 'A new chat in this project';
+    tools.append(add);
+  }
   if (p.closed.length) {
     const back = button(`REOPEN ${p.closed.length} CLOSED`, () => {
       done();
       send({ t: 'open_project', project: p.id, req: newReq() });
     }, 'project-reopen');
     back.title = 'Bring back the chats of this project you closed';
-    tools.append(back);
+    if (tabs.length) tools.append(back);
   }
+  const del = button('DELETE', () => void deleteProject(p, tabs, reload), 'project-delete');
+  del.title = 'Delete this project: its open chats close, its memory file goes. The chats stay in HISTORY.';
+  tools.append(del);
   row.append(tools);
   return row;
+}
+
+// DELETE: asks first; the server closes the project's open chats and moves its folder to data/projects-deleted/.
+async function deleteProject(p: ProjectSummary, tabs: TabState[], reload: () => void): Promise<void> {
+  const open = tabs.length ? ` Its ${tabs.length} open chat${tabs.length === 1 ? '' : 's'} close.` : '';
+  if (!(await confirmBox(`DELETE ${p.name.toUpperCase()}?`, `The project and its memory file go away.${open} The chats stay in HISTORY as plain chats.`, 'DELETE'))) return;
+  if (store.demo) return;
+  try {
+    const r = await fetch(`/api/projects/${encodeURIComponent(p.id)}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const j = (await r.json()) as { error?: string };
+    if (j.error) await confirmBox('NOT DELETED', j.error, 'OK');
+  } catch {
+    /* the list shows what is left */
+  }
+  reload();
 }
 
 function openProject(p: ProjectSummary, tabs: TabState[]): void {

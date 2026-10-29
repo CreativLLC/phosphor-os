@@ -171,6 +171,15 @@ export class Tabs {
     void tab.prefillInfo();
   }
 
+  // DELETE a project: its open chats close (refused while one works or waits for the user), then its folder goes
+  // to data/projects-deleted/ (ProjectBook.remove). The chats themselves stay in HISTORY.
+  deleteProject(id: string): { ok: true } | { error: string } {
+    const members = [...this.tabs.values()].filter((t) => t.state.meta.project?.id === id);
+    if (members.some((t) => t.state.meta.busy || t.state.meta.attention)) return { error: 'A chat of this project is working or waiting for you. Stop it first.' };
+    for (const t of members) this.close(t.state.meta.id);
+    return this.book.remove(id) || members.length ? { ok: true } : { error: 'No such project.' };
+  }
+
   close(id: string): void {
     const tab = this.tabs.get(id);
     if (!tab) return;

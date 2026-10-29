@@ -67,6 +67,13 @@
   font-size: var(--fs-sm);
 }
 
+/* DELETE: dim and at the far right, so it is not hit by mistake. */
+.project-tools .project-delete {
+  margin-left: auto;
+  border-color: rgb(var(--ph-rgb) / 0.35);
+  color: var(--ph-dim);
+}
+
 /* + CHAT at the end of a project's group in the tab bar. */
 #top .tab-group-add {
   min-width: 30px;
