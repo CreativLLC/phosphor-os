@@ -24,7 +24,7 @@ export type Item =
   // auto: sent by AUTO-CONTINUE. route: the AUTO model choice made for this message.
   // paint: a prompt for the local image model (no UNDO: it changed no files).
   | { id: string; kind: 'user'; text: string; attachments?: Attachment[]; auto?: boolean; route?: RouteTag; paint?: boolean }
-  // who: the speaker's name when it is not Claude (a local model's label, e.g. "Qwen3.6 35B MoE").
+  // who: the speaker's name: the Claude model ("Claude Sonnet 5.5") or a local model's label ("Qwen3.6 35B MoE").
   // at: when the reply came (ms since 1970). Old saved items have none.
   | { id: string; kind: 'claude'; text: string; who?: string; at?: number }
   // body: longer text shown when the line is expanded (full command, diff).

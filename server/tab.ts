@@ -138,8 +138,13 @@ const emptyStats = (): Stats => ({ toolCalls: 0, filesChanged: [], turns: 0, tur
 
 // Who wrote a reply, for the label over it: a local model's own name from the picker ("Qwen3.6 35B MoE"), or
 // undefined for Claude (and for messages Claude Code makes itself, "<synthetic>"). Old chats keep their names.
-function speakerFor(model: string | undefined): string | undefined {
-  if (!model || model.startsWith('claude') || model === '<synthetic>' || ['opus', 'sonnet', 'haiku'].includes(model)) return undefined;
+export function speakerFor(model: string | undefined): string | undefined {
+  if (!model || model === '<synthetic>') return undefined;
+  // Claude by its model too (owner's ask 2026-10-28): "claude-sonnet-5-5-20261001" -> "Claude Sonnet 5.5".
+  const c = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(?:\[|$)/.exec(model);
+  if (c) return `Claude ${c[1][0].toUpperCase()}${c[1].slice(1)} ${c[2]}${c[3] ? `.${c[3]}` : ''}`;
+  if (['opus', 'sonnet', 'haiku'].includes(model)) return `Claude ${model[0].toUpperCase()}${model.slice(1)}`;
+  if (model.startsWith('claude')) return undefined;
   const local = localModel?.models.find((m) => m.name === model);
   return (local?.label ?? model).replace(/\s*\(local\)\s*$/i, '');
 }
