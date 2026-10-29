@@ -4,7 +4,7 @@
 
 import type { Answers, DecideResult, Questions } from '../shared/decide.ts';
 import { clampEffort, decide, parsePick, pickFromAnswers, ROUTE_MIN_CONFIDENCE, type RoutePick, type RouteQuestions } from '../shared/router.ts';
-import { DECIDE_ROUTE_TIMEOUT_MS, routeMessage, type HaikuResult, type RouteDeps, type RouteInput } from '../server/router.ts';
+import { autoDecideOn, DECIDE_ROUTE_TIMEOUT_MS, routeMessage, type HaikuResult, type RouteDeps, type RouteInput } from '../server/router.ts';
 
 let fail = 0;
 const check = (what: string, cond: boolean, detail = '') => {
@@ -115,6 +115,13 @@ for (const reason of ['off', 'down', 'timeout', 'error'] as const) {
   deps.haiku = async () => ({ pick: null, raw: '', error: 'timeout', ms: 8000 });
   const r = await routeMessage(input, deps);
   check('both fail: no pick, the error kept (the tab keeps its model)', r.pick === null && r.error === 'timeout' && r.engine === 'Haiku');
+}
+
+{
+  const { deps } = fakes({ ok: true, answers: answers('haiku', 0.8, 'low', 0.2), model: 'kev', inputTokens: 400, ms: 900 });
+  const r = await routeMessage(input, { ...deps, decide: null });
+  check('no decision model: Haiku alone', r.engine === 'Haiku' && r.pick?.reason === 'from haiku' && r.decision === 'not asked', JSON.stringify(r));
+  check('AUTO asks the decision model only with PHOSPHOR_AUTO_DECIDE=on', !autoDecideOn({}) && !autoDecideOn({ PHOSPHOR_AUTO_DECIDE: 'off' }) && autoDecideOn({ PHOSPHOR_AUTO_DECIDE: 'on' }));
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

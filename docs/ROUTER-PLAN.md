@@ -43,7 +43,7 @@ A simple message on Haiku costs few tokens anyway. So AUTO keeps its three cloud
 
 ## AUTO's own pick on a decision model (2026-10-27)
 
-The pick itself (which model, which level, new topic or not) no longer needs a Haiku call when a decision model is set up: `server/router.ts` asks it first (`server/decide.ts`, `POST /v1/systemone`, about 0.9 s on the CPU with Kev-0.8B) and asks Haiku only when it is off, down, slower than 2 s or less than 25% sure. What AUTO picks and how it is applied did not change. With Kev-0.8B about a third of the messages on the hand-made set were decided locally, at Haiku's accuracy overall; a stronger decision model (Clef-Flash, on a GPU or in the cloud as Jev) would decide almost all. Numbers and setup: `docs/LOCAL-MODEL.md` "Decision model".
+Off by default since 2026-10-28 (`PHOSPHOR_AUTO_DECIDE=on` turns it on): Kev-0.8B, the small CPU model, picked worse than Haiku, so AUTO asks Haiku alone. With it on, the pick itself (which model, which level, new topic or not) needs no Haiku call when the decision model is sure: `server/router.ts` asks it first (`server/decide.ts`, `POST /v1/systemone`, about 0.9 s on the CPU with Kev-0.8B) and asks Haiku only when it is off, down, slower than 2 s or less than 25% sure. What AUTO picks and how it is applied did not change. With Kev-0.8B about a third of the messages on the hand-made set were decided locally, at Haiku's accuracy overall; a stronger decision model (Clef-Flash, on a GPU or in the cloud as Jev) would decide almost all. Numbers and setup: `docs/LOCAL-MODEL.md` "Decision model".
 
 ## Measured (2026-10-25, Qwen3.6 35B MoE on a 20 GB AMD card, through the relay)
 

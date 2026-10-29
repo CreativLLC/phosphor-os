@@ -4,9 +4,11 @@ import { parsePick, pickFromAnswers, ROUTE_QUESTIONS, type RouteCurrent, type Ro
 import { askDecision } from './decide.ts';
 
 // AUTO model: picks the model and thinking level for each message (see shared/router.ts for how the pick is
-// applied). First the decision model (server/decide.ts, about a second on the CPU): the rubric below as three typed
-// questions. When it is off, down, slow or unsure, one short Haiku call with the rubric, as before. Both lean high:
-// a pick that is too low costs quality, one too high only tokens.
+// applied). One short Haiku call with the rubric below. With PHOSPHOR_AUTO_DECIDE=on the decision model
+// (server/decide.ts, about a second on the CPU) is asked first, as three typed questions, and Haiku only when it is
+// off, down, slow or unsure. Off by default: Kev-0.8B, the small CPU one, picked worse than Haiku and was sure enough
+// for only a third of the messages (docs/LOCAL-MODEL.md "Decision model"). Both lean high: a pick that is too low
+// costs quality, one too high only tokens.
 
 export const ROUTER_TIMEOUT_MS = 8000; // Haiku
 export const DECIDE_ROUTE_TIMEOUT_MS = 2000; // the decision model: about 0.9 s warm on the CPU, 1.6 s waking from sleep
@@ -38,7 +40,7 @@ export type RouteInput = {
 };
 
 export type RouteEngine = 'decision model' | 'Haiku';
-// engine: who picked (or failed last). decision: what the decision model did ('picked', 'unsure (12%)', 'off',
+// engine: who picked (or failed last). decision: what the decision model did ('picked', 'unsure (12%)', 'not asked', 'off',
 // 'down: ...', 'timeout'), for the tuning log. ms: the whole routing, both engines.
 export type RouteResult = { pick: RoutePick | null; ms: number; error: string; raw: string; engine: RouteEngine; decision: string };
 export type HaikuResult = Omit<RouteResult, 'engine' | 'decision'>;
@@ -55,10 +57,17 @@ export const describe = (i: RouteInput, textMax = 4000) =>
     `New message:\n<<<\n${clip(i.text, textMax)}\n>>>`,
   ].join('\n');
 
-export type RouteDeps = { decide: typeof askDecision; haiku: (input: RouteInput) => Promise<HaikuResult> };
+export const autoDecideOn = (env: NodeJS.ProcessEnv = process.env): boolean => env.PHOSPHOR_AUTO_DECIDE?.trim() === 'on';
 
-export async function routeMessage(input: RouteInput, deps: RouteDeps = { decide: askDecision, haiku: askHaiku }): Promise<RouteResult> {
+// decide: null = Haiku alone.
+export type RouteDeps = { decide: typeof askDecision | null; haiku: (input: RouteInput) => Promise<HaikuResult> };
+
+export async function routeMessage(input: RouteInput, deps: RouteDeps = { decide: autoDecideOn() ? askDecision : null, haiku: askHaiku }): Promise<RouteResult> {
   const t0 = Date.now();
+  if (!deps.decide) {
+    const h = await deps.haiku(input);
+    return { ...h, engine: 'Haiku', decision: 'not asked', ms: Date.now() - t0 };
+  }
   const d = await deps.decide(describe(input, DECIDE_TEXT_MAX), ROUTE_QUESTIONS, { timeoutMs: DECIDE_ROUTE_TIMEOUT_MS });
   const pick = d.ok ? pickFromAnswers(d.answers) : null;
   if (d.ok && pick) {
