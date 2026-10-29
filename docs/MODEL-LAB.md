@@ -115,6 +115,8 @@ A new program, **LAB**: next to DOCS on the program bar, and in the launcher on 
    **Fair play**: a result with follow-ups has a +1 FOLLOW-UP badge (cards, table, ranking, OPEN BIG and the HISTORY results). A follow-up clears its stars and rank: its output changed, so the owner rates it again (the version keeps the old stars), and the results below it in the ranking move up one place. A blind test stays blind: the chat says MODEL B, and the prompt names no model. TIME, TOKENS and COST on the card are the last run's; the chat shows each turn's.
 
    **RUN AGAIN** works on every finished result (2026-10-26; before, only on failed, stopped and limited ones). On a DONE result it asks first: "This replaces its result; the old one is kept as a version." Its stars, rank, note and follow-ups are cleared.
+
+   **STOP ALL** (2026-10-28, the owner could not find it): while a model of the test runs, STOP ALL shows at the top of the test page (next to CARDS / TABLE / RANK, also in VIDEO MODE) and with the other test actions at the bottom. It stops every model still running or waiting.
 3. **HISTORY**: the big table of every test ever, newest first. Search the prompt text. Filter by date, model, app, stars. Charts: average stars per model, stars against cost, time per model. A row opens its test.
 4. **ARCHIVE**: archived tests, kept but hidden from HISTORY unless you ask. On any test: ARCHIVE, DELETE (it shows the size first), and REMOVE JUNK (deletes `node_modules` and build caches, keeps the reply, the files, the log and the stars).
 

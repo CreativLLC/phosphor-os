@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { AUTO_MODEL, EFFORTS, INSTRUCTIONS_MAX, isGeminiModel, isImageModel, MEMORY_MAX, MODES, type ProjectDefaults, type ProjectDoc, type ProjectDocKind, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
+import { AUTO_MODEL, type Effort, EFFORTS, INSTRUCTIONS_MAX, isGeminiModel, isImageModel, MEMORY_MAX, type Mode, MODES, type ProjectDefaults, type ProjectDoc, type ProjectDocKind, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR } from './config.ts';
 
 // PROJECTS (owner's ask 2026-10-27): a project outlives its tabs. data/projects/<id>/project.json keeps its name and
@@ -11,7 +11,9 @@ import { DATA_DIR } from './config.ts';
 const DOC_MAX: Record<ProjectDocKind, number> = { instructions: INSTRUCTIONS_MAX, memory: MEMORY_MAX };
 const hash = (text: string) => (text ? createHash('sha1').update(text).digest('hex').slice(0, 16) : '');
 
-export type ClosedChat = { sessionId: string; title: string; main: boolean; own?: boolean; createdAt: number; closedAt: number };
+// settings: the chat's own model, THINK level and mode when it closed, so it comes back with them.
+export type ClosedChat = { sessionId: string; title: string; main: boolean; own?: boolean; createdAt: number; closedAt: number; settings?: ChatSettings };
+export type ChatSettings = { model?: string; effort?: Effort; mode?: Mode; auto?: boolean };
 type ProjectFile = { name: string; createdAt: number; closed: ClosedChat[]; defaults?: ProjectDefaults };
 
 export class ProjectBook {

@@ -119,7 +119,7 @@ export async function openPanel(start: { id: string; name: string }, leave?: () 
     if (saveDefs.disabled) fillDefaults(saved?.defaults ?? {}); // not over a choice still to save
     if (r.status === 'fulfilled') {
       const lines = r.value.text.split('\n').filter((l) => l.trim());
-      rules.line.textContent = lines.length ? `${lines[0].slice(0, 90)}${lines.length > 1 ? ` (+${lines.length - 1} more line${lines.length === 2 ? '' : 's'})` : ''}${changedAgo(r.value.updatedAt)}` : 'None yet. Your own rules for every chat in this project.';
+      rules.line.textContent = lines.length ? `${lines[0].length > 90 ? `${lines[0].slice(0, 89)}…` : lines[0]}${lines.length > 1 ? ` (+${lines.length - 1} more line${lines.length === 2 ? '' : 's'})` : ''}${changedAgo(r.value.updatedAt)}` : 'None yet. Your own rules for every chat in this project.';
     } else rules.line.textContent = 'Could not load.';
     memory.line.textContent = m.status === 'fulfilled' ? (m.value.text.trim() ? `${fmtSize(new TextEncoder().encode(m.value.text).length)}${changedAgo(m.value.updatedAt)}` : 'Empty.') : 'Could not load.';
     if (f.status === 'fulfilled') {
@@ -203,7 +203,14 @@ export async function openPanel(start: { id: string; name: string }, leave?: () 
     }
   };
 
+  // A chat of the project closed or came back: its saved list (CLOSED rows, REOPEN) changed on the server too.
+  const memberIds = () => projectTabs(p.id).map((t) => t.meta.id).join(',');
+  let members = memberIds();
   const off = store.on((c) => {
+    if (c.kind === 'tabs' && memberIds() !== members) {
+      members = memberIds();
+      void refresh();
+    }
     if (c.kind === 'tabs' || (c.kind === 'patch' && (c.key === 'meta' || c.key === 'agents'))) renderChats();
   });
   const close = () => {

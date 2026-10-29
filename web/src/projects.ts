@@ -179,7 +179,7 @@ function projectRow(p: ProjectSummary, tabs: TabState[], done: () => void, reloa
 // DELETE (in the project panel): asks first; the server closes the project's open chats and moves its folder to
 // data/projects-deleted/. True when it went.
 export async function deleteProject(p: ProjectSummary, tabs: TabState[]): Promise<boolean> {
-  const open = tabs.length ? ` Its ${tabs.length} open chat${tabs.length === 1 ? '' : 's'} close.` : '';
+  const open = tabs.length ? ` Its ${tabs.length} open chat${tabs.length === 1 ? ' closes' : 's close'}.` : '';
   if (!(await confirmBox(`DELETE ${p.name.toUpperCase()}?`, `The project and its memory file go away.${open} The chats stay in HISTORY as plain chats.`, 'DELETE'))) return false;
   if (store.demo) return toast('Not deleted: this is the demo.'), false;
   try {

@@ -910,6 +910,7 @@ pre.code .del {
 /* Yes/no box (ui.ts confirmBox). */
 dialog.confirm-box p {
   max-width: 46ch;
+  padding: 0 14px; /* lined up with the title and the buttons */
 }
 
 /* Menu box (ui.ts pickBox): one choice per line; a long project list scrolls. */
