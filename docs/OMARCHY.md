@@ -103,6 +103,7 @@ Changes in the app itself, not in Omarchy:
 - `shell/main.mjs`: in desktop mode on Linux the window is maximized, not full screen, so the bar stays visible.
 - `shell/web.mjs`: pasting a screenshot reads the clipboard with Electron first; when that finds no picture
   on Wayland, it asks `wl-paste`.
+- `shell/term.mjs`: RUN on a shell code block opens the default terminal (`xdg-terminal-exec`, else foot, alacritty, kitty, ghostty, gnome-terminal, konsole, xterm) in the chat's folder; it changes nothing on the system (see PLAN.md, RUN on code blocks).
 
 ## Local model (optional)
 

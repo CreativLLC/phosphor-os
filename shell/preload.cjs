@@ -35,6 +35,9 @@ if (base && location.origin === base) {
     showInFolder: (path) => ipcRenderer.invoke('files:show', String(path)),
     // A picture file, full size in the system image viewer.
     openImage: (path) => ipcRenderer.invoke('files:open-image', String(path)),
+    // RUN on a code block: a terminal window that runs the command (shell/term.mjs). runKinds: what this PC can run.
+    runKinds: () => ipcRenderer.invoke('terminal:kinds'),
+    runInTerminal: (cmd, cwd, kind) => ipcRenderer.invoke('terminal:run', String(cmd), typeof cwd === 'string' ? cwd : '', String(kind)),
     // DICTATE in any app (shell/dictate.mjs): its CLEAN UP setting.
     dictate: () => ipcRenderer.invoke('dictate:get'),
     setDictate: (patch) => ipcRenderer.invoke('dictate:set', { cleanup: patch?.cleanup }),

@@ -55,6 +55,11 @@ export type PhosphorShell = {
   showInFolder?(path: string): Promise<boolean>;
   // Open a picture file in the system image viewer. Optional: an older desktop app does not have it.
   openImage?(path: string): Promise<boolean>;
+  // RUN on a code block: which kinds of command this PC can run in a terminal window ('bash', on Windows also
+  // 'powershell' and 'cmd'), and open a window in `cwd` that runs one and stays open. Optional: an older desktop app
+  // does not have them.
+  runKinds?(): Promise<string[]>;
+  runInTerminal?(cmd: string, cwd: string, kind: string): Promise<{ ok: boolean; error?: string }>;
   // DICTATE in any app: its CLEAN UP setting. Optional: an older desktop app does not have them.
   dictate?(): Promise<DictateInfo | null>;
   setDictate?(patch: { cleanup?: boolean }): Promise<DictateInfo | null>;
