@@ -1,0 +1,21 @@
+export type RunKind = 'bash' | 'powershell' | 'cmd';
+export type Find = (name: string) => string | null;
+export type RunFile = { name: string; content: string; mode: number };
+export type LaunchPlan = {
+  file: string;
+  args: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  files: RunFile[];
+  waitExit: boolean;
+};
+export const MAX_CMD: number;
+export function codeLang(className: string): string;
+export function langKind(lang: string, platform: string): RunKind | null;
+export function runnableCommand(lang: string, text: string, platform: string): { kind: RunKind; cmd: string } | null;
+export function isAbsPath(p: unknown, platform: string): boolean;
+export function checkRun(cmd: unknown, cwd: unknown, platform: string, isDir: (p: string) => boolean, home: string): { cmd: string; cwd: string } | null;
+export function linuxTerminal(find: Find): { file: string; lead: string[] } | null;
+export function availableKinds(platform: string, find: Find): RunKind[];
+export function bashScript(cwd: string, cmd: string, mac: boolean): string;
+export function launchPlan(platform: string, kind: string, req: { cmd: string; cwd: string }, dir: string, find: Find): LaunchPlan | null;

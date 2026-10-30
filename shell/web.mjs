@@ -28,6 +28,7 @@ import { isAbsolute } from 'node:path';
 import { defaultApps, launchApp } from './apps.mjs';
 import { launcherCatalog } from './installed.mjs';
 import { skinner } from './skins.mjs';
+import { runInTerminal, runKinds } from './term.mjs';
 
 const PARTITION = 'persist:web';
 const MAX_TABS = 12;
@@ -432,6 +433,11 @@ export function mountWeb({ win, isApp, prefs, savePrefs, onFullscreenKey }) {
     shell.showItemInFolder(path);
     return true;
   });
+  // RUN on a code block (all three OSes): a new terminal window in the chat's folder that runs the command and
+  // stays open (shell/term.mjs). Kinds = what this PC can run: bash, and on Windows PowerShell and cmd.
+  ipcMain.handle('terminal:kinds', (e) => (fromApp(e) ? runKinds() : []));
+  ipcMain.handle('terminal:run', (e, cmd, cwd, kind) =>
+    fromApp(e) ? runInTerminal(cmd, cwd, kind) : { ok: false, error: 'Not allowed.' });
   // A picture from the chat, full size in the system image viewer. Only picture files (by their ending), so this
   // too can never start a program.
   ipcMain.handle('files:open-image', async (e, path) => {

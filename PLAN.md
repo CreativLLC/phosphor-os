@@ -327,6 +327,16 @@ This file is the build record: what exists and how it works. Install and use: `R
   the route on a loopback port). The page flows (held words, CLEANING, UNDO, Esc, a failed clean-up, the dialog's box) were checked
   with a scripted voice socket and a fake microphone in headless Chromium against a test server.
 
+## RUN on code blocks, built 2026-10-29
+
+- **What:** a play button left of COPY on code blocks of commands, only in the desktop app (`shellApi.runKinds` / `runInTerminal`; never in a plain browser or on the phone, where a terminal would open on the wrong machine). One click opens a NEW terminal window on the PC in the active chat's folder (home if it does not exist), prints the command, runs it, and stays open as a shell. Brief tick on the button; a toast when no terminal starts.
+- **Which blocks:** `bash`, `sh`, `shell`, `zsh`, `console`, `shell-session` everywhere; on Windows also `powershell`, `ps1`, `pwsh`, `cmd`, `bat`. Other languages and blocks with no language get none. In `console` and `shell-session` only `$ ` and `# ` lines are commands (prompt removed, a backslash line carries on); output lines are dropped, and a block with no prompt line gets no button. Windows `bash` blocks need Git Bash or WSL; without them no button.
+- **Linux:** `xdg-terminal-exec` (the owner's `xdg-terminals.list`), else foot, alacritty, kitty, ghostty, gnome-terminal, konsole, xterm. Nothing on disk: the command goes in the environment variable `PHOSPHOR_RUN_CMD`, and `bash -c` prints and `eval`s it, unsets it, then `exec bash -i`.
+- **macOS (untested on a real Mac):** a `run.command` script (mode 0700, own folder in the temp dir) opened with `open -a Terminal`. It deletes itself, `cd`s, prints and runs the command (from a quoted here-document), then `exec $SHELL -l`.
+- **Windows (untested on a real PC):** a private folder in the temp dir with `run.ps1` + `cmd.txt` (PowerShell: read as text, printed, `Invoke-Expression`; the script removes the folder), `run.cmd` + `user.cmd` (cmd: `call`ed, so batch rules apply: `%%` in loops), or `run.sh` (Git Bash through `bash.exe --login -i`, else WSL `wsl -e bash`, paths as `/c/...` or `/mnt/c/...`). Opened in Windows Terminal (`wt.exe`) when found, else a new console through `cmd /c start`. Folders left behind are cleared after a day.
+- **Safety:** the page sends the command text, the folder and a kind; the desktop app checks it (a string, under 20 KB, no NUL, an absolute existing folder, a kind this PC can run) and answers only for the app's own page. The command never becomes part of a shell string, and a click is the only way it runs. Claude's reply is untrusted text: read the block before you click.
+- **Test:** `tests/runcmd.ts` (languages and prompts per OS, the launch plan of all three, the bash scripts run for real). Linux was also tried with a real foot window; macOS and Windows are checked only as data until someone tries them.
+
 ## Dictate anywhere and PHONE KEYBOARD, built 2026-10-26
 
 - **Why:** the owner pays for Wispr Flow and runs out of words; the PC's own engine (Voice above) is free and local.
@@ -538,6 +548,7 @@ Use a copy on another port (`PHOSPHOR_PORT`) and only the pids from that copy's 
 | CLEAN UP | `shared/cleanup.ts` (instructions, the check on an answer, the order of the models), `server/cleanup.ts` (`POST /api/voice/cleanup`, the local and Haiku calls), `web/src/cleanup.ts` + `cleanup.css` (button, UNDO chip, the setting and its SETTINGS row), `firstmsg.ts` (first message box of the new chat and project dialogs), the hold-and-clean part of `voice.ts`, `demoCleanup` in `demo.ts`, `tests/cleanup.ts` |
 | Dictate anywhere + PHONE KEYBOARD | `shared/dictate.mjs`, `os/omarchy/clock/phosphor-dictate*` (the take, paste), `os/hyprland/phosphor-os.lua` (`Ctrl + Space`), `shell/dictate.mjs` (the CLEAN UP switch), `web/src/voicesettings.ts` (SETTINGS > VOICE), `server/voiceapi.ts` (`/v1/*`), `tests/dictate-anywhere.ts` |
 | Desktop app | `shell/main.mjs`, `shell/web.mjs`, `shell/preload.cjs`, `scripts/setup-shell.ps1` |
+| RUN on code blocks | `shared/runcmd.mjs` (+ `.d.mts`: which languages get RUN per OS, prompt stripping, the launch plan and scripts for Linux, macOS and Windows; pure), `shell/term.mjs` (finds the terminal, writes the script into a private temp folder, starts it), `terminal:kinds` / `terminal:run` in `shell/web.mjs`, `runKinds` / `runInTerminal` in `shell/preload.cjs` and `web/src/shellapi.ts`, the button in `web/src/md.ts` (`.code-run` in `chat.css`), `tests/runcmd.ts` |
 | Websites (page) | `web/src/programs.ts`, `browser.ts`, `sitebox.ts`, `browser.css`, `shellapi.ts` |
 | Plan usage meter | `server/usage.ts` (`GET /api/usage`, experimental SDK usage call, cached), `web/src/usage.ts`, `usage.css` |
 | Linux | `scripts/setup-linux.sh`, `setup-voice.sh`, `phosphor-os.sh`, `os/hyprland/phosphor-os.lua`, `server/osdirs.ts`, `shell/apps.mjs` (hyprctl), `docs/LINUX.md` |

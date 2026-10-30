@@ -521,8 +521,10 @@ pre.code .del {
   position: relative;
 }
 
-/* COPY icon on a code block: shows when the pointer is over the block; always shown on touch screens. */
-.md .code-copy {
+/* COPY icon on a code block (and RUN, left of it, on shell blocks in the desktop app): show when the pointer is over
+   the block; always shown on touch screens. */
+.md .code-copy,
+.md .code-run {
   position: absolute;
   top: 5px;
   right: 5px;
@@ -541,18 +543,26 @@ pre.code .del {
   transition: opacity 0.12s;
 }
 
-.md .code-copy:hover {
+.md .code-copy:hover,
+.md .code-run:hover {
   color: var(--ph-bright);
   border-color: var(--ph);
 }
 
+.md .code-run {
+  right: 31px;
+}
+
 .md .code-box:hover .code-copy,
-.md .code-copy:focus-visible {
+.md .code-box:hover .code-run,
+.md .code-copy:focus-visible,
+.md .code-run:focus-visible {
   opacity: 1;
 }
 
 @media (hover: none) {
-  .md .code-copy {
+  .md .code-copy,
+  .md .code-run {
     opacity: 0.85;
   }
 }
