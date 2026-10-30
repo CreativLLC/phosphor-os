@@ -53,6 +53,7 @@ let polling = false;
 let mic: CueMic | null = null;
 let wake: { released: boolean; release(): Promise<void> } | null = null;
 let shownV = -1;
+const toggles = new Set<() => void>(); // COMMENTS closes when PROMPTER opens
 
 // ------------------------------------------------------------ public
 
@@ -89,6 +90,12 @@ export function mountPrompter(btn: HTMLElement | null): void {
   }
 }
 
+export const isPrompterOpen = (): boolean => isOpen;
+
+export function onPrompterToggle(fn: () => void): void {
+  toggles.add(fn);
+}
+
 export function openPrompter(v?: View): void {
   build();
   if (v) view = v;
@@ -110,6 +117,7 @@ export function openPrompter(v?: View): void {
     }
     clockTimer = window.setInterval(renderClock, 1000);
     void loadLists();
+    for (const fn of toggles) fn();
   }
   showView();
   void poll();

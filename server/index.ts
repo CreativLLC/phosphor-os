@@ -7,6 +7,7 @@ import { checkPassword, isAuthed, loginLocked, makeCookie, noteLogin, setPasswor
 import { bootChecks } from './bootcheck.ts';
 import { calendarRange, startCalendar, today } from './calendar.ts';
 import { handleCleanup } from './cleanup.ts';
+import { handleComments, handleCommentsCallback, startComments } from './comments.ts';
 import { handleIdeas, startIdeas } from './ideas.ts';
 import { handleKeywords } from './keywords.ts';
 import { handleLab, serveLabFile, startLab } from './lab.ts';
@@ -150,6 +151,9 @@ const server = createServer(async (req, res) => {
   // PHONE KEYBOARD: OpenAI-style speech to text for phone keyboards, with its own token instead of the cookie (server/voiceapi.ts).
   if (url.pathname.startsWith('/v1/')) return await handleVoiceApi(req, res, url);
 
+  // COMMENTS: Google's sign-in comes back here; the one-time state a logged-in page started guards it (server/comments.ts).
+  if (url.pathname === '/api/comments/auth/callback' && req.method === 'GET') return await handleCommentsCallback(req, res, url);
+
   // LAB result files: sandboxed, opened by the test's key instead of the cookie (server/lab.ts).
   if (url.pathname.startsWith('/lab/v/') && req.method === 'GET') return serveLabFile(res, url);
 
@@ -279,6 +283,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/ideas' || url.pathname.startsWith('/api/ideas/')) return await handleIdeas(req, res, url);
     if (url.pathname.startsWith('/api/lab/')) return await handleLab(req, res, url);
     if (url.pathname.startsWith('/api/keywords/')) return await handleKeywords(req, res, url);
+    if (url.pathname === '/api/comments' || url.pathname.startsWith('/api/comments/')) return await handleComments(req, res, url);
     if (url.pathname.startsWith('/api/prompter/')) return await handlePrompter(req, res, url);
     if (url.pathname === '/api/calendar') return sendJson(res, calendarRange(Number(url.searchParams.get('from') ?? NaN), Number(url.searchParams.get('to') ?? NaN)));
     if (url.pathname.startsWith('/api/')) return sendJson(res, { error: 'not found' }, 404);
@@ -316,6 +321,7 @@ startCalendar();
 startIdeas();
 startLab();
 startStation();
+startComments();
 startUnraid();
 localKey().catch((e) => console.warn('docs: could not make the key for opening files from the PC:', e));
 server.listen(config.port, config.host, () => {

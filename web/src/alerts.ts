@@ -13,7 +13,7 @@ import { button, el, timeAgo, toast } from './ui.ts';
 // SETTINGS > ALERTS is alertsSection(); main.ts calls initAlerts().
 
 type Kind = 'done' | 'needs' | 'test';
-type Local = { on: boolean; done: boolean; needs: boolean; quiet: PushPrefs['quiet']; id: string | null; endpoint: string | null };
+type Local = { on: boolean; done: boolean; needs: boolean; comments: boolean; quiet: PushPrefs['quiet']; id: string | null; endpoint: string | null };
 
 const KEY = 'phosphor.alerts';
 const LOOK_EVERY_MS = 20_000; // server forgets "looking" after 30 s
@@ -34,7 +34,7 @@ function loadLocal(): Local {
   } catch {
     /* blocked or bad JSON */
   }
-  return { on: s.on === true, done: s.done !== false, needs: s.needs !== false, quiet: s.quiet ?? null, id: s.id ?? null, endpoint: s.endpoint ?? null };
+  return { on: s.on === true, done: s.done !== false, needs: s.needs !== false, comments: s.comments !== false, quiet: s.quiet ?? null, id: s.id ?? null, endpoint: s.endpoint ?? null };
 }
 
 function setLocal(p: Partial<Local>): void {
@@ -82,6 +82,7 @@ export function initAlerts(): void {
   navigator.serviceWorker?.addEventListener('message', (e) => {
     const d = e.data as { t?: unknown; tab?: unknown } | null;
     if (d?.t === 'phosphor-open-tab' && typeof d.tab === 'string') openTab(d.tab);
+    if (d?.t === 'phosphor-open-comments') window.dispatchEvent(new Event('phosphor-open-comments')); // comments.ts
   });
   watchPresence();
   watchTabs();
@@ -219,7 +220,7 @@ async function subscribe(renew = false): Promise<void> {
     sub = null;
   }
   sub ??= await inTime(reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }), 20_000, 'The push service did not answer.');
-  const { id } = await api<{ id: string }>('/api/push/subscribe', { subscription: sub.toJSON(), id: local.id, renew, prefs: { done: local.done, needs: local.needs, quiet: local.quiet } });
+  const { id } = await api<{ id: string }>('/api/push/subscribe', { subscription: sub.toJSON(), id: local.id, renew, prefs: { done: local.done, needs: local.needs, comments: local.comments, quiet: local.quiet } });
   setLocal({ id, endpoint: sub.endpoint });
 }
 
@@ -278,7 +279,7 @@ async function turnOff(): Promise<void> {
 
 function savePrefs(): void {
   redraw?.();
-  if (local.id) void api('/api/push/prefs', { id: local.id, done: local.done, needs: local.needs, quiet: local.quiet }).catch((e: Error) => toast(`Alerts: ${e.message}`));
+  if (local.id) void api('/api/push/prefs', { id: local.id, done: local.done, needs: local.needs, comments: local.comments, quiet: local.quiet }).catch((e: Error) => toast(`Alerts: ${e.message}`));
 }
 
 async function test(): Promise<void> {
@@ -362,8 +363,13 @@ export function alertsSection(): HTMLElement {
     savePrefs();
   });
   needsBtn.title = 'When Claude asks a question or waits for your OK';
+  const commentsBtn = button('COMMENTS', () => {
+    setLocal({ comments: !local.comments });
+    savePrefs();
+  });
+  commentsBtn.title = 'New comments on your YouTube channel (COMMENTS screen; push only, not the desktop app)';
   const when = el('div', 'seg alerts-when');
-  when.append(doneBtn, needsBtn);
+  when.append(doneBtn, needsBtn, commentsBtn);
 
   const from = timeInput('22:00', 'Quiet from');
   const to = timeInput('07:00', 'Quiet until');
@@ -417,6 +423,7 @@ export function alertsSection(): HTMLElement {
     testBtn.disabled = !on;
     mark(doneBtn, local.done);
     mark(needsBtn, local.needs);
+    mark(commentsBtn, local.comments);
     mark(quietOff, !local.quiet);
     mark(quietOn, !!local.quiet);
     if (local.quiet) {
@@ -453,7 +460,7 @@ function timeInput(value: string, label: string): HTMLInputElement {
 function deviceRow(d: PushDevice): HTMLElement {
   const row = el('div', 'alerts-dev');
   const mine = d.id === local.id;
-  const what = [d.prefs.done && 'DONE', d.prefs.needs && 'NEEDS YOU'].filter(Boolean).join(', ') || 'NOTHING';
+  const what = [d.prefs.done && 'DONE', d.prefs.needs && 'NEEDS YOU', d.prefs.comments !== false && 'COMMENTS'].filter(Boolean).join(', ') || 'NOTHING';
   const health = d.lastError ? `Problem: ${d.lastError}` : d.lastOkAt ? `Last alert ${timeAgo(d.lastOkAt)}` : `Added ${timeAgo(d.createdAt)}`;
   const info = el('div', 'alerts-dev-info');
   info.append(el('div', 'alerts-dev-name', `${d.label.toUpperCase()}${mine ? ' (THIS)' : ''}`), el('div', 'alerts-dev-meta', `${what}${d.prefs.quiet ? `, QUIET ${d.prefs.quiet.from}-${d.prefs.quiet.to}` : ''}. ${health}`));

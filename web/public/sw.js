@@ -24,13 +24,14 @@ self.addEventListener('fetch', (e) => {
 // encrypted for this browser only (RFC 8291) and holds no chat text: a title, the tab's name and the tab id.
 // One notification per tab (tag): a newer one replaces the older. src 'page' = the open page showed it itself
 // (it was in the background); the push for the same moment then replaces it without a second buzz.
-const BUZZ = { needs: [300, 120, 300, 120, 300], done: [180, 90, 180], test: [180, 90, 180] };
+// k 'comments' (COMMENTS, server/comments.ts): new YouTube comments; one notification, a tap opens COMMENTS.
+const BUZZ = { needs: [300, 120, 300, 120, 300], done: [180, 90, 180], test: [180, 90, 180], comments: [120, 80, 120] };
 const SAME_MS = 10000; // page and push alerts for one event land within a few seconds; real repeats are 20 s apart
 
 function showAlert(d) {
-  const kind = d.k === 'needs' || d.k === 'done' ? d.k : 'test';
+  const kind = d.k === 'needs' || d.k === 'done' || d.k === 'comments' ? d.k : 'test';
   const tab = typeof d.tab === 'string' ? d.tab.slice(0, 64) : '';
-  const tag = tab ? 'phosphor-' + tab : 'phosphor-test';
+  const tag = kind === 'comments' ? 'phosphor-comments' : tab ? 'phosphor-' + tab : 'phosphor-test';
   const title = typeof d.title === 'string' && d.title ? d.title.slice(0, 60) : 'PHOSPHOR-OS';
   const body = typeof d.body === 'string' ? d.body.slice(0, 80) : '';
   return self.registration
@@ -58,23 +59,25 @@ self.addEventListener('push', (e) => {
   e.waitUntil(showAlert(d));
 });
 
-// Tap on an alert: bring an open app window to the front and switch it to that tab, or open the app on it.
-function openApp(tab) {
+// Tap on an alert: bring an open app window to the front and switch it to that tab (or COMMENTS), or open the app on it.
+function openApp(tab, comments) {
   return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
     const w = wins.find((c) => c.focused) || wins.find((c) => c.visibilityState === 'visible') || wins[0];
-    if (!w) return self.clients.openWindow(tab ? '/?tab=' + encodeURIComponent(tab) : '/');
+    if (!w) return self.clients.openWindow(comments ? '/?comments' : tab ? '/?tab=' + encodeURIComponent(tab) : '/');
     return w
       .focus()
       .catch(() => w)
       .then(() => {
-        if (tab) w.postMessage({ t: 'phosphor-open-tab', tab });
+        if (comments) w.postMessage({ t: 'phosphor-open-comments' });
+        else if (tab) w.postMessage({ t: 'phosphor-open-tab', tab });
       });
   });
 }
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  e.waitUntil(openApp((e.notification.data && e.notification.data.tab) || ''));
+  const d = e.notification.data || {};
+  e.waitUntil(openApp(d.tab || '', d.k === 'comments'));
 });
 
 // The browser renewed this device's push address: tell the server (same login cookie), keeping name and settings.

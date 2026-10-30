@@ -364,15 +364,17 @@ export type LocalSpeed = { live: LocalSpeedRun | null; last: LocalSpeedRun | nul
 // ALERTS (server/push.ts, web/src/alerts.ts, web/public/sw.js): Web Push when a turn ends (DONE) or Claude waits
 // for you (NEEDS YOU). GET /api/push -> PushStatusResponse (the VAPID public key only; the private key stays on the PC).
 // POST /api/push/subscribe { subscription: PushSubscriptionJSON, id?, oldEndpoint?, prefs? } -> { id }
-// POST /api/push/unsubscribe { id } -> { ok }. POST /api/push/prefs { id, done?, needs?, quiet?, label? } -> { device }.
+// POST /api/push/unsubscribe { id } -> { ok }. POST /api/push/prefs { id, done?, needs?, comments?, quiet?, label? } -> { device }.
 // POST /api/push/test { id } -> { ok, status?, error? }.
 // quiet: no alerts from `from` to `to` ('HH:MM', the PC's clock; may wrap past midnight). null = off.
-export type PushPrefs = { done: boolean; needs: boolean; quiet: { from: string; to: string } | null };
+// comments: new YouTube comments (COMMENTS); absent = on.
+export type PushPrefs = { done: boolean; needs: boolean; comments?: boolean; quiet: { from: string; to: string } | null };
 // service: whose push service carries it (Mozilla, Google, Microsoft, Apple). Endpoints are not sent to the page.
 export type PushDevice = { id: string; label: string; service: string; prefs: PushPrefs; createdAt: number; lastOkAt: number | null; lastError: string | null };
 export type PushStatusResponse = { publicKey: string; devices: PushDevice[] };
 // What the service worker gets, encrypted end to end (RFC 8291): no chat text, no file paths.
-export type PushPayload = { k: 'done' | 'needs' | 'test'; tab: string; title: string; body: string; at: number };
+// k 'comments': new YouTube comments (tab ''); the body is the newest one, cut short (public text anyway).
+export type PushPayload = { k: 'done' | 'needs' | 'test' | 'comments'; tab: string; title: string; body: string; at: number };
 // Boot screen checks (server/bootcheck.ts). GET /api/bootcheck -> BootCheckResponse, cached about 30 s.
 // Only checks that apply are listed (no Nextcloud line when the workspace is not in a Nextcloud folder;
 // no MCP line unless a chat's Claude process is already running). detail is short, plain text.

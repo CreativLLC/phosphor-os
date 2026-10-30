@@ -1,5 +1,6 @@
 import { createCipheriv, createECDH, createHash, createPrivateKey, createPublicKey, generateKeyPairSync, hkdfSync, randomBytes, sign, type KeyObject, type webcrypto } from 'node:crypto';
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { WebSocket } from 'ws';
@@ -233,7 +234,7 @@ async function deliver(sub: Sub, payload: PushPayload): Promise<{ status: number
       headers: {
         TTL: String(TTL_S), // RFC 8030 §5.2
         Urgency: 'high', // §5.3: wake the phone now
-        Topic: topicFor(payload.tab || 'test'), // §5.4
+        Topic: topicFor(payload.tab || payload.k), // §5.4
         'Content-Type': 'application/octet-stream',
         'Content-Encoding': 'aes128gcm', // RFC 8291 §4: exactly this one coding
         Authorization: `vapid t=${vapidJwt(new URL(sub.endpoint).origin, k.priv)}, k=${b64url(k.pub)}`, // RFC 8292 §3
@@ -331,6 +332,24 @@ export function watchForPush(ev: ServerEvent): void {
     }
   } catch (e) {
     console.warn('[push]', e); // alerts must never break the chat
+  }
+}
+
+// Not about a chat (COMMENTS: new YouTube comments, server/comments.ts): a push to every device that wants it (prefs
+// `comments`, on unless turned off), outside quiet hours, plus a desktop note on this PC (the desktop app has no push).
+export function alertOwner(title: string, body: string): void {
+  const payload: PushPayload = { k: 'comments', tab: '', title: title.slice(0, 60), body: body.slice(0, 80), at: Date.now() };
+  const to = loadSubs().filter((s) => s.prefs.comments !== false && !inQuiet(s.prefs.quiet));
+  void Promise.allSettled(to.map((s) => deliver(s, payload)));
+  const uid = process.getuid?.();
+  const env = { ...process.env };
+  if (!env.DBUS_SESSION_BUS_ADDRESS && uid !== undefined && existsSync(`/run/user/${uid}/bus`)) env.DBUS_SESSION_BUS_ADDRESS = `unix:path=/run/user/${uid}/bus`;
+  try {
+    const p = spawn('notify-send', ['--app-name', 'Phosphor-OS', payload.title, payload.body], { env, stdio: 'ignore', timeout: 10_000 });
+    p.on('error', () => {}); // no notify-send (not Linux): the push still goes
+    p.unref();
+  } catch {
+    /* silent */
   }
 }
 
@@ -444,6 +463,7 @@ export async function handlePush(req: IncomingMessage, res: ServerResponse, url:
 function applyPrefs(s: Sub, p: Record<string, unknown>): void {
   if (typeof p.done === 'boolean') s.prefs.done = p.done;
   if (typeof p.needs === 'boolean') s.prefs.needs = p.needs;
+  if (typeof p.comments === 'boolean') s.prefs.comments = p.comments;
   const q = cleanQuiet(p.quiet);
   if (q !== undefined) s.prefs.quiet = q;
 }

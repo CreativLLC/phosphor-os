@@ -35,6 +35,7 @@ import { mountDocs } from './docs.ts';
 import { keywordsCommands, mountKeywords } from './keywords.ts';
 import { labCommands, mountLab } from './lab.ts';
 import { mountPrompter, prompterCommands } from './prompter.ts';
+import { commentsCommands, mountComments } from './comments.ts';
 import { showChat } from './programs.ts';
 import { mountMcp } from './mcp.ts';
 import { mountUsage } from './usage.ts';
@@ -102,6 +103,9 @@ addLauncherCommands(keywordsCommands);
 // PROMPTER: punch list for recording a video (prompter.ts). Closes DOCS, LAB and KEYWORDS, and they close it.
 mountPrompter($('btn-prompter'));
 addLauncherCommands(prompterCommands);
+// COMMENTS: YouTube comments inbox (comments.ts). Closes DOCS, LAB, KEYWORDS and PROMPTER, and they close it.
+mountComments($('btn-comments'));
+addLauncherCommands(commentsCommands);
 
 // Fullscreen button (Fullscreen API). Hidden where the browser can't, or when the app already runs fullscreen.
 const fullBtn = $('btn-full');
