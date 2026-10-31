@@ -27,6 +27,7 @@ import { stat } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { defaultApps, launchApp } from './apps.mjs';
 import { launcherCatalog } from './installed.mjs';
+import { openPathLink, statPaths } from './pathlinks.mjs';
 import { skinner } from './skins.mjs';
 import { runInTerminal, runKinds } from './term.mjs';
 
@@ -433,6 +434,11 @@ export function mountWeb({ win, isApp, prefs, savePrefs, onFullscreenKey }) {
     shell.showItemInFolder(path);
     return true;
   });
+  // Clickable paths in chat replies (shell/pathlinks.mjs): which of a batch of path words exist here (relative ones
+  // from the chat's folder), and a click on one. A folder opens in the file manager, a file in its default app;
+  // anything that could run code is only shown in its folder.
+  ipcMain.handle('files:stat', (e, cwd, list) => (fromApp(e) ? statPaths(cwd, list) : []));
+  ipcMain.handle('files:open', (e, path) => (fromApp(e) ? openPathLink(shell, path) : false));
   // RUN on a code block (all three OSes): a new terminal window in the chat's folder that runs the command and
   // stays open (shell/term.mjs). Kinds = what this PC can run: bash, and on Windows PowerShell and cmd.
   ipcMain.handle('terminal:kinds', (e) => (fromApp(e) ? runKinds() : []));

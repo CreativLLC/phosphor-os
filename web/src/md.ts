@@ -2,11 +2,21 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { codeLang, runnableCommand } from '../../shared/runcmd.mjs';
 import { fixLists } from './mdlists.ts';
+import { linkPaths, markPathHref } from './pathlinks.ts';
 import { shellApi } from './shellapi.ts';
 import { store } from './store.ts';
 import { toast } from './ui.ts';
 
 marked.setOptions({ gfm: true, breaks: false });
+
+// In the desktop app a link to a path on this PC is marked for linkPaths (see pathlinks.ts).
+marked.use({
+  walkTokens(token) {
+    if (token.type !== 'link') return;
+    const tagged = markPathHref(token.href);
+    if (tagged) token.href = tagged;
+  },
+});
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
@@ -22,7 +32,8 @@ export function renderMarkdown(text: string): string {
 }
 
 // Put Claude's markdown into `body`, with a COPY button on every code block (shows on hover; always on touch), and
-// a RUN button on blocks of commands in the desktop app (it opens a terminal window on the PC).
+// a RUN button on blocks of commands in the desktop app (it opens a terminal window on the PC), and links on the
+// paths of files and folders that exist on the PC (desktop app).
 export function setMarkdown(body: HTMLElement, text: string): void {
   body.innerHTML = renderMarkdown(text);
   for (const pre of body.querySelectorAll('pre')) {
@@ -41,6 +52,7 @@ export function setMarkdown(body: HTMLElement, text: string): void {
     const run = runnableCommand(codeLang(code?.className ?? ''), code?.textContent ?? '', shellApi?.platform ?? '');
     if (run) void addRun(box, run);
   }
+  linkPaths(body);
 }
 
 // What this PC can run in a terminal window; asked once. Empty in a browser or an older desktop app.

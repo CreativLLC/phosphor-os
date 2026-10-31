@@ -33,6 +33,9 @@ if (base && location.origin === base) {
     clipboardImage: () => ipcRenderer.invoke('clipboard:image'),
     // FILES: show this absolute path in the system file manager.
     showInFolder: (path) => ipcRenderer.invoke('files:show', String(path)),
+    // Clickable paths in replies (shell/pathlinks.mjs): which of these path words exist (relative to cwd), and open one.
+    statPaths: (cwd, list) => ipcRenderer.invoke('files:stat', typeof cwd === 'string' ? cwd : '', Array.isArray(list) ? list.map(String) : []),
+    openPath: (path) => ipcRenderer.invoke('files:open', String(path)),
     // A picture file, full size in the system image viewer.
     openImage: (path) => ipcRenderer.invoke('files:open-image', String(path)),
     // RUN on a code block: a terminal window that runs the command (shell/term.mjs). runKinds: what this PC can run.
