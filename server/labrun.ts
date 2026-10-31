@@ -3,6 +3,7 @@ import { createWriteStream, existsSync, lstatSync, mkdirSync, readdirSync, readF
 import { homedir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { LabApp, LabModel, LabModelsResponse, LabResult } from '../shared/lab.ts';
 import { DATA_DIR, geminiImage, localModel } from './config.ts';
@@ -336,6 +337,25 @@ const parseAgy: Parse = (e, l) => {
 
 type Plan = { cmd: string[]; spec: BoxSpec; stdin: string; parse: Parse; roots: string[]; effort: string };
 
+// Gemini in the box obeys the owner's Claude Code PreToolUse hooks (such as a block on writes to a production org), as
+// Gemini chats do (scripts/agy-guards.mjs, docs/GEMINI-GUARDS.md): agy's hooks file and the hooks part of Claude
+// Code's settings go in the box's home, read-only, with the guard script and the hook scripts they name. A hook that
+// cannot run in the box blocks every tool step of that run: agy treats a failed hook as a block.
+const GUARDS_SCRIPT = fileURLToPath(new URL('../scripts/agy-guards.mjs', import.meta.url));
+export function labGuards(home: string): [string, string][] {
+  const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(HOME, '.claude');
+  const groups = ['/etc/claude-code/managed-settings.json', join(claudeDir, 'settings.json')].flatMap((f) => readJson<{ hooks?: { PreToolUse?: { hooks?: { command?: string }[] }[] } }>(f)?.hooks?.PreToolUse ?? []);
+  if (!groups.length) return [];
+  const settings = join(home, '.claude', 'settings.json');
+  const hooks = join(home, '.gemini', 'config', 'hooks.json');
+  for (const f of [settings, hooks]) mkdirSync(dirname(f), { recursive: true });
+  writeJson(settings, { hooks: { PreToolUse: groups } });
+  writeJson(hooks, { 'phosphor-guards': { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node /opt/phosphor/agy-guards.mjs hook', timeout: 60 }] }] } });
+  const named = groups.flatMap((g) => g.hooks ?? []).flatMap((h) => String(h.command ?? '').match(/(?:~|\$\{?HOME\}?)?\/[\w.@%+\/-]+/g) ?? []);
+  const files = [...new Set(named.map((f) => f.replace(/^(~|\$\{?HOME\}?)\//, `${HOME}/`)))].filter((f) => !/^\/(usr|etc)\//.test(f) && existsSync(f) && statSync(f).isFile());
+  return [[settings, join(HOME, '.claude', 'settings.json')], [hooks, join(HOME, '.gemini', 'config', 'hooks.json')], [GUARDS_SCRIPT, '/opt/phosphor/agy-guards.mjs'], ...files.map((f): [string, string] => [f, f])];
+}
+
 async function plan(app: LabApp, model: string, prompt: string, home: string, asked: string): Promise<Plan> {
   const b = await findBin(APPS[app].bin);
   if (!b) throw new Error(`${APPS[app].name} is not installed.`);
@@ -366,7 +386,7 @@ async function plan(app: LabApp, model: string, prompt: string, home: string, as
     ].join('\n');
     const text = prompt.startsWith('-') ? ` ${prompt}` : prompt; // never read as a flag
     const t = await tools();
-    const spec: BoxSpec = { env: { AGY_CLI_DISABLE_AUTO_UPDATE: 'true', PATH: `/opt/agy:${t.path}` }, ro: [[realpathSync(b.path), '/opt/agy/agy']] };
+    const spec: BoxSpec = { env: { AGY_CLI_DISABLE_AUTO_UPDATE: 'true', PATH: `/opt/agy:${t.path}` }, ro: [[realpathSync(b.path), '/opt/agy/agy'], ...labGuards(home)] };
     return { cmd: ['dbus-run-session', '--', '/bin/sh', '-c', sh, 'sh', model, text, ...level], spec, stdin: token, parse: parseAgy, roots: [], effort }; // only the one program file, not its folder
   }
   if (app === 'local') {

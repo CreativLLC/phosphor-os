@@ -17,11 +17,13 @@ const fake = join(fixtures, 'fake-agy.mjs');
 process.env.PHOSPHOR_IMAGE_DIR = join(tmp, 'images'); // read when the server modules load
 process.env.FAKE_AGY_BRAIN = join(tmp, 'brain');
 process.env.FAKE_AGY_LOG = join(tmp, 'argv.log');
-const { agyMode, chatText, fitEffort, GeminiChat, geminiModels, NO_BYPASS, parseAgyModels, savedGeminiChats } = await import('../server/geminitab.ts');
+const { agyArgs, chatText, deniedNote, fitEffort, GeminiChat, geminiGuards, geminiModels, GUARDS_SCRIPT, parseAgyModels, savedGeminiChats } = await import('../server/geminitab.ts');
 const { Tab } = await import('../server/tab.ts');
 GeminiChat.bin = fake;
 GeminiChat.brain = join(tmp, 'brain');
 GeminiChat.dir = join(tmp, 'chats');
+GeminiChat.hooks = join(tmp, 'agy-hooks.json'); // none yet: no command guards (the guards section below adds them)
+process.env.CLAUDE_CONFIG_DIR = join(tmp, 'claude'); // made-up Claude Code hooks, never the owner's
 
 let fail = 0;
 const check = (what: string, cond: boolean, detail = '') => {
@@ -55,7 +57,9 @@ const replies = (t: T) => t.state.items.filter((i): i is Extract<Item, { kind: '
   check('models: one entry per Gemini model; agy\'s Claude and GPT models left out', list.map((m) => m.value).join() === 'gemini:gemini-4-argon,gemini:gemini-3.8-flash', list.map((m) => m.value).join());
   check('models: names without the level, levels low to high', list[0].label === 'Gemini 4 Argon' && list[1].label === 'Gemini 3.8 Flash' && list[0].efforts.join() === 'low,medium,high');
   check('models: asked from agy itself', (await geminiModels()).length === 2);
-  check("modes: ASK FIRST agy's default, PLAN ONLY plan, AUTO-EDIT, AUTO and BYPASS accept-edits (never agy's auto mode: it runs commands)", ['default', 'plan', 'acceptEdits', 'auto', 'bypassPermissions', ''].map(agyMode).join() === ',plan,accept-edits,accept-edits,accept-edits,');
+  const modes = (guarded: boolean) => ['default', 'plan', 'acceptEdits', 'auto', 'bypassPermissions', ''].map((m) => agyArgs(m, guarded).join(' ')).join('|');
+  check("modes without the guards: ASK FIRST agy's default, PLAN ONLY plan, AUTO-EDIT, AUTO and BYPASS accept-edits (no commands)", modes(false) === '|--mode plan|--mode accept-edits|--mode accept-edits|--mode accept-edits|', modes(false));
+  check("modes with the guards: AUTO adds agy's sandbox where commands run without asking, BYPASS skips every permission; the rest the same", modes(true) === '|--mode plan|--mode accept-edits|--mode accept-edits --sandbox --settings {"toolPermission":"proceed-in-sandbox"}|--dangerously-skip-permissions|', modes(true));
   check('thinking level held to the model\'s own', fitEffort('gemini:gemini-4-argon', 'xhigh') === 'high' && fitEffort('gemini:gemini-4-argon', 'low') === 'low' && fitEffort('gemini:gemini-4-argon', '') === undefined);
 }
 
@@ -205,7 +209,7 @@ else {
   await play(tab, 'chat', 'Hello again.');
   check('... runs on it, same conversation', flag(lastArgs(), '--model') === 'gemini-4-argon' && flag(lastArgs(), '--conversation') === conv);
   await tab.setMode('bypassPermissions');
-  check('BYPASS is not offered: AUTO, with a note', tab.mode === 'auto' && tab.state.info.permissionMode === 'auto' && notes(tab).at(-1) === NO_BYPASS);
+  check('BYPASS without the guards: AUTO, with a note saying why and how to set them up', tab.mode === 'auto' && tab.state.info.permissionMode === 'auto' && /^BYPASS is not offered for this Gemini chat: the command guards are not set up for Gemini: run `node scripts\/agy-guards.mjs install`/.test(notes(tab).at(-1) ?? ''), notes(tab).at(-1));
   check('no "/" list, no MCP screen for a Gemini chat', (await tab.commands()).length === 0 && (await tab.mcpServers().then(() => false, () => true)));
   await tab.undo(tab.state.items[0].id, true);
   const u = events.findLast((e) => e.t === 'undo_result');
@@ -220,6 +224,50 @@ else {
   const reopened = new Tab(() => {}, { cwd, gemini: conv });
   await reopened.loadHistory();
   check('reopened from HISTORY: a Gemini chat on the model it last ran on', reopened.state.info.agent === 'gemini' && reopened.model === 'gemini:gemini-4-argon' && reopened.state.info.model === 'gemini:gemini-4-argon');
+}
+
+// ---- the command guards (scripts/agy-guards.mjs): checked at the start of every AUTO or BYPASS run
+{
+  const claude = join(tmp, 'claude');
+  mkdirSync(claude, { recursive: true });
+  const guard = join(tmp, 'guard.mjs');
+  writeFileSync(guard, "let r = ''; process.stdin.on('data', (c) => (r += c)); process.stdin.on('end', () => { if (/deploy/.test(JSON.parse(r).tool_input?.command ?? '')) { console.error('BLOCKED'); process.exit(2); } });\n");
+  const settings = (groups: unknown[]) => writeFileSync(join(claude, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: groups } }));
+  settings([{ matcher: 'Bash', hooks: [{ type: 'command', command: `node '${guard}'` }] }]);
+  const entry = (script: string, more: Record<string, unknown> = {}) => writeFileSync(GeminiChat.hooks, JSON.stringify({ other: { PreToolUse: [] }, 'phosphor-guards': { ...more, PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: `'${process.execPath}' '${script}' hook` }] }] } }));
+  check('guards: no agy hooks file = not set up, with the step to set them up', /not set up for Gemini: run `node scripts\/agy-guards.mjs install`/.test(await geminiGuards(cwd)));
+  entry(join(tmp, 'elsewhere', 'agy-guards.mjs'));
+  check('guards: an entry for another copy of Phosphor-OS is not taken', /point at another copy/.test(await geminiGuards(cwd)));
+  entry(GUARDS_SCRIPT, { enabled: false });
+  check('guards: switched off in agy ("enabled": false) is not taken', /switched off/.test(await geminiGuards(cwd)));
+  entry(GUARDS_SCRIPT);
+  check('guards: in place = the entry runs and answers a test call', (await geminiGuards(cwd)) === '');
+  settings([{ matcher: 'Read', hooks: [{ type: 'command', command: `node '${guard}'` }] }]);
+  check('guards: no Claude Code hook for commands = nothing to guard with', /no PreToolUse hooks for commands/.test(await geminiGuards(cwd)));
+  settings([{ matcher: 'Bash', hooks: [{ type: 'command', command: `node '${join(tmp, 'gone.mjs')}'` }] }]);
+  check('guards: a hook that cannot run fails the test call', /failed a test call/.test(await geminiGuards(cwd)));
+  settings([{ matcher: 'Bash', hooks: [{ type: 'command', command: `node '${guard}'` }] }]);
+
+  const auto = newTab({ mode: 'auto' });
+  await play(auto, 'chat', 'Hello.');
+  const a = lastArgs();
+  check("AUTO with the guards: accept-edits in agy's sandbox, commands run there without asking", flag(a, '--mode') === 'accept-edits' && a.includes('--sandbox') && flag(a, '--settings') === '{"toolPermission":"proceed-in-sandbox"}' && !a.includes('--dangerously-skip-permissions'), JSON.stringify(a));
+  await auto.setMode('bypassPermissions');
+  check('BYPASS with the guards: offered, no note', auto.mode === 'bypassPermissions' && auto.state.info.permissionMode === 'bypassPermissions' && notes(auto).length === 0, JSON.stringify(notes(auto)));
+  await play(auto, 'chat', 'Again.');
+  const b = lastArgs();
+  check('BYPASS runs with --dangerously-skip-permissions (no mode, no sandbox)', b.includes('--dangerously-skip-permissions') && !b.includes('--mode') && !b.includes('--sandbox'), JSON.stringify(b));
+  writeFileSync(GeminiChat.hooks, '{}'); // removed between two messages: no restart needed either way
+  await play(auto, 'chat', 'Once more.');
+  check('guards gone before a BYPASS run: it runs as AUTO-EDIT (no commands)', flag(lastArgs(), '--mode') === 'accept-edits' && !lastArgs().includes('--dangerously-skip-permissions') && !lastArgs().includes('--sandbox'), JSON.stringify(lastArgs()));
+  const edit = newTab({ mode: 'acceptEdits' });
+  await play(edit, 'chat', 'Hi.');
+  check('AUTO-EDIT never runs commands, guards or not', flag(lastArgs(), '--mode') === 'accept-edits' && !lastArgs().includes('--sandbox'));
+
+  const cmd = [{ action: 'command', display_name: 'RunCommand' }];
+  check('note, guards missing: says why Gemini runs no commands', /^Gemini wanted to run a command, which AUTO does not allow, so it stopped there\. AUTO-EDIT lets it change files in this folder\. Gemini runs no commands yet: the command guards/.test(deniedNote(cmd, 'auto', 'the command guards are not set up for Gemini.')));
+  check("note, AUTO with the guards: commands only in agy's sandbox, BYPASS outside it", /AUTO runs commands only inside agy's sandbox.*BYPASS runs them outside it/.test(deniedNote([{ action: 'unsandboxed' }], 'auto', '')));
+  check('note, AUTO-EDIT with the guards: names AUTO and BYPASS', /which AUTO-EDIT does not allow.*AUTO also runs commands in agy's sandbox, BYPASS runs anything/.test(deniedNote(cmd, 'acceptEdits', '')));
 }
 
 rmSync(tmp, { recursive: true, force: true });

@@ -64,7 +64,7 @@ Sign-in for each app (check all of this in phase 0):
 | agy | fake HOME, its own D-Bus and keyring | the one keyring item, copied in on stdin (see Notes) |
 | opencode | `XDG_CONFIG_HOME` and `XDG_DATA_HOME` in the box | the real `auth.json` bound in |
 
-Why the box matters: Codex, agy and opencode do not have Claude Code's hooks. In auto-approve mode a model can run any command.
+Why the box matters: Codex and opencode do not have Claude Code's hooks. In auto-approve mode a model can run any command. agy runs the owner's Claude Code PreToolUse hooks in the box since 2026-10-30 (`labGuards`, docs/GEMINI-GUARDS.md): the box gets agy's hooks entry for `scripts/agy-guards.mjs`, the PreToolUse part of Claude Code's settings and the hook scripts they name, all read-only. Tested with one real Gemini run: a prod-write `echo` and a media-server `echo` were blocked, a plain `echo` ran. Claude runs in the box still start with an empty Claude Code config, so no hooks (the box, with no org sign-ins, is their guard).
 
 ## 4. Folders (made to last for years)
 

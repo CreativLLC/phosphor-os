@@ -25,7 +25,7 @@ import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
 import { DATA_DIR, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import { askLocalTool, DELEGATE_HELP, DELEGATE_TOOLS, ledger, routerOn, threadModel, threadWorkers, WORKER_HELP, type ThreadModel } from './delegate.ts';
 import { GeminiPainter } from './geminiimage.ts';
-import { fitEffort, GEMINI_MCP, GeminiChat, NO_BYPASS } from './geminitab.ts';
+import { fitEffort, GEMINI_MCP, GeminiChat, geminiGuards, noBypass } from './geminitab.ts';
 import { painter, type Painter } from './imagegen.ts';
 import { editSize, imageSize, parseImageOptions, STEPS } from './imageopts.ts';
 import { LOCAL_RELAY_PORT, localLoaded } from './localrelay.ts';
@@ -396,7 +396,7 @@ export class Tab {
       this.state.info = {
         ...this.state.info,
         model: this.state.info.model || model,
-        permissionMode: this.state.info.permissionMode || this.pendingMode || (this.geminiChat && mode === 'bypassPermissions' ? 'auto' : mode), // NO_BYPASS
+        permissionMode: this.state.info.permissionMode || this.pendingMode || (this.geminiChat && mode === 'bypassPermissions' ? 'auto' : mode), // a Gemini chat starts in BYPASS only when picked
         effort: this.state.info.effort || this.pendingEffort || (this.geminiChat ? '' : effort), // Claude's default level is not Gemini's
       };
       this.patch('info');
@@ -634,8 +634,11 @@ export class Tab {
 
   async setMode(mode: Mode): Promise<void> {
     if (this.geminiChat && mode === 'bypassPermissions') {
-      this.note(NO_BYPASS);
-      mode = 'auto';
+      const why = await geminiGuards(this.state.info.cwd); // BYPASS for Gemini only under the command guards
+      if (why) {
+        this.note(noBypass(why));
+        mode = 'auto';
+      }
     }
     this.pendingMode = mode;
     if (this.q) await this.q.setPermissionMode(sdkMode(mode, this.pendingModel)!).catch(() => {});

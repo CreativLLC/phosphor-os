@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync,
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { EFFORTS, isGeminiModel, type Effort, type Item, type ModelChoice, type PatchKey, type TabState } from '../shared/protocol.ts';
 import { clampEffort } from '../shared/router.ts';
@@ -18,9 +19,10 @@ import type { StoredUpload } from './uploads.ts';
 // run after the first continues the same agy conversation (--conversation <id>). Its events become the same chat
 // items as Claude's: the reply streams in, each tool step is a tool line, written files count as changed.
 // A headless run cannot stop to ask: what its mode does not allow is refused and the run ends, with the refused
-// actions in its result (denied_actions). So the mode picker maps to what agy may do without asking (agyMode).
+// actions in its result (denied_actions). So the mode picker maps to what agy may do without asking (agyArgs).
 // agy keeps the conversation for the model; the app keeps the chat as shown in data/gemini-chats/<conversation>.json,
-// so it comes back after a restart. Event names and modes checked with agy 1.4.7 (2026-10-25).
+// so it comes back after a restart. Event names and modes checked with agy 1.4.7 (2026-10-25); commands under the
+// guards, with agy 1.4.12 (2026-10-30).
 
 const exec = promisify(execFile);
 const TIMEOUT_S = 1800; // one run at most 30 minutes (agy's own default is no limit)
@@ -80,18 +82,61 @@ function labelOf(base: string): string {
 //   Both write files without asking in a headless run (default mode at once, plan mode once told "go ahead"; tested
 //   2026-10-26), so these runs see the chat's folder read-only (readOnly), or a file write is the tripwire.
 // - AUTO-EDIT: accept-edits. It may change files in the folder; commands are refused unless agy's own settings allow them.
-// - AUTO: also accept-edits. agy's own auto mode runs the commands its checker finds safe, and agy has none of Claude
-//   Code's hooks (such as a block on writes to a production org), so Gemini chats never use it: no mode runs commands
-//   unless agy's own settings allow them.
-// - BYPASS is not offered (NO_BYPASS): it is AUTO.
-export function agyMode(mode: string): string {
-  return mode === 'plan' ? 'plan' : mode === 'acceptEdits' || mode === 'auto' || mode === 'bypassPermissions' ? 'accept-edits' : '';
+// - AUTO and BYPASS run commands only when the guards are in place for the run (geminiGuards): agy then runs every tool
+//   step past the same PreToolUse hooks as Claude Code (scripts/agy-guards.mjs, docs/GEMINI-GUARDS.md), such as a
+//   block on writes to a production org. Without them both are AUTO-EDIT, as before.
+//   - AUTO: accept-edits plus agy's terminal sandbox, where commands run without asking (proceed-in-sandbox): no
+//     network, writes only in the folder and temp folders; a command that must leave the sandbox is refused. agy's own
+//     auto mode (a reviewer for commands that leave the sandbox) said "unavailable (rollout flag off)" for this
+//     account (2026-10-30, agy 1.4.12), and then runs in the default mode, so it is not used.
+//   - BYPASS: --dangerously-skip-permissions, every step runs without asking, outside the sandbox. The guards still
+//     run on every step (tested 2026-10-30).
+const SANDBOX = JSON.stringify({ toolPermission: 'proceed-in-sandbox' });
+export function agyArgs(mode: string, guarded: boolean): string[] {
+  if (mode === 'plan') return ['--mode', 'plan'];
+  if (mode === 'auto' && guarded) return ['--mode', 'accept-edits', '--sandbox', '--settings', SANDBOX];
+  if (mode === 'bypassPermissions' && guarded) return ['--dangerously-skip-permissions'];
+  return mode === 'acceptEdits' || mode === 'auto' || mode === 'bypassPermissions' ? ['--mode', 'accept-edits'] : [];
 }
 const READ_ONLY = '[Note from the Phosphor-OS app: this chat is in ASK FIRST mode. Do not create, change or delete any file and do not run commands: read and answer only. If the request needs changes, say what you would change; the user can allow changes by switching the chat to AUTO-EDIT.]';
-export const NO_BYPASS = "BYPASS is not offered for Gemini: agy has none of Claude Code's hooks, so nothing would guard its commands. This chat uses AUTO.";
+export const noBypass = (why: string) => `BYPASS is not offered for this Gemini chat: ${why} This chat uses AUTO, which runs no commands until then.`;
 // The MCP screen shows Claude Code's servers; agy has its own.
 export const GEMINI_MCP = "This chat is with Gemini: its connectors (MCP servers) are agy's own. `agy mcp list` in a terminal shows them.";
-const MODE_NAMES: Record<string, string> = { default: 'ASK FIRST', plan: 'PLAN ONLY', acceptEdits: 'AUTO-EDIT', auto: 'AUTO', bypassPermissions: 'AUTO' };
+const MODE_NAMES: Record<string, string> = { default: 'ASK FIRST', plan: 'PLAN ONLY', acceptEdits: 'AUTO-EDIT', auto: 'AUTO', bypassPermissions: 'BYPASS' };
+
+// The guards for commands (scripts/agy-guards.mjs): its entry in agy's shared hooks file, pointing at this copy of the
+// script, and the script answering a test call with Claude Code's command hooks found. '' = in place, else why not.
+// Asked at the start of every run, so installing or removing them needs no restart.
+export const GUARDS_SCRIPT = fileURLToPath(new URL('../scripts/agy-guards.mjs', import.meta.url));
+const GUARDS_NAME = 'phosphor-guards';
+const INSTALL = `run \`node scripts/agy-guards.mjs install\` in the Phosphor-OS folder (docs/GEMINI-GUARDS.md)`;
+export async function geminiGuards(cwd: string): Promise<string> {
+  let command: unknown;
+  try {
+    const entry = JSON.parse(readFileSync(GeminiChat.hooks, 'utf8'))?.[GUARDS_NAME];
+    if (!entry) throw new Error('none');
+    if (entry.enabled === false) return `the command guards are switched off in ${GeminiChat.hooks} ("enabled": false).`;
+    command = entry.PreToolUse?.find((g: { matcher?: string }) => g.matcher === '*')?.hooks?.[0]?.command;
+  } catch {
+    return `the command guards are not set up for Gemini: ${INSTALL}.`;
+  }
+  if (typeof command !== 'string' || !command.includes(GUARDS_SCRIPT)) return `the command guards for Gemini point at another copy of Phosphor-OS: ${INSTALL}.`;
+  const probe = JSON.stringify({ phosphorCheck: true, toolCall: { name: 'run_command', args: { CommandLine: 'true' } }, workspacePaths: [cwd] });
+  const answer = await new Promise<string>((done) => {
+    const child = execFile('/bin/sh', ['-c', command], { cwd: dirname(GeminiChat.hooks), timeout: 20_000, env: env() }, (e, out) => done(e ? '' : out));
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(probe);
+  });
+  let a: { decision?: string; guards?: number; reason?: string } = {};
+  try {
+    a = JSON.parse(answer);
+  } catch {
+    return `the command guards for Gemini did not answer a test call: ${INSTALL}.`;
+  }
+  if (a.decision !== 'ask') return `the command guards for Gemini failed a test call (${(a.reason ?? a.decision ?? 'no answer').slice(0, 200)}).`;
+  if (!a.guards) return 'Claude Code has no PreToolUse hooks for commands (Bash) to apply to Gemini.';
+  return '';
+}
 
 // ASK FIRST and PLAN ONLY, when bubblewrap works: the run sees these folders read-only, and all else as it is (agy's own
 // folder, its sign-in in the desktop keyring, the network). --die-with-parent: STOP ends bwrap, and agy with it.
@@ -113,7 +158,7 @@ type Step = {
   text_delta?: string;
   thinking_delta?: string;
   tool_name?: string;
-  tool_info?: { name?: string; parameters?: Record<string, unknown>; output?: string };
+  tool_info?: { name?: string; parameters?: Record<string, unknown>; output?: string; error?: { message?: string } }; // error: a guard's block, for one
   subagent_info?: { subagents?: { type_name?: string; initial_prompt?: string }[] };
   error?: string;
 };
@@ -135,9 +180,12 @@ function detailOf(p: Record<string, unknown>): string {
 // What agy refused (the "permission" names of its allow rules), in plain words.
 const ACTIONS: Record<string, string> = { command: 'run a command', unsandboxed: 'run a command outside its sandbox', write_file: 'change a file', read_file: 'read a file outside this folder', read_url: 'open a web page', execute_url: 'open a web page', mcp: 'use a connector' };
 
-export function deniedNote(denied: Denied[], mode: string): string {
+export function deniedNote(denied: Denied[], mode: string, guards: string): string {
   const what = [...new Set(denied.map((d) => ACTIONS[d.action ?? ''] ?? `use ${d.display_name || d.action || 'a tool'}`))].join(', ');
-  return `Gemini wanted to ${what}, which ${MODE_NAMES[mode] ?? 'this mode'} does not allow, so it stopped there. AUTO-EDIT lets it change files in this folder. Gemini chats run no commands and open no web pages (agy has none of Claude Code's safety hooks): ask Claude for those.`;
+  const said = `Gemini wanted to ${what}, which ${MODE_NAMES[mode] ?? 'this mode'} does not allow, so it stopped there.`;
+  if (guards) return `${said} AUTO-EDIT lets it change files in this folder. Gemini runs no commands yet: ${guards}`;
+  if (mode === 'auto') return `${said} AUTO runs commands only inside agy's sandbox (no network, writes in this folder and temp folders). BYPASS runs them outside it. Both keep Claude Code's command guards.`;
+  return `${said} AUTO-EDIT lets it change files in this folder, AUTO also runs commands in agy's sandbox, BYPASS runs anything. Claude Code's command guards apply to Gemini in each.`;
 }
 
 // An error from agy, in plain words.
@@ -200,7 +248,8 @@ type Job = { text: string; files: StoredUpload[] };
 type Run = {
   child: ChildProcess;
   text: string;
-  mode: string;
+  mode: string; // as run: BYPASS without the guards runs as AUTO
+  guards?: string; // '' = the command guards were in place, else why not (checked for AUTO and BYPASS only)
   who: string; // the reply's speaker label
   asked?: string; // the conversation it was asked to continue
   started: number;
@@ -226,12 +275,15 @@ export class GeminiChat {
   static brain = join(homedir(), '.gemini', 'antigravity-cli', 'brain');
   static dir = join(DATA_DIR, 'gemini-chats');
   static bwrap = 'bwrap'; // bubblewrap, for the read-only runs ('' = none)
+  static hooks = join(homedir(), '.gemini', 'config', 'hooks.json'); // agy's shared hooks file (the guards)
 
   conversation?: string;
   private items: Item[] = []; // this chat's own items (the tab also shows pictures from the image models)
   model?: string; // the last Gemini model it ran on (saved with the chat)
   private queue: Job[] = [];
   private run?: Run;
+  private starting = false; // the guards are being checked for the next run
+  private stops = 0; // STOP presses, so a STOP during that check drops the run
   private gone = false;
 
   constructor(
@@ -247,12 +299,13 @@ export class GeminiChat {
     this.push({ id: randomUUID(), kind: 'user', text, ...(attachments.length ? { attachments } : {}) });
     this.queue.push({ text, files });
     this.host.busy(true);
-    if (!this.run) this.next();
+    if (!this.run && !this.starting) void this.next();
   }
 
   // STOP: messages still waiting are dropped; the run gets SIGINT (agy ends at once, like Ctrl+C), then SIGTERM and
   // SIGKILL if it is still there seconds later. Only this run's own process, by its PID.
   stop(): void {
+    this.stops++;
     const dropped = this.queue.splice(0).length;
     if (dropped && !this.gone) this.note(dropped === 1 ? 'Stopped before it was sent.' : `Stopped: ${dropped} messages were not sent.`);
     const run = this.run;
@@ -317,32 +370,46 @@ export class GeminiChat {
     this.push({ id: randomUUID(), kind: 'note', text });
   }
 
-  private next(): void {
+  private async next(): Promise<void> {
     const job = this.queue.shift();
     if (!job || this.gone) return this.host.busy(false);
-    const { model, mode, effort } = this.host.settings();
+    const { model, mode: picked, effort } = this.host.settings();
+    const cwd = this.host.state.info.cwd;
+    let guards: string | undefined; // checked for the modes that run commands
+    if (picked === 'auto' || picked === 'bypassPermissions') {
+      const stops = this.stops;
+      this.starting = true;
+      this.host.activity('Checking the command guards');
+      guards = await geminiGuards(cwd).catch((e) => `the command guards could not be checked (${firstLine(e)}).`);
+      this.starting = false;
+      if (this.gone) return;
+      if (this.stops !== stops) {
+        this.note('Stopped.'); // STOP while checking: this message is not sent
+        return this.next();
+      }
+    }
+    const mode = picked === 'bypassPermissions' && guards ? 'auto' : picked; // no BYPASS without the guards
     if (isGeminiModel(model)) this.model = model;
     const base = this.model?.slice('gemini:'.length);
     const level = this.model ? fitEffort(this.model, effort) : undefined;
-    const agy = agyMode(mode);
+    const agy = agyArgs(mode, guards === '');
     const command = job.text.startsWith('/'); // an agy slash command (/quota, a skill): agy only sees it at the start
-    const prompt = [agy || command ? '' : READ_ONLY, job.text, job.files.length ? `${ATTACHED}\n${job.files.map((f) => `- ${f.path}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
-    const args = ['-p', prompt.startsWith('-') ? ` ${prompt}` : prompt, '--output-format', 'stream-json', '--print-timeout', `${TIMEOUT_S}s`];
-    if (agy) args.push('--mode', agy);
+    const prompt = [agy.length || command ? '' : READ_ONLY, job.text, job.files.length ? `${ATTACHED}\n${job.files.map((f) => `- ${f.path}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
+    const args = ['-p', prompt.startsWith('-') ? ` ${prompt}` : prompt, '--output-format', 'stream-json', '--print-timeout', `${TIMEOUT_S}s`, ...agy];
     if (base) args.push('--model', base);
     if (level) args.push('--effort', level);
     if (this.conversation) args.push('--conversation', this.conversation);
     const dirs = [...new Set(job.files.map((f) => dirname(f.path)))];
     for (const dir of dirs) args.push('--add-dir', dir);
 
-    const cwd = this.host.state.info.cwd;
-    const ro = agy === '' || agy === 'plan'; // ASK FIRST, PLAN ONLY
+    const ro = !agy.length || mode === 'plan'; // ASK FIRST, PLAN ONLY
     const box = ro && existsSync(GeminiChat.bin) ? readOnly([cwd, ...dirs]) : undefined; // no agy: the plain "not installed" note
     const child = spawn(box ? GeminiChat.bwrap : GeminiChat.bin, box ? [...box, GeminiChat.bin, ...args] : args, { cwd, env: env(), stdio: ['ignore', 'pipe', 'pipe'] });
     const run: Run = {
       child,
       text: job.text,
       mode,
+      guards,
       who: base ? labelOf(base) : 'Gemini',
       asked: this.conversation,
       started: Date.now(),
@@ -437,7 +504,7 @@ export class GeminiChat {
     }
     if (s.state === 'ACTIVE') return;
     if (write && s.state === 'DONE' && !s.error) changed(); // not a write the read-only folder refused
-    const out = s.tool_info?.output ?? s.subagent_info?.subagents?.map((a) => a.initial_prompt).filter(Boolean).join('\n\n') ?? ''; // a helper: its task
+    const out = s.tool_info?.output ?? s.tool_info?.error?.message ?? s.subagent_info?.subagents?.map((a) => a.initial_prompt).filter(Boolean).join('\n\n') ?? ''; // a helper: its task
     let body = typeof p.CommandLine === 'string' ? [p.CommandLine, out].filter(Boolean).join('\n\n') : out;
     if (notes && /\.md$/i.test(path)) {
       try {
@@ -465,14 +532,14 @@ export class GeminiChat {
     else if (run.stopped) this.note('Stopped.');
     else if (fail) this.note(problem(fail));
     if (run.asked && this.conversation !== run.asked) this.note('agy could not find the earlier conversation, so this message started a new one: Gemini does not remember the messages above.');
-    if (r?.denied_actions?.length) this.note(deniedNote(r.denied_actions, run.mode));
+    if (r?.denied_actions?.length) this.note(deniedNote(r.denied_actions, run.mode, run.guards ?? (await geminiGuards(this.host.state.info.cwd).catch(() => 'the command guards could not be checked.'))));
     const s = this.host.state.stats;
     s.turns++;
     s.lastTurnMs = Date.now() - run.started;
     this.host.patch('stats');
     this.run = undefined;
     this.save();
-    this.next();
+    void this.next();
   }
 
   // Pictures Gemini made this turn (its picture tool saves them in its own folder): copied as PNG to the pictures
