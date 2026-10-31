@@ -53,6 +53,12 @@ export type PhosphorShell = {
   clipboardImage?(): Promise<Uint8Array | null>;
   // Show a file (or open a folder) in the system file manager. Optional: an older desktop app does not have it.
   showInFolder?(path: string): Promise<boolean>;
+  // Clickable paths in replies: which of these path words exist (relative ones from `cwd`), alongside the list: the
+  // absolute path and kind, or null. openPath: a folder opens in the file manager, a file in its default app, but a
+  // file that could run code is only shown in its folder ('shown'); false when it is gone. Optional: an older
+  // desktop app does not have them.
+  statPaths?(cwd: string, list: string[]): Promise<({ path: string; kind: 'file' | 'dir' } | null)[]>;
+  openPath?(path: string): Promise<'opened' | 'shown' | false>;
   // Open a picture file in the system image viewer. Optional: an older desktop app does not have it.
   openImage?(path: string): Promise<boolean>;
   // RUN on a code block: which kinds of command this PC can run in a terminal window ('bash', on Windows also

@@ -985,6 +985,31 @@ html[data-theme='lcars'] {
     }
   }
 
+  .md .path-link,
+  .md code.path-link {
+    color: var(--lc-sky);
+    text-decoration-color: rgb(153 204 255 / 0.6);
+  }
+
+  .md .path-dir {
+    color: var(--lc-lilac);
+    border-radius: 4px;
+  }
+
+  .md .path-dir:hover,
+  .md .path-dir:focus-visible {
+    color: var(--lc-sky);
+    border-color: var(--lc-sky);
+  }
+
+  @media (hover: hover) {
+    .md .path-link:hover,
+  .md code.path-link:hover {
+      background: var(--lc-sky);
+      color: var(--lc-ink);
+    }
+  }
+
   .md hr {
     height: 4px;
     border-radius: 2px;

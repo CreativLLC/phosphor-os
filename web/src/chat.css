@@ -601,6 +601,51 @@ pre.code .del {
   }
 }
 
+/* A path to a file or folder on this PC (desktop app; web/src/pathlinks.ts): a dotted underline in the theme colour,
+   and for a file a small folder icon after it that shows it in its folder. */
+.md .path-link {
+  color: var(--ph);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.md code.path-link {
+  color: var(--ph-bright);
+}
+
+.md .path-dir {
+  display: inline-grid;
+  place-items: center;
+  vertical-align: -1px;
+  width: 16px;
+  height: 16px;
+  min-width: 0;
+  min-height: 0; /* buttons get a finger-size minimum elsewhere; this one sits in a line of text */
+  margin: 0 0 0 0.2em;
+  padding: 0;
+  color: var(--ph-dim);
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.md .path-dir:hover,
+.md .path-dir:focus-visible {
+  color: var(--ph-bright);
+  border-color: var(--ph);
+}
+
+@media (hover: hover) {
+  .md .path-link:hover,
+  .md code.path-link:hover {
+    background: var(--ph-bright);
+    color: var(--bg);
+    text-shadow: none;
+    text-decoration: none;
+  }
+}
+
 .md hr {
   border: 0;
   height: 1px;
