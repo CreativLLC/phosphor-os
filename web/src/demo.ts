@@ -138,7 +138,7 @@ const tab4: TabState = {
     { id: 'g6', kind: 'tool', name: 'Edit', detail: `${SAMPLE}/src/theme.css` },
     { id: 'g7', kind: 'tool', name: 'Run', detail: 'npm test', body: 'npm test' },
     { id: 'g8', kind: 'claude', who: GEMINI, at: now - 200000, text: 'The dark colors are in `src/theme.css`, under `[data-theme="dark"]`.' },
-    { id: 'g9', kind: 'note', text: "Gemini wanted to run a command, which AUTO-EDIT does not allow, so it stopped there. AUTO-EDIT lets it change files in this folder. Gemini chats run no commands and open no web pages (agy has none of Claude Code's safety hooks): ask Claude for those." },
+    { id: 'g9', kind: 'note', text: "Gemini wanted to run a command, which AUTO-EDIT does not allow, so it stopped there. AUTO-EDIT lets it change files in this folder, AUTO also runs commands in agy's sandbox, BYPASS runs anything. Claude Code's command guards apply to Gemini in each." },
   ],
   mission: null,
   agents: [],

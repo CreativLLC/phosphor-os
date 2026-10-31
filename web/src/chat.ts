@@ -20,8 +20,8 @@ export const MODE_LABELS: Record<string, string> = {
 // BYPASS = no permission prompts at all (hooks such as the prod-write block still run).
 const PICKER_MODES = [...new Set<string>([...MODES, 'bypassPermissions'])];
 const MODE_HELP = 'Permission mode: when Claude must ask you first. BYPASS never asks.';
-// A Gemini chat (server/geminitab.ts, agyMode) cannot stop to ask: each mode says what Gemini may do on its own.
-const GEMINI_MODE_HELP = "Gemini cannot stop to ask. ASK FIRST: it reads and answers; this folder is read-only for it. PLAN ONLY: it writes a plan, and changes nothing here. AUTO-EDIT and AUTO: it may change files in this folder. It runs no commands in any mode (agy has none of Claude Code's safety hooks). BYPASS is not offered.";
+// A Gemini chat (server/geminitab.ts, agyArgs) cannot stop to ask: each mode says what Gemini may do on its own.
+const GEMINI_MODE_HELP = "Gemini cannot stop to ask. ASK FIRST: it reads and answers; this folder is read-only for it. PLAN ONLY: it writes a plan, and changes nothing here. AUTO-EDIT: it may change files in this folder. AUTO: also runs commands, inside agy's sandbox (no network). BYPASS: runs anything without asking. AUTO and BYPASS run commands only when Claude Code's command hooks (such as the prod-write block) are set up for Gemini too (docs/GEMINI-GUARDS.md); until then they act like AUTO-EDIT.";
 
 let log: HTMLElement;
 let input: HTMLTextAreaElement;
