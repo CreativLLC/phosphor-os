@@ -37,7 +37,7 @@ const LOCAL = new Set(['list_dir', 'list_directory', 'grep_search', 'find_by_nam
 
 // The guards themselves are off limits to commands and file writes: else a BYPASS run could switch them off first
 // (agy's shared hooks file, a folder's own .agents/hooks.json, Claude Code's settings and hooks, this script).
-const TAMPER = /\.gemini\/config|\.agents\/hooks\.json|\.claude\/(settings[\w.-]*\.json|hooks)|agy-guards/i;
+export const TAMPER = /\.gemini\/config|\.agents\/hooks\.json|\.claude\/(settings[\w.-]*\.json|hooks)|agy-guards/i;
 
 const strings = (v) => (typeof v === 'string' ? [v] : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : []);
 
@@ -75,7 +75,7 @@ export function claudeHooks(cwd) {
 
 export const matches = (matcher, tool) => !matcher || matcher === '*' || new RegExp(`^(?:${matcher})$`).test(tool);
 
-function runHook(hook, input, cwd) {
+export function runHook(hook, input, cwd) {
   return new Promise((done) => {
     const child = spawn('/bin/sh', ['-c', hook.command], { cwd: cwd && existsSync(cwd) ? cwd : home(), env: { ...process.env, CLAUDE_PROJECT_DIR: cwd || '' }, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
@@ -92,7 +92,9 @@ function runHook(hook, input, cwd) {
         const j = out.trim() ? JSON.parse(out) : {};
         if (j.decision === 'block' || j.hookSpecificOutput?.permissionDecision === 'deny') return done({ block: j.reason || j.hookSpecificOutput?.permissionDecisionReason || 'blocked by a guard' });
       } catch {
-        /* plain text on stdout: Claude Code shows it, it is no decision */
+        // Plain text on stdout: Claude Code shows it, it is no decision. Text that was meant as JSON but is broken
+        // (a guard that died half-way) could have been a deny: block.
+        if (/^\s*[{[]/.test(out)) return done({ block: 'a guard printed broken JSON' });
       }
       done({});
     });

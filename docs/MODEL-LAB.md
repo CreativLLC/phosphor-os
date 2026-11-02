@@ -64,7 +64,16 @@ Sign-in for each app (check all of this in phase 0):
 | agy | fake HOME, its own D-Bus and keyring | the one keyring item, copied in on stdin (see Notes) |
 | opencode | `XDG_CONFIG_HOME` and `XDG_DATA_HOME` in the box | the real `auth.json` bound in |
 
-Why the box matters: Codex and opencode do not have Claude Code's hooks. In auto-approve mode a model can run any command. agy runs the owner's Claude Code PreToolUse hooks in the box since 2026-10-30 (`labGuards`, docs/GEMINI-GUARDS.md): the box gets agy's hooks entry for `scripts/agy-guards.mjs`, the PreToolUse part of Claude Code's settings and the hook scripts they name, all read-only. Tested with one real Gemini run: a prod-write `echo` and a media-server `echo` were blocked, a plain `echo` ran. Claude runs in the box still start with an empty Claude Code config, so no hooks (the box, with no org sign-ins, is their guard).
+Why the box matters: in auto-approve mode a model can run any command. Every agent in the box runs the owner's Claude Code PreToolUse hooks (such as a block on writes to a production org, or on reaching a server Claude must not touch) on every tool step: agy since 2026-10-30, Claude Code, Codex and opencode since 2026-11-02. The hooks are read from the owner's Claude Code settings at the start of each run (`labGuards`, `labBridge`; docs/GEMINI-GUARDS.md has how, the tests and the limits). The box gets only the PreToolUse part of the settings and the hook scripts they name, read-only. No such hooks (another user's PC): the run goes without, and the server log says so.
+
+| App | Runs commands | Guarded how |
+|---|---|---|
+| claude, local (Claude Code) | yes (`--dangerously-skip-permissions`) | `scripts/hook-bridge.mjs` as this run's `--settings` hook; `--setting-sources ""`, so no settings file in the box can switch the hooks off |
+| codex | yes (`--dangerously-bypass-approvals-and-sandbox`) | the same bridge as Codex hooks, in the run's own flags (`-c hooks.PreToolUse=...`, `--ignore-user-config`, `--dangerously-bypass-hook-trust`) |
+| opencode | yes (`--auto`) | a plugin, `scripts/opencode-guards.mjs`, named in the run's inline config (`OPENCODE_CONFIG_CONTENT`; the folder's own config is not read); it calls the same bridge |
+| agy (Gemini) | yes (`--dangerously-skip-permissions`) | agy's hooks entry for `scripts/agy-guards.mjs` |
+
+Every guard fails closed: a hook that crashes, runs too long or prints broken JSON is a block, and so is a guard that cannot start. Tested with real runs on 2026-11-02 (Claude Haiku 5.5, Codex GPT 5.6 Luna, opencode Beam Free, Gemini 3.8 Flash): a prod-write `echo` was blocked with the owner's hook's own words, a plain `echo` ran. Re-check any time with `scripts/lab-guards-check.ts` (real runs, plan quota).
 
 ## 4. Folders (made to last for years)
 
