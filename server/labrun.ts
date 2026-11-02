@@ -337,24 +337,58 @@ const parseAgy: Parse = (e, l) => {
 
 type Plan = { cmd: string[]; spec: BoxSpec; stdin: string; parse: Parse; roots: string[]; effort: string };
 
-// Gemini in the box obeys the owner's Claude Code PreToolUse hooks (such as a block on writes to a production org), as
-// Gemini chats do (scripts/agy-guards.mjs, docs/GEMINI-GUARDS.md): agy's hooks file and the hooks part of Claude
-// Code's settings go in the box's home, read-only, with the guard script and the hook scripts they name. A hook that
-// cannot run in the box blocks every tool step of that run: agy treats a failed hook as a block.
+// Every agent in the box obeys the owner's Claude Code PreToolUse hooks (such as a block on writes to a production
+// org), as Claude Code and Gemini chats do (docs/GEMINI-GUARDS.md). They are read from Claude Code's settings (managed,
+// then user) at the start of each run, and the hook scripts they name are shown to the box, read-only. No such hooks
+// (another user's PC): the run goes without, and the server log says so.
+type HookGroup = { matcher?: string; hooks?: { type?: string; command?: string; timeout?: number }[] };
+function ownerHooks(): HookGroup[] {
+  const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(HOME, '.claude');
+  return ['/etc/claude-code/managed-settings.json', join(claudeDir, 'settings.json')].flatMap((f) => readJson<{ hooks?: { PreToolUse?: HookGroup[] } }>(f)?.hooks?.PreToolUse ?? []);
+}
+function hookFiles(groups: HookGroup[]): [string, string][] {
+  const named = groups.flatMap((g) => g.hooks ?? []).flatMap((h) => String(h.command ?? '').match(/(?:~|\$\{?HOME\}?)?\/[\w.@%+\/-]+/g) ?? []);
+  const files = [...new Set(named.map((f) => f.replace(/^(~|\$\{?HOME\}?)\//, `${HOME}/`)))].filter((f) => !/^\/(usr|etc)\//.test(f) && existsSync(f) && statSync(f).isFile());
+  return files.map((f): [string, string] => [f, f]);
+}
+
+// Gemini (agy): its hooks file entry, the hooks part of Claude Code's settings, the guard script (scripts/agy-guards.mjs).
+// A hook that cannot run in the box blocks every tool step of that run: agy treats a failed hook as a block.
 const GUARDS_SCRIPT = fileURLToPath(new URL('../scripts/agy-guards.mjs', import.meta.url));
 export function labGuards(home: string): [string, string][] {
-  const claudeDir = process.env.CLAUDE_CONFIG_DIR || join(HOME, '.claude');
-  const groups = ['/etc/claude-code/managed-settings.json', join(claudeDir, 'settings.json')].flatMap((f) => readJson<{ hooks?: { PreToolUse?: { hooks?: { command?: string }[] }[] } }>(f)?.hooks?.PreToolUse ?? []);
+  const groups = ownerHooks();
   if (!groups.length) return [];
   const settings = join(home, '.claude', 'settings.json');
   const hooks = join(home, '.gemini', 'config', 'hooks.json');
   for (const f of [settings, hooks]) mkdirSync(dirname(f), { recursive: true });
   writeJson(settings, { hooks: { PreToolUse: groups } });
   writeJson(hooks, { 'phosphor-guards': { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node /opt/phosphor/agy-guards.mjs hook', timeout: 60 }] }] } });
-  const named = groups.flatMap((g) => g.hooks ?? []).flatMap((h) => String(h.command ?? '').match(/(?:~|\$\{?HOME\}?)?\/[\w.@%+\/-]+/g) ?? []);
-  const files = [...new Set(named.map((f) => f.replace(/^(~|\$\{?HOME\}?)\//, `${HOME}/`)))].filter((f) => !/^\/(usr|etc)\//.test(f) && existsSync(f) && statSync(f).isFile());
-  return [[settings, join(HOME, '.claude', 'settings.json')], [hooks, join(HOME, '.gemini', 'config', 'hooks.json')], [GUARDS_SCRIPT, '/opt/phosphor/agy-guards.mjs'], ...files.map((f): [string, string] => [f, f])];
+  return [[settings, join(HOME, '.claude', 'settings.json')], [hooks, join(HOME, '.gemini', 'config', 'hooks.json')], [GUARDS_SCRIPT, '/opt/phosphor/agy-guards.mjs'], ...hookFiles(groups)];
 }
+
+// Claude Code and Codex call hooks themselves, but a hook that crashes or times out is no block to them. So they call
+// scripts/hook-bridge.mjs for every tool step, which runs the owner's hooks from a copy of the hooks part of the
+// settings and turns every failure into a block. The command also ends in `|| exit 2`: a bridge that cannot start
+// (no node in the box) blocks too. `hook` is that command as a PreToolUse group, for the app's settings or flags.
+const BRIDGE = fileURLToPath(new URL('../scripts/hook-bridge.mjs', import.meta.url));
+const OPENCODE_PLUGIN = fileURLToPath(new URL('../scripts/opencode-guards.mjs', import.meta.url));
+export type Bridge = { hook: HookGroup; ro: [string, string][] };
+export function labBridge(home: string, app: LabApp): Bridge | null {
+  const groups = ownerHooks();
+  if (!groups.length) {
+    console.warn(`[lab] ${app}: Claude Code's settings have no PreToolUse hooks, so this run has no command guards.`);
+    return null;
+  }
+  const copy = join(home, '.phosphor-hooks.json');
+  writeJson(copy, { hooks: { PreToolUse: groups } });
+  // Longer than the slowest hook (the bridge stops each by its own timeout, 30 s when it names none), so the agent never gives up first.
+  const timeout = Math.max(30, ...groups.flatMap((g) => g.hooks ?? []).map((h) => Number(h.timeout) || 0)) + 30;
+  const command = 'node /opt/phosphor/hook-bridge.mjs /opt/phosphor/hooks.json || exit 2';
+  return { hook: { matcher: '*', hooks: [{ type: 'command', command, timeout }] }, ro: [[copy, '/opt/phosphor/hooks.json'], [BRIDGE, '/opt/phosphor/hook-bridge.mjs'], [GUARDS_SCRIPT, '/opt/phosphor/agy-guards.mjs'], ...hookFiles(groups)] };
+}
+
+// The hook group as a TOML value for Codex's `-c hooks.PreToolUse=...` (a JSON string is a valid TOML string here).
+const codexHooks = (g: HookGroup) => `[{matcher=${JSON.stringify(g.matcher)},hooks=[${(g.hooks ?? []).map((h) => `{type="command",command=${JSON.stringify(h.command)},timeout=${h.timeout}}`).join(',')}]}]`;
 
 async function plan(app: LabApp, model: string, prompt: string, home: string, asked: string): Promise<Plan> {
   const b = await findBin(APPS[app].bin);
@@ -363,10 +397,14 @@ async function plan(app: LabApp, model: string, prompt: string, home: string, as
   const effort = nearestEffort(asked, (await labModels()).models.find((m) => m.id === `${app}:${model}`)?.efforts ?? []);
   const level = effort === 'default' ? [] : ['--effort', effort]; // claude and agy
   const quiet = { DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', CLAUDE_CONFIG_DIR: join(HOME, '.claude') };
-  const claudeCmd = (m: string) => [b.path, '-p', '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions', '--model', m, ...level];
+  // The guards come in as this run's --settings. With no setting sources (tested 2026-11-02, Claude Code 2.1.314) no
+  // settings file in the box can switch them off: `disableAllHooks` in the folder's .claude/settings.json or the
+  // box's own ~/.claude/settings.json turned the hooks off, so the run does not read those files at all.
+  const claudeCmd = (m: string, g: Bridge | null) => [b.path, '-p', '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions', '--model', m, ...level, ...(g ? ['--settings', JSON.stringify({ hooks: { PreToolUse: [g.hook] } }), '--setting-sources', ''] : [])];
   if (app === 'claude') {
     if (!claudeToken) throw new Error('The lab has no Claude sign-in (PHOSPHOR_LAB_CLAUDE_TOKEN).');
-    return { cmd: claudeCmd(model), spec: { env: { ...quiet, CLAUDE_CODE_OAUTH_TOKEN: claudeToken } }, stdin: prompt, parse: parseClaude, roots, effort };
+    const g = labBridge(home, app);
+    return { cmd: claudeCmd(model, g), spec: { env: { ...quiet, CLAUDE_CODE_OAUTH_TOKEN: claudeToken }, ro: g?.ro }, stdin: prompt, parse: parseClaude, roots, effort };
   }
   if (app === 'agy') {
     // Its Google sign-in lives in the desktop keyring, which holds every other saved password too, so the box never
@@ -401,17 +439,22 @@ async function plan(app: LabApp, model: string, prompt: string, home: string, as
       ANTHROPIC_DEFAULT_HAIKU_MODEL: m.name,
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(localModel.contexts[m.name] ?? localModel.context),
     };
-    return { cmd: claudeCmd(m.name), spec: { env }, stdin: prompt, parse: (e, l) => (parseClaude(e, l), (l.value = null)), roots, effort };
+    const g = labBridge(home, app);
+    return { cmd: claudeCmd(m.name, g), spec: { env, ro: g?.ro }, stdin: prompt, parse: (e, l) => (parseClaude(e, l), (l.value = null)), roots, effort };
   }
   if (app === 'codex') {
     const auth = join(process.env.CODEX_HOME || join(HOME, '.codex'), 'auth.json');
     mkdirSync(join(home, '.codex'), { recursive: true });
     const cmd = [b.path, 'exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '-C', WORK];
+    // The guards are this run's own flags (the highest layer): hooks on, no user config that could say otherwise, and
+    // trust given to them, since they are the app's own (Codex skips hooks it has not been told to trust).
+    const g = labBridge(home, app);
+    if (g) cmd.push('--dangerously-bypass-hook-trust', '--ignore-user-config', '-c', 'features.hooks=true', '-c', `hooks.PreToolUse=${codexHooks(g.hook)}`);
     if (model !== 'default') cmd.push('-m', model);
     if (effort !== 'default') cmd.push('-c', `model_reasoning_effort=${effort}`);
     cmd.push('-'); // the prompt comes on stdin
     // auth.json is bound, not copied: a token refresh in the box writes back to the one file.
-    return { cmd, spec: { env: { CODEX_HOME: join(HOME, '.codex') }, bind: [[auth, join(HOME, '.codex', 'auth.json')]] }, stdin: prompt, parse: parseCodex, roots, effort };
+    return { cmd, spec: { env: { CODEX_HOME: join(HOME, '.codex') }, bind: [[auth, join(HOME, '.codex', 'auth.json')]], ro: g?.ro }, stdin: prompt, parse: parseCodex, roots, effort };
   }
   // opencode: its sign-in is in its own database, so the box gets only the one it needs, imported on stdin.
   await catalog();
@@ -426,10 +469,14 @@ async function plan(app: LabApp, model: string, prompt: string, home: string, as
     OPENCODE_DISABLE_CLAUDE_CODE_SKILLS: '1',
     OPENCODE_DISABLE_AUTOUPDATE: '1',
   };
+  // The guards are a plugin (scripts/opencode-guards.mjs) named in this run's own inline config; the folder's own
+  // opencode.json is not read, so it cannot take the plugin out.
+  const g = labBridge(home, app);
+  if (g) Object.assign(env, { OPENCODE_CONFIG_CONTENT: JSON.stringify({ plugins: ['file:///opt/phosphor/opencode-guards'] }), OPENCODE_DISABLE_PROJECT_CONFIG: '1' });
   const text = prompt.startsWith('-') ? ` ${prompt}` : prompt; // never read as a flag
   const sh = '"$0" auth import --standalone >/dev/null 2>&1 || exit 3; exec "$0" run --standalone --format json --auto -m "$1" "$2" </dev/null';
   const variant = effort === 'default' ? model : `${model}#${effort}`; // opencode's effort: the model's variant
-  return { cmd: ['/bin/sh', '-c', sh, b.path, variant, text], spec: { env, ro: [[CATALOG, '/opt/lab/models.json']] }, stdin: JSON.stringify(mine), parse: parseOpencode(new Map()), roots, effort };
+  return { cmd: ['/bin/sh', '-c', sh, b.path, variant, text], spec: { env, ro: [[CATALOG, '/opt/lab/models.json'], ...(g ? [[OPENCODE_PLUGIN, '/opt/phosphor/opencode-guards/index.mjs'] as [string, string], ...g.ro] : [])] }, stdin: JSON.stringify(mine), parse: parseOpencode(new Map()), roots, effort };
 }
 
 // ------------------------------------------------------------ runs

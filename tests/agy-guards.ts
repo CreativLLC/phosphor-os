@@ -31,12 +31,14 @@ const hook = (name: string, body: string) => {
 const prod = hook('prod', "if (d.tool_name === 'Bash' && /\\bsf\\b.*\\bdeploy\\b/.test(cmd) && !/--target-org\\s+[\\w-]*sandbox/.test(cmd)) { console.error('BLOCKED: prod write'); process.exit(2); }");
 const server = hook('server', "if (/10\\.99\\.0\\.7/.test(d.tool_name === 'WebFetch' ? url : /\\b(curl|ssh)\\b/.test(cmd) ? cmd : '')) { console.error('BLOCKED: media server'); process.exit(2); }");
 const json = hook('json', "if (/forbidden-json/.test(cmd)) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'BLOCKED: json says no' } }));");
+const broken = hook('broken', "if (/broken-json/.test(cmd)) process.stdout.write('{\"hookSpecificOutput\": {\"permis');");
 const seen = hook('seen', `appendFileSync('${join(tmp, 'seen.log')}', JSON.stringify(d) + '\\n');`);
 const settings = (hooks: unknown) => writeFileSync(join(claude, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: hooks } }));
 const standard = [
   { matcher: 'Bash', hooks: [{ type: 'command', command: prod }] },
   { matcher: 'Bash|PowerShell|WebFetch', hooks: [{ type: 'command', command: server }] },
   { matcher: 'Bash', hooks: [{ type: 'command', command: json }] },
+  { matcher: 'Bash', hooks: [{ type: 'command', command: broken }] },
 ];
 settings(standard);
 
@@ -57,6 +59,7 @@ passed('run_command: the same deploy to a sandbox passes', ask('run_command', { 
 denied('run_command: the media server address with curl is blocked', ask('run_command', { CommandLine: 'curl http://10.99.0.7:8080/' }), /media server/);
 passed('run_command: a plain command passes', ask('run_command', { CommandLine: 'ls -la' }));
 denied('run_command: a hook that answers in JSON (permissionDecision deny) blocks too', ask('run_command', { CommandLine: 'echo forbidden-json' }), /json says no/);
+denied('run_command: a hook that prints broken JSON (it may have died half-way through a deny) blocks', ask('run_command', { CommandLine: 'echo broken-json' }), /broken JSON/);
 denied('manage_task: input typed into a running command is checked as a command', ask('manage_task', { Action: 'send_input', Input: 'sf project deploy start' }), /prod write/);
 denied('both guards at once: both reasons', ask('run_command', { CommandLine: 'sf project deploy start; curl 10.99.0.7' }), /prod write[\s\S]*media server/);
 
@@ -105,7 +108,7 @@ check('agy input that is not JSON: blocked', JSON.parse(garbage.stdout).decision
 // ---- the app's test call: how many hooks apply to commands
 settings(standard);
 const probe = ask('run_command', { CommandLine: 'true' }, { phosphorCheck: true });
-check("the app's test call: passes and counts the command hooks", probe.decision === 'ask' && probe.guards === 3, JSON.stringify(probe));
+check("the app's test call: passes and counts the command hooks", probe.decision === 'ask' && probe.guards === 4, JSON.stringify(probe));
 check('agy\'s own calls carry no count', ask('run_command', { CommandLine: 'true' }).guards === undefined);
 
 // ---- install / remove / status: agy's shared hooks file, other entries kept
