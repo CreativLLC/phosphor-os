@@ -64,6 +64,11 @@ hl.window_rule({
   maximize = true,
 })
 
+-- Games through Proton/Wine (Steam, Faugus/umu: window class steam_app_*): no screensaver and no display-off while
+-- one has focus, windowed too. Omarchy's inhibitor covers only full-screen Steam windows, so WoW in a window got the
+-- screensaver after 5 min without mouse or keyboard input (2026-11-04).
+hl.window_rule({ match = { class = "^steam_app_.*$" }, idle_inhibit = "focus" })
+
 -- No gaps between windows or at the screen edge (borders stay, to show the active window).
 hl.config({ general = { gaps_in = 0, gaps_out = 0 } })
 
