@@ -68,6 +68,10 @@ hl.window_rule({
 -- one has focus, windowed too. Omarchy's inhibitor covers only full-screen Steam windows, so WoW in a window got the
 -- screensaver after 5 min without mouse or keyboard input (2026-11-04).
 hl.window_rule({ match = { class = "^steam_app_.*$" }, idle_inhibit = "focus" })
+-- The Battle.net launcher and its untitled pop-ups (same class as the game) may not take focus on their own: with
+-- Omarchy's focus_on_activate and on_focus_under_fullscreen = 1, a window that asks for focus takes the full screen
+-- over, and the game drops out of full screen (WoW did, at random, 2026-11-04). A click still focuses them.
+hl.window_rule({ match = { class = "^steam_app_.*$", title = "^(Battle\\.net)?$" }, focus_on_activate = false })
 
 -- No gaps between windows or at the screen edge (borders stay, to show the active window).
 hl.config({ general = { gaps_in = 0, gaps_out = 0 } })
