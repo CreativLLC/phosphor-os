@@ -45,11 +45,12 @@ const localEnv = (m: NonNullable<typeof localModel>, name: string) => ({
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
 });
 
-// Claude chats compact at ~200k tokens, not near 1M: every step re-reads the whole chat, so a 500k chat used a third
-// of the 5-hour window in 34 steps (2026-11-10). PHOSPHOR_COMPACT_AT in .env changes it (tokens).
+// Safety net: Claude chats auto-compact at ~400k tokens, not near 1M. Every step re-reads the whole chat, so a 500k
+// chat used a third of the 5-hour window in 34 steps (2026-11-10). From 150k the chat shows a BIG CHAT bar first, so
+// the owner picks COMPACT or NEW CHAT (web/src/context.ts). PHOSPHOR_COMPACT_AT in .env changes the net (tokens).
 export const claudeEnv = (env: NodeJS.ProcessEnv = process.env) => ({
   ...env,
-  CLAUDE_CODE_AUTO_COMPACT_WINDOW: env.PHOSPHOR_COMPACT_AT?.trim() || '200000',
+  CLAUDE_CODE_AUTO_COMPACT_WINDOW: env.PHOSPHOR_COMPACT_AT?.trim() || '400000',
 });
 
 const MISSION_TOOL = 'mcp__phosphor__update_mission';

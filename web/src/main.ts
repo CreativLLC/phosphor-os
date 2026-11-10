@@ -52,7 +52,8 @@ import { mountStation } from './station.ts';
 import { initSound } from './sound.ts';
 import { mountSystem } from './system.ts';
 import { store } from './store.ts';
-import { mountTabs } from './tabs.ts';
+import { mountTabs, openNewTab } from './tabs.ts';
+import { mountBigChat } from './context.ts';
 import { mountUndo } from './undo.ts';
 import { mountVoice } from './voice.ts';
 
@@ -73,6 +74,7 @@ mountChat($('log'), $('composer'));
 mountSlash($('composer'));
 mountUndo($<HTMLDialogElement>('undo-dialog'));
 mountAttach($('composer'), $('center'));
+mountBigChat($('composer'), () => void openNewTab($<HTMLDialogElement>('newtab')));
 mountVoice($<HTMLButtonElement>('dictate'), $<HTMLTextAreaElement>('input'));
 mountCleanup($<HTMLButtonElement>('cleanup'), $<HTMLTextAreaElement>('input'));
 mountPickers($<HTMLSelectElement>('model'), $<HTMLSelectElement>('effort'));

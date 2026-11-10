@@ -104,3 +104,39 @@ export function compressButton(): HTMLButtonElement {
   b.title = 'Summarize the chat so far to free up context (/compact)';
   return b;
 }
+
+// BIG CHAT bar above the message box: from 150K tokens every step re-reads the whole chat, so each one costs a lot
+// of the 5-hour window. The owner picks COMPACT (summary, same chat) or NEW CHAT. LATER hides it until 100K more.
+// The server's safety net compacts on its own near 400K (server/tab.ts claudeEnv). Claude chats only.
+export const BIG_CHAT = 150_000;
+const LATER_STEP = 100_000;
+const laterAt = new Map<string, number>(); // tab id -> tokens when LATER was pressed
+
+export function bigChatShown(tab: TabState | undefined): boolean {
+  if (!tab || tab.info.agent || tab.info.model.startsWith('local')) return false;
+  const used = tab.stats.contextTokens;
+  const later = laterAt.get(tab.meta.id);
+  return used >= BIG_CHAT && (later === undefined || used >= later + LATER_STEP);
+}
+
+export function mountBigChat(composer: HTMLElement, newChat: () => void): void {
+  const text = el('span', 'bigchat-text');
+  const bar = el('div', 'bigchat');
+  bar.hidden = true;
+  const later = button('LATER', () => {
+    const tab = store.current();
+    if (tab) laterAt.set(tab.meta.id, tab.stats.contextTokens);
+    bar.hidden = true;
+  }, 'bigchat-later');
+  later.title = 'Hide this until the chat grows by 100K more tokens';
+  const compact = button('COMPACT', () => void askCompact());
+  compact.title = 'Summarize the chat so far. Same chat, much cheaper steps.';
+  const fresh = button('NEW CHAT', newChat);
+  fresh.title = 'Start a new chat. Best for a new task.';
+  bar.append(text, compact, fresh, later);
+  composer.prepend(bar);
+  watchActive(['stats', 'meta', 'info'], (tab) => {
+    bar.hidden = !bigChatShown(tab);
+    if (!bar.hidden) text.textContent = `BIG CHAT · ${k(tab!.stats.contextTokens)} TOKENS. Every step re-reads all of it and uses a lot of your 5-hour limit.`;
+  });
+}

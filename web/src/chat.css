@@ -1141,3 +1141,24 @@ dialog.img-view img {
   object-fit: contain;
   cursor: zoom-out;
 }
+
+/* BIG CHAT bar above the message box (web/src/context.ts mountBigChat). */
+.bigchat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--ph-bright);
+  background: var(--bg-raise);
+}
+
+.bigchat[hidden] {
+  display: none;
+}
+
+.bigchat-text {
+  flex: 1 1 260px;
+  color: var(--ph-bright);
+}
