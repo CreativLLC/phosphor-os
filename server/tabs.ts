@@ -11,7 +11,7 @@ import { cleanDefaults, joinRef, ProjectBook } from './projects.ts';
 import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
 import { APP_ENTRYPOINT, entrypointOf, matchAt, queryWords, snippet, textOf, transcriptPaths } from './transcripts.ts';
 
-const SHOWN_MODELS = ['opus', 'sonnet', 'haiku'];
+const SHOWN_MODELS = ['opus', 'sonnet', 'haiku', 'fable']; // fable: the alias follows the newest Fable (5.2 on 2026-11-10)
 
 // The local model (or image model) a saved setting names is gone (not configured now): Claude would be handed the name
 // "local" and fail.
@@ -380,8 +380,8 @@ export class Tabs {
         const timeout = new Promise<never>((_, no) => setTimeout(() => no(new Error('model list timed out')), 30000));
         const list = await Promise.race([q.supportedModels(), timeout]);
         return {
-          // Only the current three (AUTO picks among them; "default" is gone, AUTO is the default). Older ones
-          // are left out on purpose; add a value here to bring one back.
+          // Only the current four: Opus, Sonnet, Haiku (AUTO picks among these three; "default" is gone, AUTO is
+          // the default) and Fable, by hand only. Older ones are left out on purpose; add a value here to bring one back.
           models: [...list.filter((m) => SHOWN_MODELS.includes(m.value)).map((m) => ({
             value: m.value,
             label: m.displayName,

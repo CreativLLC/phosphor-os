@@ -36,11 +36,12 @@ export const APPS: Record<LabApp, { name: string; account: string; bin: string }
   local: { name: 'Claude Code', account: 'This PC', bin: 'claude' },
 };
 
-// The current three, then older ones to test against (the owner, 2026-10-26: older models against local hardware).
+// The current four (Fable 5.2 added 2026-11-10), then older ones to test against (the owner, 2026-10-26: older models against local hardware).
 // Their effort levels: Opus 4.5 has only low to high, Sonnet 4.5 none (the API refuses effort there). Sonnet 4.5
 // retires on 2026-11-30: then take it out.
 const ALL_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const CLAUDE_MODELS: [string, string, string[]][] = [
+  ['claude-fable-5-2', 'Claude Fable 5.2', ALL_EFFORTS],
   ['claude-opus-5-5', 'Claude Opus 5.5', ALL_EFFORTS],
   ['claude-sonnet-5-5', 'Claude Sonnet 5.5', ALL_EFFORTS],
   ['claude-haiku-5-5', 'Claude Haiku 5.5', ALL_EFFORTS],
