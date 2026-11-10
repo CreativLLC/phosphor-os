@@ -45,6 +45,13 @@ const localEnv = (m: NonNullable<typeof localModel>, name: string) => ({
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
 });
 
+// Claude chats compact at ~200k tokens, not near 1M: every step re-reads the whole chat, so a 500k chat used a third
+// of the 5-hour window in 34 steps (2026-11-10). PHOSPHOR_COMPACT_AT in .env changes it (tokens).
+export const claudeEnv = (env: NodeJS.ProcessEnv = process.env) => ({
+  ...env,
+  CLAUDE_CODE_AUTO_COMPACT_WINDOW: env.PHOSPHOR_COMPACT_AT?.trim() || '200000',
+});
+
 const MISSION_TOOL = 'mcp__phosphor__update_mission';
 // Chats from before the rename (Retro Claude) called it by its old name; their history still shows the panel.
 const isMissionTool = (name: string) => name === MISSION_TOOL || name === 'mcp__retro__update_mission';
@@ -915,7 +922,7 @@ export class Tab {
         agentProgressSummaries: true,
         permissionMode: sdkMode(this.pendingMode, this.pendingModel),
         model: local ? local.name : this.pendingModel,
-        env: local ? localEnv(localModel!, local.name) : undefined,
+        env: local ? localEnv(localModel!, local.name) : claudeEnv(),
         effort: this.pendingEffort,
         allowDangerouslySkipPermissions: true, // lets the user pick BYPASS; nothing turns it on by itself
         enableFileCheckpointing: true, // backups before each edit, so UNDO can put files back
