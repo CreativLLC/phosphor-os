@@ -470,6 +470,12 @@ function attachRow(list: Attachment[]): HTMLElement {
       link.target = '_blank';
       link.rel = 'noopener';
       link.title = a.name;
+      // Full size over the chat, not a new tab: in the desktop app a new tab opens the outside browser, which is not
+      // logged in and showed {"error":"login needed"} (2026-11-17).
+      link.onclick = (e) => {
+        e.preventDefault();
+        showPicture(link.href, a.name);
+      };
       const img = el('img');
       img.src = link.href;
       img.alt = a.name;
