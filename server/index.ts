@@ -265,7 +265,7 @@ const server = createServer(async (req, res) => {
     const upload = url.pathname.match(/^\/api\/upload\/([0-9a-f-]{36})$/);
     if (upload) return serveUpload(res, upload[1]);
     const image = url.pathname.match(/^\/api\/images\/([^/]+)$/);
-    if (image) return serveImage(res, decodeURIComponent(image[1]));
+    if (image) return serveImage(res, decodeURIComponent(image[1]), req.headers.range);
     if (url.pathname.startsWith('/api/files/')) return await handleFiles(req, res, url, tabs);
     if (url.pathname === '/api/mcp' || url.pathname === '/api/commands') return await handleMcp(req, res, url, tabs);
     if (url.pathname === '/api/voice/cleanup') return await handleCleanup(req, res);

@@ -19,16 +19,17 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { IMAGE_MODEL, isGeminiModel, isHermesModel, isImageModel, LEAD_PREFIX, REPORT_PREFIX, type Agent, type ProjectRef, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
+import { IMAGE_MODEL, VIDEO_MODEL, isGeminiModel, isHermesModel, isImageModel, LEAD_PREFIX, REPORT_PREFIX, type Agent, type ProjectRef, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
 import { ttlFromUsage } from '../shared/cache.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
-import { DATA_DIR, geminiImage, imageModel, localChoice, localModel } from './config.ts';
+import { DATA_DIR, geminiImage, imageModel, localChoice, localModel, videoModel } from './config.ts';
 import { askLocalTool, DELEGATE_HELP, DELEGATE_TOOLS, ledger, routerOn, threadModel, threadWorkers, WORKER_HELP, type ThreadModel } from './delegate.ts';
 import { GeminiPainter } from './geminiimage.ts';
 import { fitEffort, GEMINI_MCP, GeminiChat, geminiGuards, noBypass } from './geminitab.ts';
 import { HERMES_MCP, HermesChat } from './hermestab.ts';
-import { painter, type Painter } from './imagegen.ts';
+import { painter, videoEngines, type PaintJob, type Painter, type VideoEngine, type VideoJob } from './imagegen.ts';
 import { editSize, imageSize, parseImageOptions, STEPS } from './imageopts.ts';
+import { editJob, isClip, makeJob, parseVideoOptions } from './videogen.ts';
 import { LOCAL_RELAY_PORT, localLoaded } from './localrelay.ts';
 import { routeMessage } from './router.ts';
 import { ATTACH_HEADER, cleanUserText } from './transcripts.ts';
@@ -430,6 +431,9 @@ export class Tab {
 
   // The local image model and its painter (server/imagegen.ts); tests hand in fakes.
   static images: Imager | undefined = painter && imageModel ? { painter, model: imageModel } : undefined;
+  // The local video model (server/videogen.ts): clips on the same painter (one engine on the card at a time).
+  static videos: { painter: Pick<Painter, 'paint'>; label: string; make: VideoEngine; edit?: VideoEngine } | undefined =
+    painter && videoModel && videoEngines ? { painter, label: videoModel.label, ...videoEngines } : undefined;
   // The Gemini picture models (server/geminiimage.ts), by picker value. They can change an attached picture.
   // Projects (set by server/tabs.ts): start a thread for a lead, and a project's chats.
   static projects?: { thread(lead: Tab, title: string, brief: string, run?: ThreadModel): Tab; members(id: string): Tab[]; instructions?(id: string): string; files?(id: string): string[] };
@@ -489,6 +493,7 @@ export class Tab {
 
   send(text: string, files: StoredUpload[] = [], auto = false): void {
     if (!auto) this.clearResume(); // the owner took over
+    if (this.pendingModel === VIDEO_MODEL && Tab.videos && !auto) return void this.film(text, files, Tab.videos);
     const imager = this.pendingModel === IMAGE_MODEL ? Tab.images : Tab.gemini.get(this.pendingModel ?? '');
     if (imager && !auto) return this.paint(text, files, imager);
     if (this.side) {
@@ -609,20 +614,62 @@ export class Tab {
       this.onPersist?.();
       return log({ id: randomUUID(), kind: 'note', text: 'Nothing to paint: write what the picture should show.' });
     }
-    const id = randomUUID();
-    const item: ImageItem = { id, kind: 'image', status: 'queued', prompt: opts.prompt, model: im.label, width: opts.width, height: opts.height, seed: cloud ? 0 : opts.seed, steps: cloud ? 0 : opts.steps, ...(opts.fast && !cloud ? { fast: true } : {}), ...(ref ? { edit: true } : {}) };
+    const item: ImageItem = { id: randomUUID(), kind: 'image', status: 'queued', prompt: opts.prompt, model: im.label, width: opts.width, height: opts.height, seed: cloud ? 0 : opts.seed, steps: cloud ? 0 : opts.steps, ...(opts.fast && !cloud ? { fast: true } : {}), ...(ref ? { edit: true } : {}) };
+    this.queuePaint(p, item, { opts, ref, previous }, cloud ? 'Gemini is painting' : 'Waiting for the GPU', log);
+  }
+
+  // The tab's model is the video model: the text is a clip's description. A photo attached is the first frame; a
+  // clip attached is changed (the edit engine, when set up). Clips wait their turn with the pictures.
+  private async film(text: string, files: StoredUpload[], v: NonNullable<typeof Tab.videos>): Promise<void> {
+    this.firstWordsTitle(text, files);
+    const after = [...this.state.items].reverse().find((i) => i.kind === 'user' && !i.paint)?.id ?? null;
+    const log = (item: Item) => {
+      this.imageLog.push({ after, item });
+      this.add(item);
+    };
+    const attachments = files.map(({ path: _p, ...a }) => a);
+    log({ id: randomUUID(), kind: 'user', text, paint: true, ...(attachments.length ? { attachments } : {}) });
+    const opts = parseVideoOptions(text);
+    const notes = [...opts.notes];
+    const clip = files.find((f) => isClip(f.name));
+    const photo = clip ? undefined : files.find((f) => f.kind === 'image');
+    if (files.length > (clip || photo ? 1 : 0)) notes.push(`Only the first ${clip ? 'clip' : 'picture'} is used; the other files were left out.`);
+    const fail = (why: string) => {
+      log({ id: randomUUID(), kind: 'note', text: [...notes, why].join(' ') });
+      this.onPersist?.();
+    };
+    if (!opts.prompt) return fail(`Nothing to make: write what the clip should show${clip ? ' (the change to make)' : ''}.`);
+    if (clip && !v.edit) return fail('Changing a clip needs the video edit engine (scripts/setup-video-model.sh sets it up).');
+    let job: VideoJob;
+    try {
+      if (clip) {
+        const r = await editJob(v.edit!, opts, clip.path);
+        notes.push(...r.notes);
+        job = r.job;
+      } else job = makeJob(v.make, opts, photo ? readFileSync(photo.path) : undefined);
+    } catch (e) {
+      return fail(`Could not read the clip: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (notes.length) log({ id: randomUUID(), kind: 'note', text: notes.join(' ') });
+    const fps = Number(job.body.fps);
+    const item: ImageItem = { id: randomUUID(), kind: 'image', status: 'queued', prompt: opts.prompt, model: v.label, width: opts.width, height: opts.height, seed: opts.seed, steps: opts.steps, ...(opts.fast ? { fast: true } : {}), ...(clip || photo ? { edit: true } : {}), video: { frames: opts.frames, fps } };
+    this.queuePaint(v.painter, item, { opts, video: job }, 'Waiting for the GPU', log);
+  }
+
+  // A picture or clip joins the painter's queue; the chat shows it as it is made.
+  private queuePaint(p: Pick<Painter, 'paint'>, item: ImageItem, job: Omit<PaintJob, 'thread' | 'cancelled' | 'update'>, activity: string, log: (item: Item) => void): void {
+    const { id } = item;
+    const opts = job.opts;
     log(item);
     this.onPersist?.();
     const epoch = this.paintEpoch;
     this.painting++;
     this.setBusy(true);
-    this.setActivity(cloud ? 'Gemini is painting' : 'Waiting for the GPU');
+    this.setActivity(activity);
     void p
       .paint({
-        opts,
-        ref,
+        ...job,
         thread: this.id,
-        previous,
         cancelled: () => this.gone || epoch !== this.paintEpoch,
         update: (fields) => {
           if (this.gone) return;

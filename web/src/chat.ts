@@ -1,4 +1,4 @@
-import { IMAGE_MODEL, isImageModel, LEAD_PREFIX, MODES, REPORT_PREFIX, type Attachment, type ImageItem, type Item, type Mode } from '../../shared/protocol.ts';
+import { IMAGE_MODEL, VIDEO_MODEL, isImageModel, LEAD_PREFIX, MODES, REPORT_PREFIX, type Attachment, type ImageItem, type Item, type Mode } from '../../shared/protocol.ts';
 import { takeAttachments } from './attach.ts';
 import { runAppCommand } from './slash.ts';
 import { askUndo } from './undo.ts';
@@ -114,7 +114,7 @@ export function mountChat(logEl: HTMLElement, composer: HTMLElement): void {
     mode.value = PICKER_MODES.includes(tab?.info.permissionMode ?? '') ? tab!.info.permissionMode : 'auto';
     const model = tab?.info.auto ? '' : tab?.info.model;
     const agent = tab?.info.agent;
-    input.placeholder = model === IMAGE_MODEL ? 'Describe a picture… (--wide --tall --best --seed N)' : isImageModel(model) ? 'Describe a picture, or attach one to change… (--wide --tall)' : agent === 'gemini' ? 'Message Gemini…' : agent === 'hermes' ? 'Message Hermes…' : 'Message Claude…';
+    input.placeholder = model === VIDEO_MODEL ? 'Describe a clip, or attach a photo or clip… (--long --hd --best --seed N)' : model === IMAGE_MODEL ? 'Describe a picture… (--wide --tall --best --seed N)' : isImageModel(model) ? 'Describe a picture, or attach one to change… (--wide --tall)' : agent === 'gemini' ? 'Message Gemini…' : agent === 'hermes' ? 'Message Hermes…' : 'Message Claude…';
     mode.title = agent === 'gemini' ? GEMINI_MODE_HELP : agent === 'hermes' ? HERMES_MODE_HELP : MODE_HELP;
     mode.classList.toggle('bypass', mode.value === 'bypassPermissions');
     if (tab?.meta.id !== shownTab) {
@@ -396,9 +396,19 @@ setInterval(() => {
 function renderImage(box: HTMLElement, item: ImageItem): void {
   box.append(el('div', 'who', `> ${item.model.replace(/\s*\(local\)\s*$/i, '').toUpperCase()}`));
   // A cloud picture (Gemini) has no seed or steps (0).
-  const facts = [`${item.width}x${item.height}`, item.seed ? `seed ${item.seed}` : '', item.steps ? `${item.steps} steps${item.fast ? '' : ' (best)'}` : '', item.edit ? 'edit' : ''];
+  const facts = [`${item.width}x${item.height}`, item.video ? `${(item.video.frames / item.video.fps).toFixed(1)} s` : '', item.seed ? `seed ${item.seed}` : '', item.steps ? `${item.steps} steps${item.fast ? '' : ' (best)'}` : '', item.edit ? 'edit' : ''];
   if (item.status === 'done' && item.file) {
     const url = `/api/images/${encodeURIComponent(item.file)}`;
+    // A clip plays in place, on a loop; SAVE downloads it.
+    const media = item.video ? el('video', 'img-full') : null;
+    if (media) {
+      media.src = url;
+      media.controls = media.loop = media.muted = media.playsInline = true;
+      media.preload = 'metadata';
+      media.width = item.width;
+      media.height = item.height;
+      media.style.setProperty('--ar', String(item.width / item.height));
+    }
     const link = el('a', 'img-full');
     link.href = url;
     link.target = '_blank';
@@ -419,7 +429,7 @@ function renderImage(box: HTMLElement, item: ImageItem): void {
     const save = el('a', 'img-btn', 'SAVE');
     save.href = url;
     save.download = item.file;
-    save.title = 'Download the PNG';
+    save.title = item.video ? 'Download the clip' : 'Download the PNG';
     row.append(save);
     const path = item.path;
     if (path && shellApi?.showInFolder) {
@@ -427,7 +437,7 @@ function renderImage(box: HTMLElement, item: ImageItem): void {
     }
     row.append(el('span', 'img-facts', [...facts, item.ms ? secs(item.ms) : ''].filter(Boolean).join(' · ')));
     row.title = path ?? '';
-    box.append(link, row);
+    box.append(media ?? link, row);
     return;
   }
   const state =

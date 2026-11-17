@@ -1046,11 +1046,17 @@ dialog.pick-box .pick-head {
   width: min(640px, 100%, calc(70dvh * var(--ar, 1)));
 }
 
-.img-full img {
+.img-full img,
+video.img-full {
   display: block;
   width: 100%;
   height: auto;
   aspect-ratio: var(--ar, 1);
+}
+
+video.img-full {
+  width: min(640px, 100%, calc(70dvh * var(--ar, 1)));
+  background: #000;
 }
 
 .img-row {

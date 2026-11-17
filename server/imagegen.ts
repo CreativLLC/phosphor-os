@@ -4,7 +4,7 @@ import type { ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ImageItem, Painting } from '../shared/protocol.ts';
-import { DATA_DIR, imageModel, imagesDir } from './config.ts';
+import { DATA_DIR, imageModel, imagesDir, videoModel } from './config.ts';
 import { Gpu, type GpuUser } from './gpu.ts';
 import { FAST_STEPS, type ImageOptions } from './imageopts.ts';
 import { freeChatModels, setChatTurn } from './localrelay.ts';
@@ -22,8 +22,13 @@ export type Engine = {
   freeChat(): Promise<void>; // the chat models give the card back
 };
 
+// A clip (server/videogen.ts): its engine, the vid_gen request, and what turns the engine's file into the saved one.
+export type VideoEngine = Engine & { url: string; name: string };
+export type VideoJob = { engine: VideoEngine; body: Record<string, unknown>; finish: (webm: Buffer) => Promise<{ data: Buffer; ext: string }> };
+
 export type PaintJob = {
   opts: ImageOptions;
+  video?: VideoJob;
   ref?: Buffer; // the picture to edit
   thread?: string; // the tab: a cloud model keeps one chat per tab, so "the same picture, but..." works
   previous?: Buffer; // a cloud model: the tab's last picture, to change when the words ask for that
@@ -43,14 +48,19 @@ export class Painter {
   constructor(
     private engine: Engine,
     private cfg: { url: string; label: string; dir: string; idleMs: number; turbo: string; busyFile?: string; pollMs?: number; startWaitMs?: number },
+    private others: Engine[] = [], // the video engines: one engine on the card at a time
   ) {
     this.gpu = new Gpu((to) => this.handOver(to));
   }
 
-  // The card changes hands: to the image model, every chat model unloads; to the chats, the engine stops.
+  // The card changes hands: to the image model, every chat model unloads; to the chats, the engines stop.
   private async handOver(to: GpuUser): Promise<void> {
     if (to === 'image') await this.engine.freeChat();
-    else await this.engine.stop();
+    else await this.stopAll();
+  }
+
+  private async stopAll(except?: Engine): Promise<void> {
+    for (const e of [this.engine, ...this.others]) if (e !== except && (await e.up())) await e.stop();
   }
 
   // The image engine holds the card: a picture is being made or waits, or the engine is up: after the last one (it
@@ -59,7 +69,8 @@ export class Painter {
   // (server/delegate.ts) then does not run, so it never stops the engine or loads a chat model beside it.
   async holdsGpu(): Promise<boolean> {
     if (this.now || this.queued || this.gpu.state.holder === 'image') return true;
-    return this.engine.up();
+    for (const e of [this.engine, ...this.others]) if (await e.up()) return true;
+    return false;
   }
 
   // SYS panel: what is being painted, or null.
@@ -83,19 +94,32 @@ export class Painter {
         this.now = { phase, step, steps: o.steps, startedAt };
         job.update({ status: 'painting', phase, step, startedAt });
       };
-      if (!(await this.engine.up())) {
-        set('Starting the image engine');
-        await this.engine.start();
-        if (!(await this.waitUp(this.cfg.startWaitMs ?? 300_000))) return { status: 'failed', error: 'The image engine did not start. Its log: journalctl --user -u phosphor-image' };
+      const engine = job.video?.engine ?? this.engine;
+      const name = job.video ? job.video.engine.name : 'image';
+      // The other engine (picture or clip) gives the card back first: two do not fit.
+      await this.stopAll(engine);
+      if (!(await engine.up())) {
+        set(`Starting the ${name} engine`);
+        await engine.start();
+        if (!(await this.waitUp(engine, this.cfg.startWaitMs ?? 300_000))) return { status: 'failed', error: `The ${name} engine did not start. Its log: journalctl --user -u phosphor-${name.replace(' ', '-')}` };
       }
       set('Reading the prompt');
       // scripts/local-model.sh unload waits while this file is there, instead of stopping the engine mid-picture.
       if (this.cfg.busyFile) writeFileSync(this.cfg.busyFile, String(process.pid));
-      const png = await this.run(o, job.ref, (step) => set(step >= o.steps ? 'Finishing' : 'Painting', step));
+      const step = (n: number) => set(n >= o.steps ? 'Finishing' : 'Painting', n);
+      let data: Buffer;
+      let ext = 'png';
+      if (job.video) {
+        const r = await this.submit(job.video.engine, 'vid_gen', job.video.body, step);
+        const b64 = r?.b64_json;
+        if (!b64) throw new Error('The video engine finished without a clip.');
+        set('Saving the clip', o.steps);
+        ({ data, ext } = await job.video.finish(Buffer.from(b64, 'base64')));
+      } else data = await this.run(o, job.ref, step);
       mkdirSync(this.cfg.dir, { recursive: true });
-      const file = fileName(o.prompt, o.seed, new Date(startedAt));
+      const file = fileName(o.prompt, o.seed, new Date(startedAt), ext);
       const path = join(this.cfg.dir, file);
-      writeFileSync(path, png);
+      writeFileSync(path, data);
       return { status: 'done', file, path, ms: Date.now() - startedAt };
     } catch (e) {
       return { status: 'failed', error: e instanceof Error ? e.message : String(e) };
@@ -107,9 +131,9 @@ export class Painter {
     }
   }
 
-  private async waitUp(ms: number): Promise<boolean> {
+  private async waitUp(engine: Engine, ms: number): Promise<boolean> {
     for (const end = Date.now() + ms; Date.now() < end; ) {
-      if (await this.engine.up()) return true;
+      if (await engine.up()) return true;
       await sleep(this.cfg.pollMs ?? 2000);
     }
     return false;
@@ -138,22 +162,26 @@ export class Painter {
       preview_interval: 1,
       output_format: 'png',
     };
-    const f = this.engine.fetch;
-    const r = await f(new URL('/sdcpp/v1/img_gen', this.cfg.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+    const b64 = (await this.submit({ ...this.engine, url: this.cfg.url, name: 'image' }, 'img_gen', body, step))?.images?.[0]?.b64_json;
+    if (!b64) throw new Error('The image engine finished without a picture.');
+    return Buffer.from(b64, 'base64');
+  }
+
+  // POST /sdcpp/v1/<kind>, then the job's status until it ends; the finished job's result.
+  private async submit(engine: VideoEngine, kind: 'img_gen' | 'vid_gen', body: Record<string, unknown>, step: (n: number) => void): Promise<EngineJob['result']> {
+    const f = engine.fetch;
+    const r = await f(new URL(`/sdcpp/v1/${kind}`, engine.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) });
     const sub = (await r.json().catch(() => ({}))) as { id?: string; error?: { message?: string } | string };
-    if (!r.ok || !sub.id) throw new Error(`The image engine refused the job: ${typeof sub.error === 'string' ? sub.error : (sub.error?.message ?? r.status)}`);
-    for (const end = Date.now() + 30 * 60_000; Date.now() < end; ) {
+    if (!r.ok || !sub.id) throw new Error(`The ${engine.name} engine refused the job: ${typeof sub.error === 'string' ? sub.error : (sub.error?.message ?? r.status)}`);
+    // A clip can take far longer than a picture.
+    for (const end = Date.now() + (kind === 'vid_gen' ? 90 : 30) * 60_000; Date.now() < end; ) {
       await sleep(this.cfg.pollMs ?? 700);
-      const j = (await (await f(new URL(`/sdcpp/v1/jobs/${sub.id}`, this.cfg.url), { signal: AbortSignal.timeout(10_000) })).json()) as EngineJob;
-      if (j.status === 'completed') {
-        const b64 = j.result?.images?.[0]?.b64_json;
-        if (!b64) throw new Error('The image engine finished without a picture.');
-        return Buffer.from(b64, 'base64');
-      }
-      if (j.status === 'failed' || j.status === 'cancelled') throw new Error(j.error?.message || `The image engine says: ${j.status}`);
+      const j = (await (await f(new URL(`/sdcpp/v1/jobs/${sub.id}`, engine.url), { signal: AbortSignal.timeout(30_000) })).json()) as EngineJob;
+      if (j.status === 'completed') return j.result;
+      if (j.status === 'failed' || j.status === 'cancelled') throw new Error(j.error?.message || `The ${engine.name} engine says: ${j.status}`);
       if (j.status === 'generating' && j.preview?.step) step(j.preview.step);
     }
-    throw new Error('The picture took over 30 minutes; gave up waiting.');
+    throw new Error(`The ${kind === 'vid_gen' ? 'clip took over 90' : 'picture took over 30'} minutes; gave up waiting.`);
   }
 
   // Idle for a while: stop the engine (frees its RAM and the card). Takes the card's turn, so never mid-picture;
@@ -165,7 +193,7 @@ export class Painter {
       void this.gpu.acquireIfLast('image').then(async (release) => {
         if (!release) return;
         try {
-          if (!this.queued) await this.engine.stop();
+          if (!this.queued) await this.stopAll();
         } finally {
           release();
         }
@@ -175,7 +203,7 @@ export class Painter {
   }
 }
 
-type EngineJob = { status?: string; result?: { images?: { b64_json?: string }[] }; error?: { message?: string }; preview?: { step?: number } | null };
+type EngineJob = { status?: string; result?: { images?: { b64_json?: string }[]; b64_json?: string }; error?: { message?: string }; preview?: { step?: number } | null };
 
 // Guidance for the full model (stable-diffusion.cpp's Qwen-Image 2.1 example uses 6; see docs/IMAGE-MODEL.md).
 const CFG = 4;
@@ -185,15 +213,15 @@ const TURBO_SIGMAS = [1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // 2026-10-19_211502_a-lighthouse-at-sunset_42.png: sorts by time, says what it is.
-export function fileName(prompt: string, seed: number, at: Date): string {
+export function fileName(prompt: string, seed: number, at: Date, ext = 'png'): string {
   const p = (n: number) => String(n).padStart(2, '0');
   const stamp = `${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())}_${p(at.getHours())}${p(at.getMinutes())}${p(at.getSeconds())}`;
   const words = prompt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
-  return `${stamp}_${words || 'picture'}_${seed}.png`;
+  return `${stamp}_${words || 'picture'}_${seed}.${ext}`;
 }
 
 // The real engine: its unit and port.
-function systemEngine(url: string, unit: string): Engine {
+export function systemEngine(url: string, unit: string): Engine {
   return {
     async up() {
       try {
@@ -213,27 +241,52 @@ function systemEngine(url: string, unit: string): Engine {
   };
 }
 
-export const painter = imageModel ? new Painter(systemEngine(imageModel.url, imageModel.unit), { ...imageModel, busyFile: join(DATA_DIR, 'image-busy') }) : undefined;
+// The video model's engines (scripts/setup-video-model.sh): one makes clips, the other (optional) changes a clip.
+const videoEngine = (url: string, unit: string, name: string): VideoEngine => ({ ...systemEngine(url, unit), url, name });
+export const videoEngines = videoModel
+  ? { make: videoEngine(videoModel.url, videoModel.unit, 'video'), edit: videoModel.editUrl ? videoEngine(videoModel.editUrl, videoModel.editUnit, 'video edit') : undefined }
+  : undefined;
+
+export const painter = imageModel
+  ? new Painter(systemEngine(imageModel.url, imageModel.unit), { ...imageModel, busyFile: join(DATA_DIR, 'image-busy') }, videoEngines ? [videoEngines.make, ...(videoEngines.edit ? [videoEngines.edit] : [])] : [])
+  : undefined;
 // With an image model, chat requests through the relay take their turn on the card too.
 if (painter) setChatTurn(() => painter.gpu.acquire('chat'));
 
 // What the SYS panel shows: undefined without an image model.
 export const painting = (): Painting | null | undefined => painter?.painting();
 
-// GET /api/images/<file>: a saved picture (the chat shows it; SAVE downloads it). Names as fileName makes them only.
-export function serveImage(res: ServerResponse, file: string): void {
-  const path = /^[\w.-]+\.png$/.test(file) && !file.startsWith('.') ? join(imagesDir, file) : '';
+const TYPES: Record<string, string> = { png: 'image/png', mp4: 'video/mp4', webm: 'video/webm' };
+
+// GET /api/images/<file>: a saved picture or clip (the chat shows it; SAVE downloads it). Names as fileName makes
+// them only. Clips answer byte ranges: phone browsers play a video only so.
+export function serveImage(res: ServerResponse, file: string, range?: string): void {
+  const ext = /^[\w.-]+\.(png|mp4|webm)$/.exec(file)?.[1];
+  const path = ext && !file.startsWith('.') ? join(imagesDir, file) : '';
   const size = path ? statSync(path, { throwIfNoEntry: false })?.size : undefined;
-  if (!size) {
+  if (!size || !ext) {
     res.writeHead(404).end('Not found');
     return;
   }
-  res.writeHead(200, {
-    'Content-Type': 'image/png',
-    'Content-Length': size,
+  const head = {
+    'Content-Type': TYPES[ext],
+    'Accept-Ranges': 'bytes',
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': 'sandbox',
     'Cache-Control': 'private, max-age=31536000, immutable',
-  });
+  };
+  const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range) : null;
+  if (m && (m[1] || m[2])) {
+    const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+    const end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+    if (start > end || start >= size) {
+      res.writeHead(416, { 'Content-Range': `bytes */${size}` }).end();
+      return;
+    }
+    res.writeHead(206, { ...head, 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${size}` });
+    createReadStream(path, { start, end }).pipe(res);
+    return;
+  }
+  res.writeHead(200, { ...head, 'Content-Length': size });
   createReadStream(path).pipe(res);
 }

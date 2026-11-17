@@ -2,8 +2,8 @@ import { listSessions, query, type Query } from '@anthropic-ai/claude-agent-sdk'
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type DocSaved, INSTRUCTIONS_MAX, type ProjectDefaults, type ProjectDocKind, type ProjectFile, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
-import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
+import { EFFORTS, IMAGE_MODEL, VIDEO_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effort, type FoldersResponse, type HistoryEntry, type HistoryResponse, type HistorySearchResponse, type DocSaved, INSTRUCTIONS_MAX, type ProjectDefaults, type ProjectDocKind, type ProjectFile, type ModelsResponse, type ProjectsResponse, type ServerEvent, type TabState } from '../shared/protocol.ts';
+import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel, videoModel } from './config.ts';
 import type { ThreadModel } from './delegate.ts';
 import { chatText, geminiModels, savedGeminiChats } from './geminitab.ts';
 import { hermesModels, hermesText, savedHermesChats } from './hermestab.ts';
@@ -17,7 +17,7 @@ const SHOWN_MODELS = ['opus', 'sonnet', 'haiku', 'fable']; // fable: the alias f
 // The local model (or image model) a saved setting names is gone (not configured now): Claude would be handed the name
 // "local" and fail.
 const modelGone = (model?: string): boolean =>
-  !!model && (((model === LOCAL_MODEL || model.startsWith(`${LOCAL_MODEL}:`)) && !localChoice(model)) || (model === IMAGE_MODEL && !imageModel) || (isImageModel(model) && model !== IMAGE_MODEL && !Tab.gemini.has(model)));
+  !!model && (((model === LOCAL_MODEL || model.startsWith(`${LOCAL_MODEL}:`)) && !localChoice(model)) || (model === IMAGE_MODEL && !imageModel) || (model === VIDEO_MODEL && !Tab.videos) || (isImageModel(model) && model !== IMAGE_MODEL && model !== VIDEO_MODEL && !Tab.gemini.has(model)));
 
 const TABS_FILE = join(DATA_DIR, 'tabs.json');
 
@@ -398,6 +398,7 @@ export class Tabs {
             ...(await gemini),
             ...hermesModels(), // Hermes chats (server/hermestab.ts) on the router's local models
             ...(imageModel ? [{ value: IMAGE_MODEL, label: imageModel.label, description: 'Makes pictures on this PC. Your message is the picture\'s description.', efforts: [] as Effort[] }] : []),
+            ...(videoModel ? [{ value: VIDEO_MODEL, label: videoModel.label, description: 'Makes short clips on this PC. Your message is the clip\'s description; attach a photo to bring it to life, or a clip to change it.', efforts: [] as Effort[] }] : []),
             ...geminiImage.models.map((m) => ({ value: m.value, label: m.label, description: 'Makes pictures with Gemini (your Google AI Pro sign-in). Your message is the picture\'s description.', efforts: [] as Effort[] }))],
         };
       } finally {

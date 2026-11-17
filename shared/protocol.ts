@@ -50,6 +50,7 @@ export type ImageItem = {
   steps: number;
   fast?: boolean;
   edit?: boolean; // made from an attached picture
+  video?: { frames: number; fps: number }; // a clip (file is .mp4 or .webm), not a picture
   step?: number;
   phase?: string; // what the engine is doing now, e.g. 'Starting the engine'
   startedAt?: number;
@@ -243,6 +244,8 @@ export const AUTO_MODEL = 'auto';
 // Model picker value for the local image model (scripts/setup-image-model.sh): messages become pictures.
 export const IMAGE_MODEL = 'image';
 // The local image model is IMAGE_MODEL; a cloud one is "image:<engine>:<model>" (Gemini: server/geminiimage.ts).
+// The local video model (server/videogen.ts): an "image" model too, so it is kept out of Claude's process and projects.
+export const VIDEO_MODEL = 'image:video';
 export const isImageModel = (v?: string): boolean => v === IMAGE_MODEL || !!v?.startsWith(`${IMAGE_MODEL}:`);
 // Gemini chat models are "gemini:<agy model>", e.g. "gemini:gemini-4-argon": the tab talks to Gemini through Google's
 // Antigravity CLI (server/geminitab.ts) instead of Claude.

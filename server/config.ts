@@ -92,6 +92,20 @@ export const imageModel = imageUrl
     }
   : undefined;
 
+// Optional local video model (scripts/setup-video-model.sh), on the image model's engine: one server makes clips (from
+// words or a photo), another changes an attached clip (EDIT_URL, optional). Clips are saved with the pictures.
+const videoUrl = process.env.PHOSPHOR_VIDEO_URL;
+export const videoModel =
+  videoUrl && imageModel
+    ? {
+        url: videoUrl,
+        label: process.env.PHOSPHOR_VIDEO_LABEL || 'Video (local)',
+        unit: process.env.PHOSPHOR_VIDEO_UNIT || '',
+        editUrl: process.env.PHOSPHOR_VIDEO_EDIT_URL || '',
+        editUnit: process.env.PHOSPHOR_VIDEO_EDIT_UNIT || '',
+      }
+    : undefined;
+
 // Where pictures are saved (the local model's and Gemini's), served at /api/images/<file>.
 export const imagesDir = imageModel?.dir ?? resolve(process.env.PHOSPHOR_IMAGE_DIR || join(DATA_DIR, 'images'));
 

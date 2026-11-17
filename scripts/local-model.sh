@@ -32,19 +32,21 @@ unload_all() {
     curl -sf --max-time 95 -X POST -H 'Content-Type: application/json' -d '{}' "$own/unload?wait=90" >/dev/null &&
       echo "unloaded: $own"
   done
-  # The local image model (scripts/setup-image-model.sh) holds the card while its engine runs: stop it, after the
-  # picture being painted (up to 3 minutes). The app stops it the same way when idle.
-  local image unit
-  image=$(env_value PHOSPHOR_IMAGE_URL)
-  unit=$(env_value PHOSPHOR_IMAGE_UNIT)
-  if [[ -n "$image" && -n "$unit" && "$image" != "$keep" ]] && systemctl --user -q is-active "$unit"; then
-    local i
-    for i in $(seq 90); do
-      [[ -e "$(dirname "$ENV_FILE")/data/image-busy" ]] || break # the app paints (server/imagegen.ts)
-      sleep 2
-    done
-    systemctl --user stop "$unit" && echo "stopped: $unit"
-  fi
+  # The local image and video models (scripts/setup-image-model.sh, setup-video-model.sh) hold the card while their
+  # engine runs: stop it, after the picture or clip being made (up to 15 minutes). The app stops them the same way when idle.
+  local url unit pair
+  for pair in IMAGE VIDEO VIDEO_EDIT; do
+    url=$(env_value "PHOSPHOR_${pair}_URL")
+    unit=$(env_value "PHOSPHOR_${pair}_UNIT")
+    if [[ -n "$url" && -n "$unit" && "$url" != "$keep" ]] && systemctl --user -q is-active "$unit"; then
+      local i
+      for i in $(seq 450); do
+        [[ -e "$(dirname "$ENV_FILE")/data/image-busy" ]] || break # the app paints (server/imagegen.ts)
+        sleep 2
+      done
+      systemctl --user stop "$unit" && echo "stopped: $unit"
+    fi
+  done
   return 0
 }
 
