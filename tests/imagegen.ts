@@ -198,6 +198,9 @@ const cfg = { url: 'http://img.test', label: 'Fake Image (local)', dir, idleMs: 
   const lo = (n: number) => (w.jobs[n].body as { lora: { path: string; multiplier: number }[] }).lora.map((l) => `${l.path}:${l.multiplier}`).join(' ');
   check('nsfw LoRA: added next to Turbo by default', lo(0) === 'turbo.safetensors:1 nsfw.safetensors:0.8', lo(0));
   check('nsfw LoRA: alone with --best', lo(1) === 'nsfw.safetensors:0.8', lo(1));
+  const p0 = new Painter(w.engine, { ...cfg, nsfw: 'nsfw.safetensors', nsfwScale: 0 });
+  await p0.paint({ opts: parseImageOptions('--best two people on a beach'), update: () => {}, cancelled: () => false });
+  check('nsfw LoRA: scale 0 is off', lo(2) === '', lo(2));
 }
 
 {

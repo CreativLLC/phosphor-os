@@ -106,11 +106,12 @@ no compiling). It writes two lines to `.env`:
 
 ```
 PHOSPHOR_IMAGE_NSFW=nsfw_qwen_image_2.1_v1.safetensors   # a file in the engine's LoRA folder (~/models/image)
-PHOSPHOR_IMAGE_NSFW_SCALE=0.8                            # 0 to 2; 0.8 is a good start
+PHOSPHOR_IMAGE_NSFW_SCALE=0.8                            # 0 to 2; 0.8 is a good start, 0 switches it off
 ```
 
 It is added to every picture in the tab, on top of the Turbo LoRA. `PHOSPHOR_IMAGE_NSFW_SCALE` is how strong it is: raise
-it if the model still holds back, lower it if bodies look wrong or the style gets odd. To switch it off: delete the two
+it if the model still holds back, lower it if bodies look wrong or the style gets odd, set `0` to paint without it. The
+engine says what it used: `journalctl --user -u phosphor-image.service --no-pager | grep "LoRA tensors"`. To switch it off: delete the two
 lines and restart the server. Running the setup again without `--nsfw` removes them.
 
 Any LoRA made for this model works: put the file in the engine's LoRA folder and write its name in `.env`. The engine

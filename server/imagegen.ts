@@ -167,10 +167,10 @@ export class Painter {
         ...(turbo && o.steps === FAST_STEPS ? { custom_sigmas: TURBO_SIGMAS } : {}),
         guidance: { txt_cfg: turbo ? 1 : CFG },
       },
-      // NSFW: an optional extra LoRA (PHOSPHOR_IMAGE_NSFW), on every picture.
+      // NSFW: an optional extra LoRA (PHOSPHOR_IMAGE_NSFW), on every picture, off at scale 0.
       lora: [
         ...(turbo ? [{ path: this.cfg.turbo, multiplier: 1 }] : []),
-        ...(this.cfg.nsfw ? [{ path: this.cfg.nsfw, multiplier: this.cfg.nsfwScale }] : []),
+        ...(this.cfg.nsfw && this.cfg.nsfwScale > 0 ? [{ path: this.cfg.nsfw, multiplier: this.cfg.nsfwScale }] : []),
       ],
       // The cheapest preview (a straight projection of the latents): the only way the engine reports its steps.
       preview: 'proj',

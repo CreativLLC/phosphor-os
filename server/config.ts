@@ -80,6 +80,9 @@ delete process.env.PHOSPHOR_LOCAL_KEY;
 // systemd user unit when a picture is asked for, and stops when idle. EDIT=1: it can change an attached picture.
 // TURBO: a LoRA file in the engine's LoRA folder for the default 8-step mode (--best skips it). DIR: where pictures are
 // saved. NSFW: another LoRA in that folder, added to every picture (off when unset); NSFW_SCALE is its strength.
+const nsfwScaleSet = process.env.PHOSPHOR_IMAGE_NSFW_SCALE;
+const nsfwScaleNum = Number(nsfwScaleSet);
+const nsfwScale = !nsfwScaleSet || !Number.isFinite(nsfwScaleNum) ? 0.8 : Math.min(2, Math.max(0, nsfwScaleNum)); // 0: the LoRA is not used at all
 const imageUrl = process.env.PHOSPHOR_IMAGE_URL;
 export const imageModel = imageUrl
   ? {
@@ -89,7 +92,7 @@ export const imageModel = imageUrl
       edit: process.env.PHOSPHOR_IMAGE_EDIT === '1',
       turbo: process.env.PHOSPHOR_IMAGE_TURBO || '',
       nsfw: process.env.PHOSPHOR_IMAGE_NSFW || '',
-      nsfwScale: Math.min(2, Math.max(0, Number(process.env.PHOSPHOR_IMAGE_NSFW_SCALE) || 0.8)),
+      nsfwScale: nsfwScale,
       dir: resolve(process.env.PHOSPHOR_IMAGE_DIR || join(DATA_DIR, 'images')),
       idleMs: (Number(process.env.PHOSPHOR_IMAGE_IDLE_SECONDS) || 300) * 1000,
     }
