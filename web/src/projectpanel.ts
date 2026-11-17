@@ -1,4 +1,4 @@
-import { AUTO_MODEL, EFFORTS, isGeminiModel, isImageModel, MODES, type ModelChoice, type ProjectDefaults, type ProjectsResponse, type ProjectSummary, type TabState } from '../../shared/protocol.ts';
+import { AUTO_MODEL, EFFORTS, isGeminiModel, isHermesModel, isImageModel, MODES, type ModelChoice, type ProjectDefaults, type ProjectsResponse, type ProjectSummary, type TabState } from '../../shared/protocol.ts';
 import { demoProjects } from './demo.ts';
 import { newReq, send } from './net.ts';
 import { editInstructions, editMemory, loadDoc } from './projectedit.ts';
@@ -151,7 +151,7 @@ export async function openPanel(start: { id: string; name: string }, leave?: () 
   };
   const fillDefaults = (d: ProjectDefaults) => {
     shown = d;
-    const list = models.filter((m) => m.value !== AUTO_MODEL && !isImageModel(m.value) && !isGeminiModel(m.value));
+    const list = models.filter((m) => m.value !== AUTO_MODEL && !isImageModel(m.value) && !isGeminiModel(m.value) && !isHermesModel(m.value));
     const known = !d.model || list.some((m) => m.value === d.model);
     modelSel.replaceChildren(option(AUTO_MODEL, 'AUTO'), ...list.map((m) => option(m.value, m.label.toUpperCase())), ...(known ? [] : [option(d.model!, `${d.model!.toUpperCase()} (GONE)`)]));
     modelSel.value = d.model ?? AUTO_MODEL;

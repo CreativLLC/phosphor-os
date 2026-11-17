@@ -19,13 +19,14 @@ import { randomUUID } from 'node:crypto';
 import { appendFile, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { IMAGE_MODEL, isGeminiModel, isImageModel, LEAD_PREFIX, REPORT_PREFIX, type Agent, type ProjectRef, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
+import { IMAGE_MODEL, isGeminiModel, isHermesModel, isImageModel, LEAD_PREFIX, REPORT_PREFIX, type Agent, type ProjectRef, type AskQuestion, type Attachment, type Connector, type Effort, type ImageItem, type Item, type McpAction, type McpServer, type Mission, type Mode, type ModelsResponse, type PatchKey, type Resume, type ServerEvent, type SlashCommandInfo, type Stats, type TabState } from '../shared/protocol.ts';
 import { ttlFromUsage } from '../shared/cache.ts';
 import { clampEffort, decide, type RouteDecision } from '../shared/router.ts';
 import { DATA_DIR, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import { askLocalTool, DELEGATE_HELP, DELEGATE_TOOLS, ledger, routerOn, threadModel, threadWorkers, WORKER_HELP, type ThreadModel } from './delegate.ts';
 import { GeminiPainter } from './geminiimage.ts';
 import { fitEffort, GEMINI_MCP, GeminiChat, geminiGuards, noBypass } from './geminitab.ts';
+import { HERMES_MCP, HermesChat } from './hermestab.ts';
 import { painter, type Painter } from './imagegen.ts';
 import { editSize, imageSize, parseImageOptions, STEPS } from './imageopts.ts';
 import { LOCAL_RELAY_PORT, localLoaded } from './localrelay.ts';
@@ -89,8 +90,8 @@ const RESUME_MARGIN_MS = 90_000; // after the reset time, so the first request i
 const RESUME_RETRY_MS = 30 * 60_000; // reset time unknown: try again this much later
 type Waiter = { resolve: (r: PermissionResult) => void; input: Record<string, unknown>; title: string };
 
-// gemini: the agy conversation of a Gemini chat (server/geminitab.ts).
-export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: string; createdAt?: number; mode?: Mode; model?: string; effort?: Effort; auto?: boolean; agents?: Agent[]; resume?: Resume | null; images?: SavedImage[]; project?: ProjectRef; gemini?: string };
+// gemini: the agy conversation of a Gemini chat (server/geminitab.ts). hermes: the Hermes session of a Hermes chat.
+export type TabInit = { id?: string; cwd: string; title?: string; sessionId?: string; createdAt?: number; mode?: Mode; model?: string; effort?: Effort; auto?: boolean; agents?: Agent[]; resume?: Resume | null; images?: SavedImage[]; project?: ProjectRef; gemini?: string; hermes?: string };
 
 // A project's folder (its shared memory file), outside the workspace: no sync clutter, and every chat may edit it.
 export const projectDir = (id: string) => join(DATA_DIR, 'projects', id);
@@ -216,6 +217,7 @@ export class Tab {
   private paintEpoch = 0; // STOP bumps it: pictures still waiting are dropped
   private paintNote: string[] = []; // pictures made since Claude last heard: told with the next message to Claude
   private geminiChat?: GeminiChat; // a Gemini chat: its messages go to agy instead of Claude (server/geminitab.ts)
+  private hermesChat?: HermesChat; // a Hermes chat: its messages go to Hermes Agent (server/hermestab.ts)
 
   constructor(private emit: (ev: ServerEvent) => void, init: TabInit) {
     this.autoTitle = !init.title || init.title === 'New chat';
@@ -245,6 +247,12 @@ export class Tab {
     this.pendingEffort = init.effort;
     this.auto = init.auto ?? false;
     if (isGeminiModel(init.model) || init.gemini) this.useGemini(init.gemini);
+    else if (isHermesModel(init.model) || init.hermes) this.useHermes(init.hermes);
+  }
+
+  // The chat with another agent than Claude, if this is one.
+  private get side(): GeminiChat | HermesChat | undefined {
+    return this.geminiChat ?? this.hermesChat;
   }
 
   // The tab becomes a Gemini chat. Its info says so (the page hides what only Claude has), and BYPASS turns into AUTO.
@@ -271,31 +279,77 @@ export class Tab {
     if ((this.pendingMode ?? this.state.info.permissionMode) === 'bypassPermissions') this.pendingMode = this.state.info.permissionMode = 'auto';
   }
 
-  // A chat stays with the one it started with: Claude Code and agy each keep their own conversation, and neither can
-  // continue the other's. Picture models work in both; a tab with nothing sent yet switches freely. true = refused.
+  // The tab becomes a Hermes chat. Hermes's OK requests show as the same cards as Claude's.
+  private useHermes(session?: string): void {
+    this.hermesChat = new HermesChat(
+      {
+        state: this.state,
+        settings: () => ({ model: this.pendingModel, mode: this.pendingMode ?? this.state.info.permissionMode }),
+        add: (item) => this.add(item),
+        update: (id, fields) => this.patchItem(id, fields),
+        delta: (id, text) => {
+          const item = this.state.items.find((i) => i.id === id);
+          if (item?.kind === 'claude') item.text += text;
+          this.emit({ t: 'delta', tab: this.id, id, text });
+        },
+        busy: (on) => this.setBusy(on),
+        activity: (text) => this.setActivity(text),
+        patch: (key) => this.patch(key),
+        persist: () => this.onPersist?.(),
+        ask: (tool, title, detail, signal) =>
+          new Promise<boolean>((done) => {
+            const id = randomUUID();
+            this.waiters.set(id, { resolve: (r) => done(r.behavior === 'allow'), input: {}, title });
+            const cancel = () => {
+              if (!this.waiters.delete(id)) return;
+              this.patchItem(id, { status: 'cancelled' });
+              this.updateAttention();
+              done(false);
+            };
+            if (signal.aborted) return cancel();
+            signal.addEventListener('abort', cancel);
+            this.add({ id, kind: 'perm', tool, title, detail, status: 'pending' });
+            this.setActivity(`Waiting for your OK: ${title}`);
+            this.updateAttention();
+          }),
+      },
+      session,
+    );
+    this.state.info.agent = 'hermes';
+  }
+
+  // A chat stays with the one it started with: Claude Code, agy and Hermes each keep their own conversation, and none
+  // can continue another's. Picture models work in all; a tab with nothing sent yet switches freely. true = refused.
   private switchRefused(model: string | null): boolean {
-    const toGemini = !!model && isGeminiModel(model);
-    if ((model && isImageModel(model)) || toGemini === !!this.geminiChat) return false;
-    const started = this.geminiChat ? !!this.geminiChat.conversation : this.state.items.some((i) => i.kind === 'user' && !i.paint);
+    const to = model && isGeminiModel(model) ? 'gemini' : model && isHermesModel(model) ? 'hermes' : undefined;
+    const from = this.state.info.agent;
+    if ((model && isImageModel(model)) || to === from) return false;
+    const started = this.side ? !!this.side.conversation : this.state.items.some((i) => i.kind === 'user' && !i.paint);
     if (started) {
-      this.note(this.geminiChat ? 'This chat is with Gemini, and Claude cannot continue it. Press + for a new chat with Claude.' : 'This chat is with Claude, and Gemini cannot continue it. Press + for a new chat, then pick a Gemini model there.');
+      const name = (a?: string) => (a === 'gemini' ? 'Gemini' : a === 'hermes' ? 'Hermes' : 'Claude');
+      this.note(`This chat is with ${name(from)}, and ${name(to)} cannot continue it. Press + for a new chat${to ? `, then pick a ${name(to)} model there` : ` with ${name(to)}`}.`);
       this.patch('info'); // the picker goes back
       return true;
     }
-    if (toGemini) {
-      this.close(true); // a Claude process the "/" menu or MCP screen started
-      this.useGemini();
-    } else {
-      this.geminiChat!.close();
-      this.geminiChat = undefined;
-      delete this.state.info.agent;
-    }
+    this.side?.close();
+    this.geminiChat = this.hermesChat = undefined;
+    delete this.state.info.agent;
+    if (to) this.close(true); // a Claude process the "/" menu or MCP screen started
+    if (to === 'gemini') this.useGemini();
+    else if (to === 'hermes') this.useHermes();
     return false;
   }
 
-  // The agy conversation of a Gemini chat (saved with the tab).
+  // The agy conversation of a Gemini chat, the Hermes session of a Hermes chat (saved with the tab).
   get geminiId(): string | undefined {
     return this.geminiChat?.conversation;
+  }
+  get hermesId(): string | undefined {
+    return this.hermesChat?.conversation;
+  }
+  // How HISTORY and the closed-chat list name a chat with another agent ("gemini:<id>", "hermes:<id>").
+  get sideKey(): string | undefined {
+    return this.geminiId ? `gemini:${this.geminiId}` : this.hermesId ? `hermes:${this.hermesId}` : undefined;
   }
 
   get id(): string {
@@ -404,8 +458,8 @@ export class Tab {
       this.state.info = {
         ...this.state.info,
         model: this.state.info.model || model,
-        permissionMode: this.state.info.permissionMode || this.pendingMode || (this.geminiChat && mode === 'bypassPermissions' ? 'auto' : mode), // a Gemini chat starts in BYPASS only when picked
-        effort: this.state.info.effort || this.pendingEffort || (this.geminiChat ? '' : effort), // Claude's default level is not Gemini's
+        permissionMode: this.state.info.permissionMode || this.pendingMode || (this.side && mode === 'bypassPermissions' ? 'auto' : mode), // a Gemini or Hermes chat starts in BYPASS only when picked
+        effort: this.state.info.effort || this.pendingEffort || (this.side ? '' : effort), // Claude's default level is not Gemini's or Hermes's
       };
       this.patch('info');
     } catch {
@@ -415,9 +469,9 @@ export class Tab {
 
   // Rebuild the chat from Claude Code's saved transcript (works for terminal sessions too).
   async loadHistory(): Promise<void> {
-    if (this.geminiChat) {
-      this.state.items = mergeImages(this.geminiChat.load(), this.imageLog);
-      this.pendingModel ??= this.geminiChat.model; // reopened from HISTORY: the model it last ran on
+    if (this.side) {
+      this.state.items = mergeImages(this.side.load(), this.imageLog);
+      this.pendingModel ??= this.side.model; // reopened from HISTORY: the model it last ran on
       this.state.info.model ||= this.pendingModel ?? '';
       return;
     }
@@ -437,9 +491,9 @@ export class Tab {
     if (!auto) this.clearResume(); // the owner took over
     const imager = this.pendingModel === IMAGE_MODEL ? Tab.images : Tab.gemini.get(this.pendingModel ?? '');
     if (imager && !auto) return this.paint(text, files, imager);
-    if (this.geminiChat) {
+    if (this.side) {
       this.firstWordsTitle(text, files);
-      return this.geminiChat.send(text, files);
+      return this.side.send(text, files);
     }
     const first = this.state.items.every((i) => i.kind !== 'user' || i.paint);
     this.firstWordsTitle(text, files);
@@ -636,7 +690,7 @@ export class Tab {
   async stop(): Promise<void> {
     this.stopEpoch++;
     this.paintEpoch++;
-    this.geminiChat?.stop();
+    this.side?.stop();
     await this.q?.interrupt().catch(() => {});
   }
 
@@ -659,7 +713,7 @@ export class Tab {
   async undo(id: string, dryRun: boolean): Promise<void> {
     const reply = (r: { ok?: boolean; error?: string; files?: string[]; insertions?: number; deletions?: number }) =>
       this.emit({ t: 'undo_result', tab: this.id, id, dryRun, ok: false, files: [], insertions: 0, deletions: 0, ...r });
-    if (this.geminiChat) return reply({ error: 'UNDO works only in chats with Claude.' });
+    if (this.side) return reply({ error: 'UNDO works only in chats with Claude.' });
     if (this.state.meta.busy) return reply({ error: 'Claude is still working. Wait until it is done, or press STOP.' });
     const item = this.state.items.find((i) => i.id === id);
     if (item?.kind !== 'user') return reply({ error: 'That message is not in this chat.' });
@@ -724,7 +778,7 @@ export class Tab {
   // MCP servers this chat can use, for the MCP screen. Starts Claude's process if needed (nothing is sent).
   // Only safe fields go to the page: a server's config can hold keys.
   async mcpServers(): Promise<McpServer[]> {
-    if (this.geminiChat) throw new Error(GEMINI_MCP);
+    if (this.side) throw new Error(this.hermesChat ? HERMES_MCP : GEMINI_MCP);
     if (!this.q) this.start();
     const list = await this.q!.mcpServerStatus();
     return list
@@ -752,7 +806,7 @@ export class Tab {
   // RECONNECT, or ON/OFF. Claude Code saves ON/OFF for this folder, like /mcp in the terminal.
   // Returns an error to show, if any.
   async mcpAction(name: string, action: McpAction): Promise<string | undefined> {
-    if (this.geminiChat) return GEMINI_MCP;
+    if (this.side) return this.hermesChat ? HERMES_MCP : GEMINI_MCP;
     if (!this.q) this.start();
     try {
       if (action === 'reconnect') await this.q!.reconnectMcpServer(name);
@@ -767,7 +821,7 @@ export class Tab {
 
   // Slash commands Claude Code runs in this chat (built-in, skills, plugins, custom), for the "/" menu.
   async commands(): Promise<SlashCommandInfo[]> {
-    if (this.geminiChat) return []; // agy has no command list to ask; its slash commands still work when typed
+    if (this.side) return []; // agy and Hermes: no command list to ask; their slash commands still work when typed
     if (!this.q) this.start();
     const seen = new Set<string>();
     const out: SlashCommandInfo[] = [];
@@ -858,7 +912,7 @@ export class Tab {
       this.gone = true;
       this.titleFromPrompt = false; // no more waiting for Claude's title: save the first-words name
       this.saveSessionTitle();
-      this.geminiChat?.close();
+      this.side?.close();
     }
     if (this.run) {
       this.run.closed = true;

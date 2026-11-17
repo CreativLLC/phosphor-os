@@ -22,6 +22,8 @@ const PICKER_MODES = [...new Set<string>([...MODES, 'bypassPermissions'])];
 const MODE_HELP = 'Permission mode: when Claude must ask you first. BYPASS never asks.';
 // A Gemini chat (server/geminitab.ts, agyArgs) cannot stop to ask: each mode says what Gemini may do on its own.
 const GEMINI_MODE_HELP = "Gemini cannot stop to ask. ASK FIRST: it reads and answers; this folder is read-only for it. PLAN ONLY: it writes a plan, and changes nothing here. AUTO-EDIT: it may change files in this folder. AUTO: also runs commands, inside agy's sandbox (no network). BYPASS: runs anything without asking. AUTO and BYPASS run commands only when Claude Code's command hooks (such as the prod-write block) are set up for Gemini too (docs/GEMINI-GUARDS.md); until then they act like AUTO-EDIT.";
+// A Hermes chat (server/hermestab.ts) asks in the chat; Claude Code's command hooks guard it in every mode.
+const HERMES_MODE_HELP = "Hermes asks here when it must. ASK FIRST: it asks before each command, file change or browser step. PLAN ONLY: it writes a plan; tools that change things are blocked. AUTO-EDIT and AUTO: file changes go through; commands Hermes flags as risky still ask. BYPASS: never asks. Claude Code's command hooks (such as the prod-write block) apply in every mode (docs/HERMES.md).";
 
 let log: HTMLElement;
 let input: HTMLTextAreaElement;
@@ -111,9 +113,9 @@ export function mountChat(logEl: HTMLElement, composer: HTMLElement): void {
     composer.classList.toggle('busy', !!tab?.meta.busy);
     mode.value = PICKER_MODES.includes(tab?.info.permissionMode ?? '') ? tab!.info.permissionMode : 'auto';
     const model = tab?.info.auto ? '' : tab?.info.model;
-    const gemini = tab?.info.agent === 'gemini';
-    input.placeholder = model === IMAGE_MODEL ? 'Describe a picture… (--wide --tall --best --seed N)' : isImageModel(model) ? 'Describe a picture, or attach one to change… (--wide --tall)' : gemini ? 'Message Gemini…' : 'Message Claude…';
-    mode.title = gemini ? GEMINI_MODE_HELP : MODE_HELP;
+    const agent = tab?.info.agent;
+    input.placeholder = model === IMAGE_MODEL ? 'Describe a picture… (--wide --tall --best --seed N)' : isImageModel(model) ? 'Describe a picture, or attach one to change… (--wide --tall)' : agent === 'gemini' ? 'Message Gemini…' : agent === 'hermes' ? 'Message Hermes…' : 'Message Claude…';
+    mode.title = agent === 'gemini' ? GEMINI_MODE_HELP : agent === 'hermes' ? HERMES_MODE_HELP : MODE_HELP;
     mode.classList.toggle('bypass', mode.value === 'bypassPermissions');
     if (tab?.meta.id !== shownTab) {
       shownTab = tab?.meta.id ?? null;

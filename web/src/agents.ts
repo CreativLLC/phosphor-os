@@ -92,7 +92,7 @@ class OperatorCard {
     const state = meta?.attention ? 'alert' : meta?.busy ? 'working' : 'idle';
     this.scene.update(tab);
     this.el.dataset.state = state;
-    setText(this.name, tab?.info.agent === 'gemini' ? 'GEMINI' : 'CLAUDE');
+    setText(this.name, tab?.info.agent ? tab.info.agent.toUpperCase() : 'CLAUDE');
     this.title.disabled = !tab;
     if (document.activeElement !== this.title) this.title.value = meta?.title ?? '';
     setText(this.tag, !tab ? '[NO TAB]' : state === 'alert' ? '[NEEDS YOU]' : state === 'working' ? '[WORKING]' : '[STANDBY]');

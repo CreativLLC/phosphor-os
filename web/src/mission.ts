@@ -430,10 +430,10 @@ export function mountMission(root: HTMLElement): void {
       ctx.row.classList.remove('hot');
     }
     ctxSub.hidden = !ctxSub.textContent;
-    // A Gemini chat (server/geminitab.ts) has no context count, COMPRESS or task list.
-    const gemini = tab.info.agent === 'gemini';
-    ctx.row.hidden = ctxMore.hidden = gemini;
-    emptyWho.textContent = gemini ? 'Gemini chats have no task list.' : 'Claude fills this in on bigger tasks.';
+    // A Gemini or Hermes chat (server/geminitab.ts, hermestab.ts) has no context count, COMPRESS or task list.
+    const agent = tab.info.agent;
+    ctx.row.hidden = ctxMore.hidden = !!agent;
+    emptyWho.textContent = agent ? `${agent === 'gemini' ? 'Gemini' : 'Hermes'} chats have no task list.` : 'Claude fills this in on bigger tasks.';
 
     const running = tab.agents.filter((a) => a.status === 'running').length;
     const total = tab.agents.length;

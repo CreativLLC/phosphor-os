@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { AUTO_MODEL, type Effort, EFFORTS, INSTRUCTIONS_MAX, isGeminiModel, isImageModel, MEMORY_MAX, type Mode, MODES, type ProjectDefaults, type ProjectDoc, type ProjectDocKind, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
+import { AUTO_MODEL, type Effort, EFFORTS, INSTRUCTIONS_MAX, isGeminiModel, isHermesModel, isImageModel, MEMORY_MAX, type Mode, MODES, type ProjectDefaults, type ProjectDoc, type ProjectDocKind, type ProjectRef, type ProjectSummary, type TabState } from '../shared/protocol.ts';
 import { DATA_DIR } from './config.ts';
 
 // PROJECTS (owner's ask 2026-10-27): a project outlives its tabs. data/projects/<id>/project.json keeps its name and
@@ -169,7 +169,7 @@ export class ProjectBook {
 // Only known values are kept (the file can be edited by hand, or by a chat in the project folder).
 export function cleanDefaults(d: unknown): ProjectDefaults {
   const x = (d ?? {}) as Record<string, unknown>;
-  const model = typeof x.model === 'string' && x.model && x.model !== AUTO_MODEL && x.model.length <= 100 && !isImageModel(x.model) && !isGeminiModel(x.model) ? x.model : undefined;
+  const model = typeof x.model === 'string' && x.model && x.model !== AUTO_MODEL && x.model.length <= 100 && !isImageModel(x.model) && !isGeminiModel(x.model) && !isHermesModel(x.model) ? x.model : undefined;
   const effort = EFFORTS.find((e) => e === x.effort);
   const mode = MODES.find((m) => m === x.mode);
   return { ...(model ? { model } : {}), ...(model && effort ? { effort } : {}), ...(mode ? { mode } : {}) };

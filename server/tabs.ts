@@ -6,6 +6,7 @@ import { EFFORTS, IMAGE_MODEL, LEAD_PREFIX, isImageModel, LOCAL_MODEL, type Effo
 import { DATA_DIR, config, geminiImage, imageModel, localChoice, localModel } from './config.ts';
 import type { ThreadModel } from './delegate.ts';
 import { chatText, geminiModels, savedGeminiChats } from './geminitab.ts';
+import { hermesModels, hermesText, savedHermesChats } from './hermestab.ts';
 import { listFiles } from './projectfiles.ts';
 import { cleanDefaults, joinRef, ProjectBook } from './projects.ts';
 import { projectDir, projectMemory, Tab, type TabInit } from './tab.ts';
@@ -184,7 +185,8 @@ export class Tabs {
 
   async open(sessionId: string, cwd: string, title: string, req?: string): Promise<void> {
     const gemini = sessionId.startsWith('gemini:') ? sessionId.slice('gemini:'.length) : undefined; // a Gemini chat
-    const existing = [...this.tabs.values()].find((t) => (gemini ? t.geminiId === gemini : t.state.meta.sessionId === sessionId));
+    const hermes = sessionId.startsWith('hermes:') ? sessionId.slice('hermes:'.length) : undefined; // a Hermes chat
+    const existing = [...this.tabs.values()].find((t) => (gemini || hermes ? t.sideKey === sessionId : t.state.meta.sessionId === sessionId));
     if (existing) {
       this.emit({ t: 'tab', tab: existing.state, req });
       return;
@@ -200,7 +202,7 @@ export class Tabs {
     const kept = back?.chat.settings;
     const own = kept && cleanDefaults(kept); // project.json can be edited by hand: known values only
     const settings = kept && own && (own.model || kept.auto) && !modelGone(own.model) ? { ...own, auto: kept.auto === true } : project ? this.startWith(project.id) : {};
-    const tab = this.make({ cwd: config.cwd, title: title.slice(0, 60) || 'Old chat', ...(gemini ? { gemini } : { sessionId, auto: true, ...settings }), ...(project ? { project } : {}) });
+    const tab = this.make({ cwd: config.cwd, title: title.slice(0, 60) || 'Old chat', ...(gemini ? { gemini } : hermes ? { hermes } : { sessionId, auto: true, ...settings }), ...(project ? { project } : {}) });
     try {
       await tab.loadHistory();
     } catch (e) {
@@ -280,7 +282,7 @@ export class Tabs {
   // before. A chat open again by now is skipped. Only chats that had begun (a session id) are kept.
   async reopenClosed(req?: string): Promise<void> {
     let c = this.closedStack.pop();
-    while (c && [...this.tabs.values()].some((t) => (t.geminiId ? `gemini:${t.geminiId}` : t.state.meta.sessionId) === c!.sessionId)) c = this.closedStack.pop();
+    while (c && [...this.tabs.values()].some((t) => (t.sideKey ?? t.state.meta.sessionId) === c!.sessionId)) c = this.closedStack.pop();
     if (!c) return this.emit({ t: 'toast', text: 'No closed chat to bring back.' });
     const before = new Set(this.tabs.keys());
     await this.open(c.sessionId, c.cwd, c.title, req);
@@ -308,8 +310,8 @@ export class Tabs {
     const tab = this.tabs.get(id);
     if (!tab) return;
     const p = tab.project;
-    const sessionId = tab.geminiId ? `gemini:${tab.geminiId}` : tab.state.meta.sessionId;
-    const settings = tab.geminiId ? undefined : { model: tab.model, effort: tab.effort, mode: tab.mode, auto: tab.autoModel };
+    const sessionId = tab.sideKey ?? tab.state.meta.sessionId;
+    const settings = tab.sideKey ? undefined : { model: tab.model, effort: tab.effort, mode: tab.mode, auto: tab.autoModel };
     if (p && sessionId) this.book.noteClosed(p, { sessionId, title: tab.state.meta.title, main: p.main, ...(p.own ? { own: true } : {}), createdAt: tab.state.meta.createdAt, ...(settings ? { settings } : {}) });
     if (sessionId) this.closedStack = [...this.closedStack.filter((c) => c.sessionId !== sessionId), { sessionId, title: tab.state.meta.title, cwd: tab.state.info.cwd, index: [...this.tabs.keys()].indexOf(id) }].slice(-30);
     tab.close();
@@ -365,7 +367,11 @@ export class Tabs {
       const tab = [...this.tabs.values()].find((t) => t.geminiId === c.conversation);
       return { sessionId: `gemini:${c.conversation}`, title: tab?.state.meta.title ?? c.title, cwd: c.cwd, lastModified: c.updatedAt, openTab: tab?.id, agent: 'gemini' as const, text: chatText(c) };
     });
-    return [...rows.filter((r) => r !== null), ...gemini].sort((a, b) => b.lastModified - a.lastModified);
+    const hermes = savedHermesChats().map((c) => {
+      const tab = [...this.tabs.values()].find((t) => t.hermesId === c.session);
+      return { sessionId: `hermes:${c.session}`, title: tab?.state.meta.title ?? c.title, cwd: c.cwd, lastModified: c.updatedAt, openTab: tab?.id, agent: 'hermes' as const, text: hermesText(c) };
+    });
+    return [...rows.filter((r) => r !== null), ...gemini, ...hermes].sort((a, b) => b.lastModified - a.lastModified);
   }
 
   // Models this account can use. Asked once from a short-lived Claude process (no prompt is sent).
@@ -390,6 +396,7 @@ export class Tabs {
             efforts: m.supportsEffort === false ? [] : (m.supportedEffortLevels ?? [...EFFORTS]),
           })), ...(localModel?.models ?? []).map((m) => ({ value: m.value, label: m.label, description: 'Runs on this PC, no plan limits.', efforts: ['low', 'medium', 'xhigh'] as Effort[] })),
             ...(await gemini),
+            ...hermesModels(), // Hermes chats (server/hermestab.ts) on the router's local models
             ...(imageModel ? [{ value: IMAGE_MODEL, label: imageModel.label, description: 'Makes pictures on this PC. Your message is the picture\'s description.', efforts: [] as Effort[] }] : []),
             ...geminiImage.models.map((m) => ({ value: m.value, label: m.label, description: 'Makes pictures with Gemini (your Google AI Pro sign-in). Your message is the picture\'s description.', efforts: [] as Effort[] }))],
         };
@@ -446,6 +453,7 @@ export class Tabs {
       images: t.images.length ? t.images : undefined,
       project: t.project,
       gemini: t.geminiId,
+      hermes: t.hermesId,
     }));
     writeFileSync(TABS_FILE, JSON.stringify(data, null, 2));
   }

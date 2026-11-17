@@ -3,8 +3,10 @@
 
 // effort: thinking level (Claude Code "effort"); '' = the model's default.
 // auto: the tab is on AUTO, so a router picks model and effort for each message (model/effort show its last pick).
-// agent: who the chat is with when it is not Claude: 'gemini' (server/geminitab.ts). The page hides what only Claude has.
-export type Info = { cwd: string; model: string; permissionMode: string; effort: string; auto?: boolean; agent?: 'gemini' };
+// agent: who the chat is with when it is not Claude: 'gemini' (server/geminitab.ts) or 'hermes' (server/hermestab.ts).
+// The page hides what only Claude has.
+export type ChatAgent = 'gemini' | 'hermes';
+export type Info = { cwd: string; model: string; permissionMode: string; effort: string; auto?: boolean; agent?: ChatAgent };
 
 // A file the user attached. 'image' = Claude also sees it inline.
 // id '' = an image from an old chat that has no saved copy (no thumbnail).
@@ -202,8 +204,9 @@ export type ClientEvent =
 
 // POST /api/upload?name=<file name> (raw bytes) -> Attachment. GET /api/upload/<id> -> the image (images only).
 
-// GET /api/history. A Gemini chat (agent 'gemini') has sessionId "gemini:<its agy conversation>".
-export type HistoryEntry = { sessionId: string; title: string; cwd: string; lastModified: number; openTab?: string; agent?: 'gemini' };
+// GET /api/history. A Gemini chat (agent 'gemini') has sessionId "gemini:<its agy conversation>", a Hermes chat
+// "hermes:<its Hermes session>".
+export type HistoryEntry = { sessionId: string; title: string; cwd: string; lastModified: number; openTab?: string; agent?: ChatAgent };
 export type HistoryResponse = { sessions: HistoryEntry[] };
 
 // GET /api/projects: every project, open or not, newest activity first (server/projects.ts). Its open chats are the
@@ -244,6 +247,8 @@ export const isImageModel = (v?: string): boolean => v === IMAGE_MODEL || !!v?.s
 // Gemini chat models are "gemini:<agy model>", e.g. "gemini:gemini-4-argon": the tab talks to Gemini through Google's
 // Antigravity CLI (server/geminitab.ts) instead of Claude.
 export const isGeminiModel = (v?: string): boolean => !!v?.startsWith('gemini:');
+// Hermes chat models are "hermes:<local model>": the tab talks to Hermes Agent (server/hermestab.ts) on that model.
+export const isHermesModel = (v?: string): boolean => !!v?.startsWith('hermes:');
 export type ModelChoice = { value: string; label: string; description: string; resolved?: string; efforts: Effort[] };
 export type ModelsResponse = { models: ModelChoice[] };
 
