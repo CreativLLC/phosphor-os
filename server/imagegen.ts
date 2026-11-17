@@ -176,7 +176,14 @@ export class Painter {
     // A clip can take far longer than a picture.
     for (const end = Date.now() + (kind === 'vid_gen' ? 90 : 30) * 60_000; Date.now() < end; ) {
       await sleep(this.cfg.pollMs ?? 700);
-      const j = (await (await f(new URL(`/sdcpp/v1/jobs/${sub.id}`, engine.url), { signal: AbortSignal.timeout(30_000) })).json()) as EngineJob;
+      // The engine does not answer while it decodes a clip (over a minute): keep asking while it is still running.
+      const j = (await f(new URL(`/sdcpp/v1/jobs/${sub.id}`, engine.url), { signal: AbortSignal.timeout(30_000) })
+        .then((x) => x.json())
+        .catch((e: unknown) => {
+          // A busy engine times out; a gone one refuses the connection.
+          if ((e as { cause?: { code?: string } })?.cause?.code !== 'ECONNREFUSED') return {};
+          throw new Error(`The ${engine.name} engine stopped (it may have crashed: journalctl --user -u phosphor-${engine.name.replace(' ', '-')}). ${e instanceof Error ? e.message : ''}`);
+        })) as EngineJob;
       if (j.status === 'completed') return j.result;
       if (j.status === 'failed' || j.status === 'cancelled') throw new Error(j.error?.message || `The ${engine.name} engine says: ${j.status}`);
       if (j.status === 'generating' && j.preview?.step) step(j.preview.step);

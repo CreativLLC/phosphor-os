@@ -47,12 +47,24 @@ With an attached photo or clip, the result keeps its shape unless a shape word s
 
 Clips and pictures share one queue and the card: one engine runs at a time, the others stop first (`server/imagegen.ts`). The chat models unload before a clip, as before a picture (see "The GPU is shared" in [IMAGE-MODEL.md](IMAGE-MODEL.md)). `bash scripts/local-model.sh unload` stops the video engines too.
 
-## Untested
+## Speed and memory (one 20 GB AMD card)
 
-Written 2026-11-17 without running the engine on the GPU (the owner tests). Not yet known: speed, peak VRAM and RAM, whether Wan's VAE decode fits in tiles (`vae_tiling_params`), whether the edge-guided edits look good, and whether the engine shows steps for clips (the activity line may stay at "Painting" with no count). Measure and fill in a table like the image model's.
+Measured 2026-11-17 straight on the engine (`/sdcpp/v1/vid_gen`), Wan 2.2 5B, words only, 20 steps, desktop running.
+
+| Clip | Time | Peak VRAM (whole card) |
+|---|---|---|
+| 832x480, 25 frames (1 s) | 66 s (about 1.7 s a step, then the VAE decode) | 14.7 GB |
+| 832x480, 49 frames (2 s, the default) | 108 s | 15.1 GB |
+| First start, files not in the page cache yet | add about 70 s to read 12 GB | |
+
+The engine holds about 13-14 GB of RAM while it runs. Quality by eye (a dog on a beach): real motion, a bit over-bright.
+
+Still untested: photo to clip, clip edits (VACE), `--hd`, `--long`, and the whole path through the app.
 
 ## Traps
 
 - Uploads are capped at 30 MB (`server/uploads.ts`): trim or shrink a long phone clip first.
+- Tiled VAE decode (`vae_tiling_params`) crashed the engine (SIGSEGV) on the first test: it is off. A longer or `--hd` clip needs more VRAM to decode whole; if one fails, try a shorter one.
+- The engine does not answer for a minute or more while it decodes a clip: the app keeps asking until the connection is refused.
 - Wan's negative prompt is the makers' default, in Chinese as the models were trained (`server/videogen.ts`).
 - A bigger model later (Wan 2.2 14B, LTX-2.5): the engine supports them (its `docs/wan.md`, `docs/ltx2.md`); add the files and a unit the same way. `--offload-to-cpu` keeps the weights in RAM and moves them to the card part by part, so a model larger than the card can still run, slower.

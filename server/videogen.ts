@@ -90,8 +90,7 @@ const body = (o: VideoOptions, fps: number, extra: Record<string, unknown>, flow
   video_frames: o.frames,
   fps,
   sample_params: { sample_method: 'euler', sample_steps: o.steps, ...(flowShift ? { flow_shift: flowShift } : {}), guidance: { txt_cfg: CFG } },
-  // Wan's VAE needs a lot of VRAM to decode a clip: in tiles, so it fits next to the desktop.
-  vae_tiling_params: { enabled: true },
+  // No tiled VAE decode: it crashed the engine (SIGSEGV, 2026-11-17). Whole, 25 frames at 832x480 peaked at 14.7 GB.
   output_format: 'webm',
   ...extra,
 });
