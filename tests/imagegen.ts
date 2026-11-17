@@ -190,6 +190,17 @@ const cfg = { url: 'http://img.test', label: 'Fake Image (local)', dir, idleMs: 
 }
 
 {
+  // PHOSPHOR_IMAGE_NSFW: an extra LoRA on every picture, next to Turbo in the default mode.
+  const w = fakeEngine();
+  const p = new Painter(w.engine, { ...cfg, nsfw: 'nsfw.safetensors', nsfwScale: 0.8 });
+  await p.paint({ opts: parseImageOptions('two people on a beach'), update: () => {}, cancelled: () => false });
+  await p.paint({ opts: parseImageOptions('--best two people on a beach'), update: () => {}, cancelled: () => false });
+  const lo = (n: number) => (w.jobs[n].body as { lora: { path: string; multiplier: number }[] }).lora.map((l) => `${l.path}:${l.multiplier}`).join(' ');
+  check('nsfw LoRA: added next to Turbo by default', lo(0) === 'turbo.safetensors:1 nsfw.safetensors:0.8', lo(0));
+  check('nsfw LoRA: alone with --best', lo(1) === 'nsfw.safetensors:0.8', lo(1));
+}
+
+{
   // holdsGpu (ROUTER's ask_local stays off the card then): the engine up counts, also when the GPU turns never saw a
   // picture (another app started it, or this server restarted since).
   const w = fakeEngine();

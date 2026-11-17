@@ -78,7 +78,8 @@ delete process.env.PHOSPHOR_LOCAL_KEY;
 
 // Optional local image model (scripts/setup-image-model.sh): a stable-diffusion.cpp server the app starts with its
 // systemd user unit when a picture is asked for, and stops when idle. EDIT=1: it can change an attached picture.
-// TURBO: a LoRA file in the engine's LoRA folder for the default 8-step mode (--best skips it). DIR: where pictures are saved.
+// TURBO: a LoRA file in the engine's LoRA folder for the default 8-step mode (--best skips it). DIR: where pictures are
+// saved. NSFW: another LoRA in that folder, added to every picture (off when unset); NSFW_SCALE is its strength.
 const imageUrl = process.env.PHOSPHOR_IMAGE_URL;
 export const imageModel = imageUrl
   ? {
@@ -87,6 +88,8 @@ export const imageModel = imageUrl
       unit: process.env.PHOSPHOR_IMAGE_UNIT || '',
       edit: process.env.PHOSPHOR_IMAGE_EDIT === '1',
       turbo: process.env.PHOSPHOR_IMAGE_TURBO || '',
+      nsfw: process.env.PHOSPHOR_IMAGE_NSFW || '',
+      nsfwScale: Math.min(2, Math.max(0, Number(process.env.PHOSPHOR_IMAGE_NSFW_SCALE) || 0.8)),
       dir: resolve(process.env.PHOSPHOR_IMAGE_DIR || join(DATA_DIR, 'images')),
       idleMs: (Number(process.env.PHOSPHOR_IMAGE_IDLE_SECONDS) || 300) * 1000,
     }

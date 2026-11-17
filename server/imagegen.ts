@@ -47,7 +47,18 @@ export class Painter {
 
   constructor(
     private engine: Engine,
-    private cfg: { url: string; label: string; dir: string; idleMs: number; turbo: string; busyFile?: string; pollMs?: number; startWaitMs?: number },
+    private cfg: {
+      url: string;
+      label: string;
+      dir: string;
+      idleMs: number;
+      turbo: string;
+      nsfw: string;
+      nsfwScale: number;
+      busyFile?: string;
+      pollMs?: number;
+      startWaitMs?: number;
+    },
     private others: Engine[] = [], // the video engines: one engine on the card at a time
   ) {
     this.gpu = new Gpu((to) => this.handOver(to));
@@ -156,7 +167,11 @@ export class Painter {
         ...(turbo && o.steps === FAST_STEPS ? { custom_sigmas: TURBO_SIGMAS } : {}),
         guidance: { txt_cfg: turbo ? 1 : CFG },
       },
-      lora: turbo ? [{ path: this.cfg.turbo, multiplier: 1 }] : [],
+      // NSFW: an optional extra LoRA (PHOSPHOR_IMAGE_NSFW), on every picture.
+      lora: [
+        ...(turbo ? [{ path: this.cfg.turbo, multiplier: 1 }] : []),
+        ...(this.cfg.nsfw ? [{ path: this.cfg.nsfw, multiplier: this.cfg.nsfwScale }] : []),
+      ],
       // The cheapest preview (a straight projection of the latents): the only way the engine reports its steps.
       preview: 'proj',
       preview_interval: 1,

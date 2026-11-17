@@ -99,6 +99,24 @@ full RAM ends the engine, not the desktop.
 - Changing the engine version: set `SD_VERSION` (a commit) and run the setup again; it recompiles.
 - Another GPU: change the `cmake` line in the setup script (`-DSD_VULKAN=ON` or `-DSD_CUDA=ON`).
 
+## Adult pictures (optional, off by default)
+
+An extra LoRA makes the model show adult bodies openly. Set it up with `bash scripts/setup-image-model.sh --nsfw` (152 MB,
+no compiling). It writes two lines to `.env`:
+
+```
+PHOSPHOR_IMAGE_NSFW=nsfw_qwen_image_2.1_v1.safetensors   # a file in the engine's LoRA folder (~/models/image)
+PHOSPHOR_IMAGE_NSFW_SCALE=0.8                            # 0 to 2; 0.8 is a good start
+```
+
+It is added to every picture in the tab, on top of the Turbo LoRA. `PHOSPHOR_IMAGE_NSFW_SCALE` is how strong it is: raise
+it if the model still holds back, lower it if bodies look wrong or the style gets odd. To switch it off: delete the two
+lines and restart the server. Running the setup again without `--nsfw` removes them.
+
+Any LoRA made for this model works: put the file in the engine's LoRA folder and write its name in `.env`. The engine
+reads ComfyUI, ai-toolkit and diffusers LoRA files as they are. Check the license of the LoRA you pick: some allow
+personal use only. Adults only, and no picture of a real person without that person's consent.
+
 ## Gemini pictures (cloud, optional)
 
 Two more entries in the picker, "Gemini Image (Argon)" and "Gemini Image (Flash)", make pictures with Google's Gemini picture tool. They use Google's **Antigravity CLI** (`agy`), signed in with a Google AI Pro or Ultra account: no API key, no cost per picture, no GPU. Google publishes no daily picture limit for these plans.

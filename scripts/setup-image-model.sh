@@ -6,9 +6,11 @@
 # vision part (1.2 GB, for editing), the VAE (0.7 GB) and the Turbo LoRA (0.9 GB, the default 8-step mode).
 # The engine is compiled here for the GPU (ROCm/HIP, AMD; 10-20 minutes the first time).
 #
-# Run:  bash scripts/setup-image-model.sh [--dry-run] [--undo]
+# Run:  bash scripts/setup-image-model.sh [--dry-run] [--undo] [--nsfw]
 #   --dry-run  print every step it would take, change nothing
 #   --undo     remove the service and the .env lines (engine and model files stay; it prints how to delete them)
+#   --nsfw     also get an extra LoRA (152 MB) that makes the model put adult bodies in pictures, and write the two
+#              PHOSPHOR_IMAGE_NSFW lines to .env. It is off unless you ask for it here: see docs/IMAGE-MODEL.md.
 #
 # Settings (environment variables):
 #   PHOSPHOR_MODELS_DIR  where model files go (default ~/models; this script uses its image/ folder)
@@ -50,7 +52,9 @@ $ENCODER $HF/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/$ENCODER
 $VISION $HF/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/$VISION
 $VAE $HF/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/$VAE
 $TURBO $HF/Comfy-Org/Qwen-Image-2.1/resolve/main/loras/$TURBO"
-ENV_KEYS='PHOSPHOR_IMAGE_URL PHOSPHOR_IMAGE_LABEL PHOSPHOR_IMAGE_UNIT PHOSPHOR_IMAGE_EDIT PHOSPHOR_IMAGE_TURBO'
+NSFW_FILE=nsfw_qwen_image_2.1_v1.safetensors
+NSFW_URL=$HF/chfm/NSFW-LORA-Qwen-Image-2.1/resolve/main/NSFW%20Qwen%20Lora.safetensors
+ENV_KEYS='PHOSPHOR_IMAGE_URL PHOSPHOR_IMAGE_LABEL PHOSPHOR_IMAGE_UNIT PHOSPHOR_IMAGE_EDIT PHOSPHOR_IMAGE_TURBO PHOSPHOR_IMAGE_NSFW PHOSPHOR_IMAGE_NSFW_SCALE'
 
 DRY=0
 say() { printf '%s\n' "$*"; }
@@ -71,10 +75,12 @@ drop_env() {
 }
 
 UNDO=0
+NSFW=0
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
     --undo) UNDO=1 ;;
+    --nsfw) NSFW=1 ;;
     *) die "unknown option: $a" ;;
   esac
 done
@@ -128,6 +134,11 @@ while read -r file url; do
     run mv "$MODELS/$file.part" "$MODELS/$file"
   fi
 done <<<"$DOWNLOADS"
+if ((NSFW)) && [[ ! -f "$MODELS/$NSFW_FILE" ]]; then
+  say "Getting the adult-content LoRA (152 MB)"
+  run curl -fL -C - -o "$MODELS/$NSFW_FILE.part" "$NSFW_URL"
+  run mv "$MODELS/$NSFW_FILE.part" "$MODELS/$NSFW_FILE"
+fi
 
 # --offload-to-cpu: the weights wait in RAM and move to the card part by part (encoder, then the model, then the
 # VAE), so all of it fits a 20 GB card with the desktop running. Flash attention on the model saves VRAM at 2K.
@@ -160,6 +171,10 @@ else
     echo "PHOSPHOR_IMAGE_UNIT=$UNIT"
     echo "PHOSPHOR_IMAGE_EDIT=1"
     echo "PHOSPHOR_IMAGE_TURBO=$TURBO"
+    if ((NSFW)); then
+      echo "PHOSPHOR_IMAGE_NSFW=$NSFW_FILE"
+      echo "PHOSPHOR_IMAGE_NSFW_SCALE=0.8"
+    fi
   } >>"$ENV_FILE"
 fi
 say "Done. Restart the Phosphor-OS server when idle (systemctl --user restart phosphor-os-server), then pick \"$LABEL\"."
