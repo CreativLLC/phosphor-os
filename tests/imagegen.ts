@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import type { ImageItem, Item, ServerEvent } from '../shared/protocol.ts';
 import { Gpu } from '../server/gpu.ts';
 import { fileName, Painter, type Engine } from '../server/imagegen.ts';
-import { editSize, fitSize, imageSize, parseImageOptions } from '../server/imageopts.ts';
+import { STEPS, editSize, fitSize, imageSize, parseImageOptions } from '../server/imageopts.ts';
 import { geminiAsk, pictureFrom } from '../server/geminiimage.ts';
 import { mergeImages, Tab, type SavedImage } from '../server/tab.ts';
 
@@ -201,6 +201,23 @@ const cfg = { url: 'http://img.test', label: 'Fake Image (local)', dir, idleMs: 
   const p0 = new Painter(w.engine, { ...cfg, nsfw: 'nsfw.safetensors', nsfwScale: 0 });
   await p0.paint({ opts: parseImageOptions('--best two people on a beach'), update: () => {}, cancelled: () => false });
   check('nsfw LoRA: scale 0 is off', lo(2) === '', lo(2));
+}
+
+{
+  // --keep: paint on the attached picture, not only look at it (init_image + strength on the engine).
+  const o = parseImageOptions('--keep 0.4 add a man behind her');
+  check('--keep: number read, full model, words kept', o.keep === 0.4 && !o.fast && o.steps === STEPS && o.prompt === 'add a man behind her', JSON.stringify(o));
+  const bad = parseImageOptions('--keep 1.5 x');
+  check('--keep out of range: says so, not used', bad.keep === null && bad.notes.length === 1, JSON.stringify(bad.notes));
+
+  const w = fakeEngine();
+  const p = new Painter(w.engine, cfg);
+  const job = (opts: ReturnType<typeof parseImageOptions>) => p.paint({ opts, ref: Buffer.from('png-bytes'), update: () => {}, cancelled: () => false });
+  await job(parseImageOptions('--keep 0.3 --seed 5 a man behind her'));
+  const b = w.jobs[0].body as { ref_images: string[]; init_image?: string; strength?: number };
+  check('--keep: init_image and strength sent with the picture', b.init_image === b.ref_images[0] && b.strength === 0.3, JSON.stringify(Object.keys(b)));
+  await job(parseImageOptions('--seed 6 a man behind her'));
+  check('no --keep: no init_image', (w.jobs[1].body as { init_image?: string }).init_image === undefined, JSON.stringify(Object.keys(w.jobs[1].body)));
 }
 
 {

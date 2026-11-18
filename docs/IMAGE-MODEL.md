@@ -48,6 +48,7 @@ the picture and are taken out of the prompt:
 | `--hd` | Twice the size per side (2048x2048 square; the model's own size). About 7 times slower; see the table |
 | `--best` | The full model, 30 steps, without the Turbo LoRA. About 6 times slower; try it when a picture or an edit is not right |
 | `--steps N` | Steps (default 8, or 30 with `--best`; 1 to 100) |
+| `--keep N` | Only with an attached picture: paint ON it and change only N of it (0.1 to 1). See "Keeping a picture the same" |
 | `--seed N` | The same seed and prompt give the same picture; the seed of each picture is shown under it |
 
 Example: `a lighthouse at sunset with a sign reading "PHOSPHOR" --wide --seed 42`.
@@ -55,6 +56,24 @@ With an attached picture the result keeps its shape (about one megapixel, or 4 w
 otherwise. Pictures wait their turn: send several, they are made one after the other. STOP drops the ones still
 waiting; a picture being painted finishes (the engine cannot stop one halfway). When you switch the tab back to
 Claude, its next message tells Claude where the pictures are, so it can use them.
+
+## Keeping a picture the same (--keep)
+
+An attached picture on its own is a guide: the model looks at it and paints a new picture. The scene can move and the people can
+change. `--keep 0.3` makes the model start from your picture and repaint only part of it.
+
+| Number | What you get |
+|---|---|
+| `0.2` | Nearly the same picture: light, hair, colour, clothing |
+| `0.4` | Same person and scene, clear changes: "she has ...", "make her ...", a small new thing |
+| `0.7` | The same idea, a new picture: layout and faces drift |
+| `1.0` | Your picture is only a guide, the same as no `--keep` |
+
+`--keep` uses the full model (the 8-step Turbo schedule is for a picture that starts from nothing), so the time is the steps left times
+about 4 s: `--keep 0.4` at 1024x1024 is 12 steps, about a minute. `--keep` with no attached picture does nothing and says so.
+
+A low number cannot draw something that was not there: it repaints what is there. For a whole new person, use a higher number, or new
+words with the same `--seed`, and keep one change per picture.
 
 ## Speed and memory (one 20 GB AMD card)
 

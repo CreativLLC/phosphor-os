@@ -3,9 +3,13 @@
 //   --wide 16:9   --tall 9:16   --square 1:1 (default)   --size WxH
 //   --hd  twice the pixels per side (2K, the model's own size; about 6x slower)
 //   --best  the full model, 30 steps (about 5x slower than the default 8-step Turbo)   --steps N   --seed N
-// fast: Turbo (the default; --best turns it off). stepsSet: --steps was given.
+//   --keep N  with an attached picture: paint ON that picture and change only N of it (0.2 keeps most of it, 0.8
+//             changes nearly all of it). Without it the model only looks at the picture and paints a new one.
+// fast: Turbo (the default; --best turns it off). stepsSet: --steps was given. --keep also turns Turbo off: its
+// 8-step schedule is made for a picture that starts from nothing.
 // shaped: the text set the shape or size (an edit otherwise keeps the attached picture's shape).
-export type ImageOptions = { prompt: string; width: number; height: number; seed: number; steps: number; stepsSet: boolean; fast: boolean; hd: boolean; shaped: boolean; notes: string[] };
+// keep: the --keep number (null: not asked).
+export type ImageOptions = { prompt: string; width: number; height: number; seed: number; steps: number; stepsSet: boolean; fast: boolean; hd: boolean; shaped: boolean; keep: number | null; notes: string[] };
 
 // Sizes of about one megapixel, sides divisible by 32 (the engine needs 16; the model was shown multiples of 32).
 const SHAPES: Record<string, [number, number]> = { square: [1024, 1024], wide: [1344, 768], tall: [768, 1344] };
@@ -21,6 +25,7 @@ export function parseImageOptions(text: string, rand: () => number = Math.random
   let best = false;
   let steps: number | null = null;
   let seed: number | null = null;
+  let strength: number | null = null;
   const words = text.split(/(\s+)/); // keeps the spaces, so the prompt's own line breaks stay
   const keep: string[] = [];
   for (let i = 0; i < words.length; i++) {
@@ -51,6 +56,11 @@ export function parseImageOptions(text: string, rand: () => number = Math.random
         if (name === 'steps') steps = Number(v);
         else seed = Number(v);
       } else notes.push(`--${name} wants a whole number (got "${v ?? ''}").`);
+    } else if (name === 'keep') {
+      const v = value();
+      const k = Number(v);
+      if (v !== undefined && v !== '' && Number.isFinite(k) && k >= 0 && k <= 1) strength = k;
+      else notes.push(`--keep wants a number from 0 to 1, like --keep 0.4 (got "${v ?? ''}").`);
     } else keep.push(w);
   }
   let [width, height] = size ?? SHAPES[shape ?? 'square'];
@@ -71,11 +81,12 @@ export function parseImageOptions(text: string, rand: () => number = Math.random
     width,
     height,
     seed: seed ?? Math.floor(rand() * 2 ** 31),
-    steps: steps ?? (best ? STEPS : FAST_STEPS),
+    steps: steps ?? (best || strength !== null ? STEPS : FAST_STEPS),
     stepsSet: steps !== null,
-    fast: !best,
+    fast: !best && strength === null,
     hd,
     shaped: !!(size || shape),
+    keep: strength,
     notes,
   };
 }

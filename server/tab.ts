@@ -594,6 +594,7 @@ export class Tab {
       const size = imageSize(ref);
       if (size && !opts.shaped) [opts.width, opts.height] = editSize(size[0], size[1], opts.hd);
     }
+    if (opts.keep !== null && !ref) notes.push('--keep needs a picture to keep: none was attached, so it painted a new one from your words.');
     if (opts.fast && !im.turbo) {
       // No Turbo installed: the full model is the only mode.
       opts.fast = false;

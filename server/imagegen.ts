@@ -161,6 +161,9 @@ export class Painter {
       seed: o.seed,
       batch_count: 1,
       ref_images: ref ? [ref.toString('base64')] : [],
+      // --keep N (an attached picture): also start FROM that picture and change only N of it. ref_images alone is
+      // only a look-while-painting guide, which is why an edit can move the whole scene.
+      ...(ref && o.keep !== null ? { init_image: ref.toString('base64'), strength: o.keep } : {}),
       sample_params: {
         sample_method: 'euler',
         sample_steps: o.steps,
